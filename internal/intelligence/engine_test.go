@@ -2,6 +2,7 @@ package intelligence
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,5 +77,34 @@ func TestRunStopsWhenContextIsCanceled(t *testing.T) {
 	err := engine.Run(ctx, input, output)
 	if err != context.Canceled {
 		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestRunReturnsErrorForInvalidEvent(t *testing.T) {
+	engine := &Engine{}
+
+	input := make(chan events.Event, 1)
+	output := make(chan Finding, 1)
+
+	input <- events.Event{
+		ID:        "invalid-event-001",
+		Type:      events.EventDNSRecordFound,
+		Timestamp: time.Now().UTC(),
+		Target:    "example.com",
+		Source:    "test",
+		Data: map[string]string{
+			"record_type": "IP_ADDRESS",
+			"value":       "not-an-ip",
+		},
+	}
+	close(input)
+
+	err := engine.Run(context.Background(), input, output)
+	if err == nil {
+		t.Fatal("expected an error for invalid DNS event")
+	}
+
+	if !strings.Contains(err.Error(), "invalid-event-001") {
+		t.Fatalf("expected error to include event ID, got: %v", err)
 	}
 }

@@ -112,7 +112,7 @@ func (e *Engine) Run(
 
 			finding, err := e.Analyze(event)
 			if err != nil {
-				continue
+				return fmt.Errorf("analyze event %q: %w", event.ID, err)
 			}
 
 			if finding == nil {
