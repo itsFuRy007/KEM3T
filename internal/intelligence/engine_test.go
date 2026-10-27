@@ -108,3 +108,57 @@ func TestRunReturnsErrorForInvalidEvent(t *testing.T) {
 		t.Fatalf("expected error to include event ID, got: %v", err)
 	}
 }
+func TestAnalyzeSubdomainClassification(t *testing.T) {
+	engine := &Engine{}
+
+	tests := []struct {
+		name     string
+		target   string
+		expected Priority
+	}{
+		{
+			name:     "development label",
+			target:   "dev.example.com",
+			expected: PriorityInterest,
+		},
+		{
+			name:     "word containing dev",
+			target:   "device.example.com",
+			expected: PriorityInfo,
+		},
+		{
+			name:     "ordinary hostname",
+			target:   "example.com",
+			expected: PriorityInfo,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event := events.Event{
+				ID:        "classification-test",
+				Type:      events.EventSubdomainDiscovered,
+				Timestamp: time.Now().UTC(),
+				Target:    tt.target,
+				Source:    "test",
+			}
+
+			finding, err := engine.Analyze(event)
+			if err != nil {
+				t.Fatalf("Analyze returned an unexpected error: %v", err)
+			}
+
+			if finding == nil {
+				t.Fatal("expected a finding, got nil")
+			}
+
+			if finding.Priority != tt.expected {
+				t.Errorf(
+					"expected priority %q, got %q",
+					tt.expected,
+					finding.Priority,
+				)
+			}
+		})
+	}
+}
