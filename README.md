@@ -1,14 +1,16 @@
+<div align="center">
+
 # KEM3T
 
-## Network Intelligence & Infrastructure Analysis
+### NETWORK INTELLIGENCE & INFRASTRUCTURE ANALYSIS
 
-KEM3T is a network intelligence and infrastructure analysis project focused on understanding networked systems through collection, evidence management, historical analysis, correlation, and explainable intelligence.
+![Go](https://img.shields.io/badge/Go-00ADD8?style=for-the-badge&logo=go&logoColor=white)
+![Networking](https://img.shields.io/badge/Networking-Infrastructure-blue?style=for-the-badge)
+![Security](https://img.shields.io/badge/Information-Security-red?style=for-the-badge)
 
-The project is built around a simple idea:
+*Discover. Analyze. Monitor.*
 
-> Collect network information, preserve the evidence, understand how it changes over time, connect related observations, and turn the results into useful investigative leads.
-
-Go is the implementation language. The primary focus is networking, infrastructure intelligence, reverse engineering, and information security.
+</div>
 
 ---
 
