@@ -1,81 +1,53 @@
+<div align="center">
+
 # KEM3T
 
-**Network Intelligence & Infrastructure Analysis**
+### NETWORK INTELLIGENCE & INFRASTRUCTURE ANALYSIS
+![Go](https://img.shields.io/badge/Go-00ADD8?style=for-the-badge&logo=go&logoColor=white)
+![Networking](https://img.shields.io/badge/Networking-Infrastructure-blue?style=for-the-badge)
+![Security](https://img.shields.io/badge/Information-Security-red?style=for-the-badge)
 
-KEM3T is a network-focused security engineering project designed to explore network infrastructure discovery, event processing, intelligence analysis, and change detection.
+*Discover. Analyze. Monitor.*
 
-The project combines networking concepts with information security to help identify network assets, analyze observations, and detect changes in infrastructure over time.
+A network-focused security engineering project built around DNS reconnaissance, event processing, and infrastructure change detection.
 
-## Current Features
+</div>
 
-- DNS reconnaissance and record collection
-- Structured event processing
-- Network observation aggregation
-- DNS snapshot management
-- Infrastructure change detection
-- Context-aware execution and error handling
-- Automated testing, including race detection
+---
+
+## Overview
+
+KEM3T explores how network observations can be collected, processed, analyzed, and compared over time.
+
+The project combines networking concepts with information security to build a foundation for network visibility and infrastructure intelligence.
+
+## Core Capabilities
+
+| Capability | Description |
+|:--|:--|
+| DNS Collection | Collect DNS records and observations |
+| Event Processing | Process structured network events |
+| Intelligence Analysis | Analyze collected observations |
+| Observation Aggregation | Organize observations by hostname |
+| Snapshot Management | Maintain infrastructure snapshots |
+| Change Detection | Identify changes between observations |
+| Automated Testing | Test implementation behavior and detect race conditions |
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    A[DNS Sources] --> B[DNS Collection]
-    B --> C[Event Processing]
-    C --> D[Intelligence Analysis]
-    D --> E[Observation Aggregation]
-    E --> F[Snapshot Management]
-    F --> G[Change Detection]
-```
-
-## Project Goals
-
-KEM3T is being developed to explore practical approaches to network intelligence and infrastructure analysis, with an emphasis on:
-
-- Network discovery and visibility
-- Information security research
-- Event-driven architecture
-- Infrastructure monitoring
-- Detection of changes in observed assets
-- Reliable and testable security engineering
+**DNS Collection** → **Event Processing** → **Intelligence Analysis** → **Observation Aggregation** → **Snapshot Management** → **Change Detection**
 
 ## Technology
 
-- Go
-- DNS
-- Event-driven processing
-- Automated testing
+- **Language:** Go
+- **Focus:** Networking and Information Security
+- **Collection:** DNS
+- **Architecture:** Event-driven processing
+- **Testing:** Automated tests and race detection
 
-Go is the implementation language; the primary focus is networking, infrastructure intelligence, and information security.
+## Getting Started
 
-## Project Status
-
-KEM3T is under active development.
-
-The current implementation includes DNS collection, event processing, observation aggregation, snapshot management, and change detection.
-
-Future development may expand collection capabilities, service identification, infrastructure analysis, and security-focused intelligence.
-
-## Testing
-
-Run the test suite:
-
-```bash
-go test -race -count=1 ./...
-```
-
-Run the demonstration mode:
+### Demonstration
 
 ```bash
 go run ./cmd/kem3t demo
-```
-
-Run DNS collection mode:
-
-```bash
-go run ./cmd/kem3t dns
-```
-
-## Disclaimer
-
-KEM3T is intended for authorized security research, educational purposes, and infrastructure analysis. Only assess systems you own or have explicit permission to test.
