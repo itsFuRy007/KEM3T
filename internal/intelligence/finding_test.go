@@ -100,3 +100,64 @@ func TestAnalyzeOrdinarySubdomain(t *testing.T) {
 		t.Fatalf("expected INFO priority, got %s", finding.Priority)
 	}
 }
+func TestAnalyzeDNSAddress(t *testing.T) {
+	event := events.Event{
+		ID:        "dns-test-001",
+		Type:      events.EventDNSRecordFound,
+		Timestamp: time.Now().UTC(),
+		Target:    "example.test",
+		Source:    "dns-collector",
+		Data: map[string]string{
+			"record_type": "IP_ADDRESS",
+			"value":       "192.0.2.10",
+		},
+	}
+
+	engine := &Engine{}
+	finding, err := engine.Analyze(event)
+
+	if err != nil {
+		t.Fatalf("Analyze() returned an error: %v", err)
+	}
+
+	if finding == nil {
+		t.Fatal("Analyze() returned no finding")
+	}
+
+	if finding.Priority != PriorityInfo {
+		t.Errorf("got priority %q, want %q", finding.Priority, PriorityInfo)
+	}
+
+	if len(finding.Evidence) != 1 {
+		t.Errorf("got %d evidence events, want 1", len(finding.Evidence))
+	}
+
+	if finding.Evidence[0].Data["value"] != "192.0.2.10" {
+		t.Errorf("unexpected evidence IP: %q", finding.Evidence[0].Data["value"])
+	}
+}
+
+func TestAnalyzeDNSInvalidAddress(t *testing.T) {
+	event := events.Event{
+		ID:        "dns-test-002",
+		Type:      events.EventDNSRecordFound,
+		Timestamp: time.Now().UTC(),
+		Target:    "example.test",
+		Source:    "dns-collector",
+		Data: map[string]string{
+			"record_type": "IP_ADDRESS",
+			"value":       "not-an-ip",
+		},
+	}
+
+	engine := &Engine{}
+	finding, err := engine.Analyze(event)
+
+	if err == nil {
+		t.Fatal("Analyze() should reject an invalid IP address")
+	}
+
+	if finding != nil {
+		t.Error("Analyze() should not return a finding for an invalid IP address")
+	}
+}

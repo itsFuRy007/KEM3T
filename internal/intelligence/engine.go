@@ -3,6 +3,7 @@ package intelligence
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/itsFuRy007/kem3t/internal/events"
@@ -20,6 +21,8 @@ func (e *Engine) Analyze(event events.Event) (*Finding, error) {
 	switch event.Type {
 	case events.EventSubdomainDiscovered:
 		return analyzeSubdomain(event), nil
+	case events.EventDNSRecordFound:
+		return analyzeDNSRecord(event)
 	default:
 		return nil, nil
 	}
@@ -60,6 +63,35 @@ func analyzeSubdomain(event events.Event) *Finding {
 	finding.PossibleSignificance =
 		"The hostname alone does not establish whether the asset is sensitive."
 	return finding
+}
+
+func analyzeDNSRecord(event events.Event) (*Finding, error) {
+	recordType := strings.ToUpper(strings.TrimSpace(event.Data["record_type"]))
+	value := strings.TrimSpace(event.Data["value"])
+
+	if recordType != "IP_ADDRESS" {
+		return nil, nil
+	}
+
+	ip := net.ParseIP(value)
+	if ip == nil {
+		return nil, fmt.Errorf("invalid IP address %q in DNS event", value)
+	}
+
+	return &Finding{
+		Title:    "DNS address resolved",
+		Priority: PriorityInfo,
+		Fact: fmt.Sprintf(
+			"The resolver returned IP address %s for hostname %s.",
+			ip.String(),
+			event.Target,
+		),
+		Observation: "An IP address was returned by the configured DNS resolver.",
+		PossibleSignificance: "This associates the hostname with a resolved address " +
+			"at the time of collection; it does not establish that the address is vulnerable.",
+		Evidence:  []events.Event{event},
+		NextSteps: []string{"Verify the address and collect authorized service information."},
+	}, nil
 }
 
 // Run processes events until the input channel closes or the context ends.
