@@ -2,22 +2,16 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
 
-	"github.com/itsFuRy007/kem3t/internal/changes"
 	"github.com/itsFuRy007/kem3t/internal/collectors"
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
-	"github.com/itsFuRy007/kem3t/internal/snapshots"
+	"github.com/itsFuRy007/kem3t/internal/pipeline"
 )
-
-type Collector interface {
-	Run(context.Context, chan<- events.Event) error
-}
 
 func main() {
 	if err := run(); err != nil {
@@ -86,112 +80,52 @@ func runDemo() error {
 }
 
 func runDNS(target, snapshotDir string) error {
-	ctx := context.Background()
-	collector := &collectors.DNS{Target: target}
-	eventCh := make(chan events.Event)
-	collectorErr := make(chan error, 1)
-
-	go func() {
-		defer close(eventCh)
-		collectorErr <- collector.Run(ctx, eventCh)
-	}()
-
-	aggregator := intelligence.NewAggregator()
-
-	for event := range eventCh {
-		if err := aggregator.Add(event); err != nil {
-			return fmt.Errorf("aggregate event: %w", err)
-		}
+	result, err := pipeline.RunDNS(context.Background(), target, snapshotDir)
+	if err != nil {
+		return err
 	}
 
-	if err := <-collectorErr; err != nil {
-		return fmt.Errorf("DNS collector failed: %w", err)
-	}
-
-	findings := aggregator.Findings()
-	if len(findings) == 0 {
-		return fmt.Errorf("DNS collector produced no findings")
-	}
-
-	for _, finding := range findings {
+	for _, finding := range result.Findings {
 		printFinding(finding)
 	}
 
-	addresses := make([]string, 0)
-	for _, finding := range findings {
-		for _, event := range finding.Evidence {
-			address := strings.TrimSpace(event.Data["value"])
-			if address != "" {
-				addresses = append(addresses, address)
-			}
-		}
-	}
-
-	current, err := snapshots.New(target, addresses)
-	if err != nil {
-		return fmt.Errorf("create current snapshot: %w", err)
-	}
-
-	store, err := snapshots.NewStore(snapshotDir)
-	if err != nil {
-		return fmt.Errorf("initialize snapshot store: %w", err)
-	}
-
-	previous, err := store.Load(current.Target)
-	if err != nil {
-		if !errors.Is(err, snapshots.ErrNotFound) {
-			return fmt.Errorf("load previous snapshot: %w", err)
-		}
-
-		if err := store.Save(current); err != nil {
-			return fmt.Errorf("save initial snapshot: %w", err)
-		}
-
+	if result.BaselineCreated {
 		fmt.Println("\n[BASELINE CREATED]")
-		fmt.Printf("Target: %s\n", current.Target)
-		fmt.Printf("Unique addresses: %d\n", len(current.Addresses))
-		fmt.Printf("Snapshot: %s\n", storePath(snapshotDir, current.Target))
+		fmt.Printf("Target: %s\n", result.CurrentSnapshot.Target)
+		fmt.Printf("Unique addresses: %d\n", len(result.CurrentSnapshot.Addresses))
+		fmt.Printf("Snapshot: %s\n", storePath(snapshotDir, result.CurrentSnapshot.Target))
 		fmt.Println("Run the same command again to detect DNS changes.")
 		return nil
 	}
 
-	detector := changes.NewDetector()
-	detected, err := detector.Compare(
-		changes.Snapshot{
-			Target:    previous.Target,
-			Addresses: previous.Addresses,
-		},
-		changes.Snapshot{
-			Target:    current.Target,
-			Addresses: current.Addresses,
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("compare snapshots: %w", err)
+	fmt.Println("\n[DNS CHANGE REPORT]")
+	fmt.Printf("Target: %s\n", result.CurrentSnapshot.Target)
+
+	if result.PreviousSnapshot != nil {
+		fmt.Printf(
+			"Previous collection: %s\n",
+			result.PreviousSnapshot.Collected.Format("2006-01-02 15:04:05 UTC"),
+		)
 	}
 
-	fmt.Println("\n[DNS CHANGE REPORT]")
-	fmt.Printf("Target: %s\n", current.Target)
-	fmt.Printf("Previous collection: %s\n", previous.Collected.Format("2006-01-02 15:04:05 UTC"))
-
-	if len(detected) == 0 {
+	if len(result.Changes) == 0 {
 		fmt.Println("No address changes detected.")
 	} else {
-		for _, change := range detected {
+		for _, change := range result.Changes {
 			fmt.Printf("[%s] %s\n", change.Type, change.Address)
 		}
 	}
 
-	if err := store.Save(current); err != nil {
-		return fmt.Errorf("save current snapshot: %w", err)
-	}
-
-	fmt.Printf("Updated snapshot: %s\n", storePath(snapshotDir, current.Target))
+	fmt.Printf("Updated snapshot: %s\n", storePath(snapshotDir, result.CurrentSnapshot.Target))
 	return nil
 }
 
 func storePath(dir, target string) string {
-	return strings.TrimRight(dir, "/") + "/" + strings.ToLower(strings.TrimSpace(target)) + ".json"
+	dir = strings.TrimRight(dir, "/")
+	if dir == "" {
+		dir = "."
+	}
+	return dir + "/" + strings.ToLower(strings.TrimSpace(target)) + ".json"
 }
 
 func printFinding(finding intelligence.Finding) {
