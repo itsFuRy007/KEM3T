@@ -9,6 +9,7 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/changes"
 	"github.com/itsFuRy007/kem3t/internal/collectors"
 	"github.com/itsFuRy007/kem3t/internal/events"
+	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/snapshots"
 )
@@ -19,6 +20,7 @@ type DNSResult struct {
 	PreviousSnapshot *snapshots.Snapshot
 	Changes          []changes.Change
 	BaselineCreated  bool
+	EvidenceRegistry *evidence.Registry
 }
 
 type EventCollector interface {
@@ -63,12 +65,37 @@ func runDNSWithCollector(
 	}()
 
 	aggregator := intelligence.NewAggregator()
+	registry := evidence.NewRegistry()
 
 	for event := range eventCh {
 		if err := aggregator.Add(event); err != nil {
 			cancel()
 			<-collectorErr
 			return DNSResult{}, fmt.Errorf("aggregate event: %w", err)
+		}
+
+		if event.Type != events.EventDNSRecordFound {
+			continue
+		}
+
+		e, observation, err := evidence.FromDNSEvent(event)
+		if err != nil {
+			// Events that are not supported by the evidence converter
+			// remain available to the intelligence aggregator.
+			continue
+		}
+
+		if err := registry.AddEvidence(e); err != nil &&
+			!errors.Is(err, evidence.ErrEvidenceExists) {
+			cancel()
+			<-collectorErr
+			return DNSResult{}, fmt.Errorf("register evidence: %w", err)
+		}
+
+		if err := registry.AddObservation(observation); err != nil {
+			cancel()
+			<-collectorErr
+			return DNSResult{}, fmt.Errorf("register observation: %w", err)
 		}
 	}
 
@@ -116,9 +143,10 @@ func runDNSWithCollector(
 		}
 
 		return DNSResult{
-			Findings:        findings,
-			CurrentSnapshot: current,
-			BaselineCreated: true,
+			Findings:         findings,
+			CurrentSnapshot:  current,
+			BaselineCreated:  true,
+			EvidenceRegistry: registry,
 		}, nil
 	}
 
@@ -146,5 +174,6 @@ func runDNSWithCollector(
 		CurrentSnapshot:  current,
 		PreviousSnapshot: &previous,
 		Changes:          detected,
+		EvidenceRegistry: registry,
 	}, nil
 }

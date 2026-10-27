@@ -2,11 +2,10 @@ package pipeline
 
 import (
 	"context"
-	"testing"
-	"time"
-
 	"github.com/itsFuRy007/kem3t/internal/changes"
 	"github.com/itsFuRy007/kem3t/internal/events"
+	"testing"
+	"time"
 )
 
 type fakeCollector struct {
@@ -24,7 +23,6 @@ func (f *fakeCollector) Run(ctx context.Context, out chan<- events.Event) error 
 	}
 	return f.err
 }
-
 func dnsEvents(addresses ...string) []events.Event {
 	result := make([]events.Event, 0, len(addresses))
 	for _, address := range addresses {
@@ -42,11 +40,9 @@ func dnsEvents(addresses ...string) []events.Event {
 	}
 	return result
 }
-
 func TestRunDNSCreatesBaselineAndDetectsChanges(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-
 	first := &fakeCollector{
 		events: dnsEvents("192.0.2.10", "192.0.2.11"),
 	}
@@ -60,7 +56,6 @@ func TestRunDNSCreatesBaselineAndDetectsChanges(t *testing.T) {
 	if result.PreviousSnapshot != nil {
 		t.Fatal("expected no previous snapshot on first run")
 	}
-
 	second := &fakeCollector{
 		events: dnsEvents("192.0.2.10", "192.0.2.25"),
 	}
@@ -77,7 +72,6 @@ func TestRunDNSCreatesBaselineAndDetectsChanges(t *testing.T) {
 	if len(result.Changes) != 2 {
 		t.Fatalf("expected 2 changes, got %d", len(result.Changes))
 	}
-
 	expected := map[changes.ChangeType]string{
 		changes.AddressAdded:   "192.0.2.25",
 		changes.AddressRemoved: "192.0.2.11",
@@ -93,18 +87,15 @@ func TestRunDNSCreatesBaselineAndDetectsChanges(t *testing.T) {
 		}
 	}
 }
-
 func TestRunDNSCancelsCollectorWhenAggregationFails(t *testing.T) {
 	invalidEvent := dnsEvents("192.0.2.10")[0]
 	invalidEvent.ID = ""
-
 	collector := &fakeCollector{
 		events: []events.Event{
 			invalidEvent,
 			dnsEvents("192.0.2.11")[0],
 		},
 	}
-
 	done := make(chan error, 1)
 	go func() {
 		_, err := runDNSWithCollector(
@@ -115,7 +106,6 @@ func TestRunDNSCancelsCollectorWhenAggregationFails(t *testing.T) {
 		)
 		done <- err
 	}()
-
 	select {
 	case err := <-done:
 		if err == nil {
@@ -123,5 +113,57 @@ func TestRunDNSCancelsCollectorWhenAggregationFails(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("pipeline hung instead of stopping the collector")
+	}
+}
+func TestRunDNSRegistersEvidenceAndObservations(t *testing.T) {
+	collected := dnsEvents("192.0.2.10", "192.0.2.11")
+	repeated := collected[0]
+	repeated.ID = "dns-repeat"
+	repeated.Timestamp = repeated.Timestamp.Add(time.Minute)
+	collected = append(collected, repeated)
+	result, err := runDNSWithCollector(
+		context.Background(),
+		"example.com",
+		t.TempDir(),
+		&fakeCollector{events: collected},
+	)
+	if err != nil {
+		t.Fatalf("runDNSWithCollector() error = %v", err)
+	}
+	if result.EvidenceRegistry == nil {
+		t.Fatal("expected evidence registry in DNS result")
+	}
+	evidenceID := "dns-address:example.com:192.0.2.10"
+	gotEvidence, err := result.EvidenceRegistry.GetEvidence(evidenceID)
+	if err != nil {
+		t.Fatalf("GetEvidence() error = %v", err)
+	}
+	if gotEvidence.Value != "192.0.2.10" {
+		t.Fatalf("evidence value = %q", gotEvidence.Value)
+	}
+	history, err := result.EvidenceRegistry.ObservationsForEvidence(evidenceID)
+	if err != nil {
+		t.Fatalf("ObservationsForEvidence() error = %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("observation count = %d, want 2", len(history))
+	}
+	eventIDs := make(map[string]bool)
+	for _, observation := range history {
+		for _, eventID := range observation.EventIDs {
+			eventIDs[eventID] = true
+		}
+	}
+	if !eventIDs[collected[0].ID] || !eventIDs["dns-repeat"] {
+		t.Fatalf("expected both event IDs in history, got %v", eventIDs)
+	}
+	secondHistory, err := result.EvidenceRegistry.ObservationsForEvidence(
+		"dns-address:example.com:192.0.2.11",
+	)
+	if err != nil {
+		t.Fatalf("history for second IP: %v", err)
+	}
+	if len(secondHistory) != 1 {
+		t.Fatalf("second IP observation count = %d, want 1", len(secondHistory))
 	}
 }
