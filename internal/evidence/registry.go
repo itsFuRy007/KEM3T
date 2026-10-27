@@ -1,6 +1,7 @@
 package evidence
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -14,26 +15,109 @@ var (
 	ErrEvidenceNotFound    = errors.New("evidence not found")
 	ErrObservationExists   = errors.New("observation already exists")
 	ErrObservationNotFound = errors.New("observation not found")
+	ErrRegistryClosed      = errors.New("evidence registry is closed")
 )
 
-// Registry stores evidence and its observation history in memory.
+// Registry stores evidence and its observation history.
+// It can operate in memory or persist records in SQLite.
 type Registry struct {
-	mu           sync.RWMutex
-	evidence     map[string]Evidence
-	observations map[string]Observation
-	byEvidence   map[string][]string
+	mu             sync.RWMutex
+	evidence       map[string]Evidence
+	observations   map[string]Observation
+	byEvidence     map[string][]string
+	collectionRuns map[string]CollectionRun
+	store          *SQLiteStore
+	closed         bool
 }
 
-// NewRegistry creates an empty evidence registry.
+// NewRegistry creates an in-memory evidence registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		evidence:     make(map[string]Evidence),
-		observations: make(map[string]Observation),
-		byEvidence:   make(map[string][]string),
+		evidence:       make(map[string]Evidence),
+		observations:   make(map[string]Observation),
+		byEvidence:     make(map[string][]string),
+		collectionRuns: make(map[string]CollectionRun),
 	}
 }
 
-// AddEvidence validates, normalizes, and stores an evidence record.
+// OpenRegistry opens a persistent registry and restores its previous records.
+func OpenRegistry(path string) (*Registry, error) {
+	store, err := OpenSQLiteStore(path)
+	if err != nil {
+		return nil, fmt.Errorf("open evidence store: %w", err)
+	}
+
+	registry := NewRegistry()
+	registry.store = store
+
+	evidenceRecords, observations, err := store.LoadAll(context.Background())
+	if err != nil {
+		_ = store.Close()
+		return nil, fmt.Errorf("restore evidence history: %w", err)
+	}
+
+	for _, e := range evidenceRecords {
+		if err := e.Validate(); err != nil {
+			_ = store.Close()
+			return nil, fmt.Errorf("invalid stored evidence %q: %w", e.ID, err)
+		}
+		registry.evidence[e.ID] = e
+	}
+
+	for _, o := range observations {
+		if err := o.Validate(); err != nil {
+			_ = store.Close()
+			return nil, fmt.Errorf("invalid stored observation %q: %w", o.ID, err)
+		}
+		if _, exists := registry.evidence[o.EvidenceID]; !exists {
+			_ = store.Close()
+			return nil, fmt.Errorf(
+				"observation %q references missing evidence %q",
+				o.ID,
+				o.EvidenceID,
+			)
+		}
+
+		registry.observations[o.ID] = cloneObservation(o)
+		registry.byEvidence[o.EvidenceID] = append(
+			registry.byEvidence[o.EvidenceID],
+			o.ID,
+		)
+	}
+
+	runs, err := store.LoadCollectionRuns(context.Background(), "")
+	if err != nil {
+		_ = store.Close()
+		return nil, fmt.Errorf("restore collection run history: %w", err)
+	}
+	for _, run := range runs {
+		registry.collectionRuns[run.ID] = run
+	}
+
+	return registry, nil
+}
+
+// Close closes the persistent store, if one is configured.
+// The registry's in-memory records remain readable after closing.
+func (r *Registry) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.closed {
+		return nil
+	}
+
+	r.closed = true
+	if r.store == nil {
+		return nil
+	}
+
+	err := r.store.Close()
+	r.store = nil
+	return err
+}
+
+// AddEvidence validates, normalizes, and stores evidence.
 func (r *Registry) AddEvidence(e Evidence) error {
 	e.ID = strings.TrimSpace(e.ID)
 	e.EntityID = strings.ToLower(strings.TrimSpace(e.EntityID))
@@ -52,8 +136,18 @@ func (r *Registry) AddEvidence(e Evidence) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if r.closed {
+		return ErrRegistryClosed
+	}
+
 	if _, exists := r.evidence[e.ID]; exists {
 		return ErrEvidenceExists
+	}
+
+	if r.store != nil {
+		if err := r.store.SaveEvidence(context.Background(), e); err != nil {
+			return fmt.Errorf("persist evidence: %w", err)
+		}
 	}
 
 	r.evidence[e.ID] = e
@@ -80,9 +174,8 @@ func (r *Registry) AddObservation(o Observation) error {
 	o.ID = strings.TrimSpace(o.ID)
 	o.EvidenceID = strings.TrimSpace(o.EvidenceID)
 	o.Source = strings.TrimSpace(o.Source)
-
-	// Copy before normalization so the caller's slice is not modified.
 	o.EventIDs = append([]string(nil), o.EventIDs...)
+
 	for i, id := range o.EventIDs {
 		o.EventIDs[i] = strings.TrimSpace(id)
 	}
@@ -94,6 +187,10 @@ func (r *Registry) AddObservation(o Observation) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if r.closed {
+		return ErrRegistryClosed
+	}
+
 	if _, exists := r.observations[o.ID]; exists {
 		return ErrObservationExists
 	}
@@ -102,7 +199,13 @@ func (r *Registry) AddObservation(o Observation) error {
 		return ErrEvidenceNotFound
 	}
 
-	r.observations[o.ID] = o
+	if r.store != nil {
+		if err := r.store.SaveObservation(context.Background(), o); err != nil {
+			return fmt.Errorf("persist observation: %w", err)
+		}
+	}
+
+	r.observations[o.ID] = cloneObservation(o)
 	r.byEvidence[o.EvidenceID] = append(
 		r.byEvidence[o.EvidenceID],
 		o.ID,
@@ -123,8 +226,7 @@ func (r *Registry) GetObservation(id string) (Observation, error) {
 		return Observation{}, ErrObservationNotFound
 	}
 
-	o.EventIDs = append([]string(nil), o.EventIDs...)
-	return o, nil
+	return cloneObservation(o), nil
 }
 
 // ObservationsForEvidence returns observations ordered by timestamp,
@@ -145,18 +247,157 @@ func (r *Registry) ObservationsForEvidence(
 	result := make([]Observation, 0, len(ids))
 
 	for _, id := range ids {
-		o := r.observations[id]
-		o.EventIDs = append([]string(nil), o.EventIDs...)
-		result = append(result, o)
+		o, exists := r.observations[id]
+		if !exists {
+			continue
+		}
+		result = append(result, cloneObservation(o))
 	}
 
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].ObservedAt.Equal(result[j].ObservedAt) {
 			return result[i].ID < result[j].ID
 		}
-
 		return result[i].ObservedAt.Before(result[j].ObservedAt)
 	})
 
 	return result, nil
+}
+
+// AllEvidence returns all evidence records ordered by ID.
+func (r *Registry) AllEvidence() []Evidence {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make([]Evidence, 0, len(r.evidence))
+	for _, item := range r.evidence {
+		result = append(result, item)
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID < result[j].ID
+	})
+
+	return result
+}
+
+// AllObservations returns all observations ordered by ID.
+func (r *Registry) AllObservations() []Observation {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make([]Observation, 0, len(r.observations))
+	for _, item := range r.observations {
+		result = append(result, cloneObservation(item))
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID < result[j].ID
+	})
+
+	return result
+}
+
+// AddCollectionRun validates and stores a new collection run.
+func (r *Registry) AddCollectionRun(run CollectionRun) error {
+	run.ID = strings.TrimSpace(run.ID)
+	run.Target = strings.ToLower(strings.TrimSpace(run.Target))
+	run.ErrorMessage = strings.TrimSpace(run.ErrorMessage)
+
+	if err := run.Validate(); err != nil {
+		return fmt.Errorf("validate collection run: %w", err)
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.closed {
+		return ErrRegistryClosed
+	}
+
+	if _, exists := r.collectionRuns[run.ID]; exists {
+		return fmt.Errorf("collection run %q already exists", run.ID)
+	}
+	if r.store != nil {
+		if err := r.store.SaveCollectionRun(context.Background(), run); err != nil {
+			return fmt.Errorf("persist collection run: %w", err)
+		}
+	}
+	r.collectionRuns[run.ID] = run
+	return nil
+}
+
+// UpdateCollectionRun replaces an existing collection run.
+func (r *Registry) UpdateCollectionRun(run CollectionRun) error {
+	run.ID = strings.TrimSpace(run.ID)
+	run.Target = strings.ToLower(strings.TrimSpace(run.Target))
+	run.ErrorMessage = strings.TrimSpace(run.ErrorMessage)
+
+	if err := run.Validate(); err != nil {
+		return fmt.Errorf("validate collection run: %w", err)
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.closed {
+		return ErrRegistryClosed
+	}
+
+	if _, exists := r.collectionRuns[run.ID]; !exists {
+		return fmt.Errorf("collection run %q not found", run.ID)
+	}
+	if r.store != nil {
+		if err := r.store.UpdateCollectionRun(context.Background(), run); err != nil {
+			return fmt.Errorf("persist collection run update: %w", err)
+		}
+	}
+	r.collectionRuns[run.ID] = run
+	return nil
+}
+
+// GetCollectionRun returns one collection run by ID.
+func (r *Registry) GetCollectionRun(id string) (CollectionRun, error) {
+	id = strings.TrimSpace(id)
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	run, exists := r.collectionRuns[id]
+	if !exists {
+		return CollectionRun{}, fmt.Errorf("collection run %q not found", id)
+	}
+	return run, nil
+}
+
+// CollectionRuns returns collection runs newest first.
+// An empty target returns runs for all targets.
+func (r *Registry) CollectionRuns(target string) ([]CollectionRun, error) {
+	target = strings.ToLower(strings.TrimSpace(target))
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if r.store != nil {
+		return r.store.LoadCollectionRuns(context.Background(), target)
+	}
+
+	result := make([]CollectionRun, 0, len(r.collectionRuns))
+	for _, run := range r.collectionRuns {
+		if target == "" || run.Target == target {
+			result = append(result, run)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].StartedAt.Equal(result[j].StartedAt) {
+			return result[i].ID > result[j].ID
+		}
+		return result[i].StartedAt.After(result[j].StartedAt)
+	})
+	return result, nil
+}
+
+func cloneObservation(o Observation) Observation {
+	o.EventIDs = append([]string(nil), o.EventIDs...)
+	return o
 }

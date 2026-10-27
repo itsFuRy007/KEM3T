@@ -2,6 +2,7 @@ package evidence
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -149,5 +150,94 @@ func TestRegistryAddObservationDoesNotModifyCallerSlice(t *testing.T) {
 			stored.EventIDs[0],
 			"dns-001",
 		)
+	}
+}
+
+func TestClosedRegistryRejectsWritesAndKeepsRecordsReadable(t *testing.T) {
+	registry, err := OpenRegistry(filepath.Join(t.TempDir(), "evidence.db"))
+	if err != nil {
+		t.Fatalf("open registry: %v", err)
+	}
+
+	started := time.Now().UTC()
+	e := Evidence{
+		ID:       "dns-address:example.com:192.0.2.10",
+		EntityID: "example.com",
+		Type:     TypeDNSAddress,
+		Value:    "192.0.2.10",
+	}
+	if err := registry.AddEvidence(e); err != nil {
+		t.Fatalf("add evidence: %v", err)
+	}
+
+	observation := Observation{
+		ID:         "observation-before-close",
+		EvidenceID: e.ID,
+		Source:     "test",
+		ObservedAt: started,
+		EventIDs:   []string{"event-before-close"},
+	}
+	if err := registry.AddObservation(observation); err != nil {
+		t.Fatalf("add observation: %v", err)
+	}
+
+	run := CollectionRun{
+		ID:        "run-before-close",
+		Target:    "example.com",
+		StartedAt: started,
+		Status:    CollectionRunRunning,
+	}
+	if err := registry.AddCollectionRun(run); err != nil {
+		t.Fatalf("add collection run: %v", err)
+	}
+
+	if err := registry.Close(); err != nil {
+		t.Fatalf("close registry: %v", err)
+	}
+
+	if _, err := registry.GetEvidence(e.ID); err != nil {
+		t.Fatalf("read evidence after close: %v", err)
+	}
+
+	newEvidence := Evidence{
+		ID:       "dns-address:example.com:192.0.2.11",
+		EntityID: "example.com",
+		Type:     TypeDNSAddress,
+		Value:    "192.0.2.11",
+	}
+	if err := registry.AddEvidence(newEvidence); !errors.Is(err, ErrRegistryClosed) {
+		t.Errorf("AddEvidence() error = %v, want ErrRegistryClosed", err)
+	}
+
+	newObservation := Observation{
+		ID:         "observation-after-close",
+		EvidenceID: e.ID,
+		Source:     "test",
+		ObservedAt: started.Add(time.Second),
+		EventIDs:   []string{"event-after-close"},
+	}
+	if err := registry.AddObservation(newObservation); !errors.Is(err, ErrRegistryClosed) {
+		t.Errorf("AddObservation() error = %v, want ErrRegistryClosed", err)
+	}
+
+	newRun := CollectionRun{
+		ID:        "run-after-close",
+		Target:    "example.com",
+		StartedAt: started.Add(time.Second),
+		Status:    CollectionRunRunning,
+	}
+	if err := registry.AddCollectionRun(newRun); !errors.Is(err, ErrRegistryClosed) {
+		t.Errorf("AddCollectionRun() error = %v, want ErrRegistryClosed", err)
+	}
+
+	updatedRun := run
+	updatedRun.Status = CollectionRunCompleted
+	updatedRun.FinishedAt = started.Add(time.Second)
+	if err := registry.UpdateCollectionRun(updatedRun); !errors.Is(err, ErrRegistryClosed) {
+		t.Errorf("UpdateCollectionRun() error = %v, want ErrRegistryClosed", err)
+	}
+
+	if err := registry.Close(); err != nil {
+		t.Errorf("second Close() error = %v", err)
 	}
 }
