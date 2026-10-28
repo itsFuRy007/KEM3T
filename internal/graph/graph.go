@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"sort"
@@ -12,14 +14,18 @@ import (
 type NodeType string
 
 const (
-	NodeDomain NodeType = "DOMAIN"
-	NodeIP     NodeType = "IP_ADDRESS"
+	NodeDomain         NodeType = "DOMAIN"
+	NodeIP             NodeType = "IP_ADDRESS"
+	NodeTLSCertificate NodeType = "TLS_CERTIFICATE"
+	NodeTCPPort        NodeType = "TCP_PORT"
 )
 
 type EdgeType string
 
 const (
-	EdgeResolvesTo EdgeType = "RESOLVES_TO"
+	EdgeResolvesTo          EdgeType = "RESOLVES_TO"
+	EdgePresentsCertificate EdgeType = "PRESENTS_CERTIFICATE"
+	EdgeHasOpenPort         EdgeType = "HAS_OPEN_PORT"
 )
 
 type Node struct {
@@ -33,6 +39,7 @@ type Edge struct {
 	Type           EdgeType `json:"type"`
 	Source         string   `json:"source"`
 	Target         string   `json:"target"`
+	Port           int      `json:"port,omitempty"`
 	EvidenceIDs    []string `json:"evidence_ids"`
 	ObservationIDs []string `json:"observation_ids"`
 }
@@ -93,38 +100,106 @@ func Build(records []evidence.Evidence, observations []evidence.Observation) (Gr
 	edgesByID := make(map[string]*Edge)
 
 	for _, record := range records {
-		if record.Type != evidence.TypeDNSAddress {
-			continue
-		}
-
-		domain := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(record.EntityID)), ".")
-		ip := net.ParseIP(strings.TrimSpace(record.Value))
-		if !evidence.IsValidDomain(record.EntityID) || ip == nil {
-			return Graph{}, fmt.Errorf("evidence %q has an invalid domain or IP address", record.ID)
-		}
-
-		address := ip.String()
-		domainNode := Node{ID: "domain:" + domain, Type: NodeDomain, Value: domain}
-		ipNode := Node{ID: "ip:" + address, Type: NodeIP, Value: address}
-
-		nodesByID[domainNode.ID] = domainNode
-		nodesByID[ipNode.ID] = ipNode
-
-		edgeID := "resolves-to:" + domain + ":" + address
-		edge, exists := edgesByID[edgeID]
-		if !exists {
-			edge = &Edge{
-				ID:     edgeID,
-				Type:   EdgeResolvesTo,
-				Source: domainNode.ID,
-				Target: ipNode.ID,
+		switch record.Type {
+		case evidence.TypeDNSAddress:
+			domain := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(record.EntityID)), ".")
+			ip := net.ParseIP(strings.TrimSpace(record.Value))
+			if !evidence.IsValidDomain(record.EntityID) || ip == nil {
+				return Graph{}, fmt.Errorf("evidence %q has an invalid domain or IP address", record.ID)
 			}
-			edgesByID[edgeID] = edge
-		}
 
-		edge.EvidenceIDs = appendUnique(edge.EvidenceIDs, record.ID)
-		for _, observationID := range observationByEvidence[record.ID] {
-			edge.ObservationIDs = appendUnique(edge.ObservationIDs, observationID)
+			address := ip.String()
+			domainNode := Node{ID: "domain:" + domain, Type: NodeDomain, Value: domain}
+			ipNode := Node{ID: "ip:" + address, Type: NodeIP, Value: address}
+
+			nodesByID[domainNode.ID] = domainNode
+			nodesByID[ipNode.ID] = ipNode
+
+			edgeID := "resolves-to:" + domain + ":" + address
+			edge, exists := edgesByID[edgeID]
+			if !exists {
+				edge = &Edge{
+					ID:     edgeID,
+					Type:   EdgeResolvesTo,
+					Source: domainNode.ID,
+					Target: ipNode.ID,
+				}
+				edgesByID[edgeID] = edge
+			}
+
+			edge.EvidenceIDs = appendUnique(edge.EvidenceIDs, record.ID)
+			for _, observationID := range observationByEvidence[record.ID] {
+				edge.ObservationIDs = appendUnique(edge.ObservationIDs, observationID)
+			}
+
+		case evidence.TypeTCPPort:
+			var details evidence.TCPPortDetails
+			if err := json.Unmarshal([]byte(record.Value), &details); err != nil {
+				return Graph{}, fmt.Errorf("decode TCP evidence %q: %w", record.ID, err)
+			}
+			target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(record.EntityID)), ".")
+			var host Node
+			if ip := net.ParseIP(target); ip != nil {
+				host = Node{ID: "ip:" + ip.String(), Type: NodeIP, Value: ip.String()}
+			} else {
+				host = Node{ID: "domain:" + target, Type: NodeDomain, Value: target}
+			}
+			portNode := Node{ID: fmt.Sprintf("tcp-port:%s:%d", target, details.Port), Type: NodeTCPPort, Value: fmt.Sprintf("%s:%d", target, details.Port)}
+			nodesByID[host.ID] = host
+			nodesByID[portNode.ID] = portNode
+			edgeID := fmt.Sprintf("has-open-port:%s:%d", target, details.Port)
+			edge, exists := edgesByID[edgeID]
+			if !exists {
+				edge = &Edge{ID: edgeID, Type: EdgeHasOpenPort, Source: host.ID, Target: portNode.ID, Port: details.Port}
+				edgesByID[edgeID] = edge
+			}
+			edge.EvidenceIDs = appendUnique(edge.EvidenceIDs, record.ID)
+			for _, observationID := range observationByEvidence[record.ID] {
+				edge.ObservationIDs = appendUnique(edge.ObservationIDs, observationID)
+			}
+
+		case evidence.TypeTLSCertificate:
+			var details evidence.TLSCertificateDetails
+			if err := json.Unmarshal([]byte(record.Value), &details); err != nil {
+				return Graph{}, fmt.Errorf("decode TLS evidence %q: %w", record.ID, err)
+			}
+
+			target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(record.EntityID)), ".")
+			var hostNode Node
+			if ip := net.ParseIP(target); ip != nil {
+				hostNode = Node{ID: "ip:" + ip.String(), Type: NodeIP, Value: ip.String()}
+			} else {
+				if !evidence.IsValidDomain(target) {
+					return Graph{}, fmt.Errorf("TLS evidence %q has an invalid target", record.ID)
+				}
+				hostNode = Node{ID: "domain:" + target, Type: NodeDomain, Value: target}
+			}
+
+			fingerprint := strings.ToLower(strings.TrimSpace(details.SHA256Fingerprint))
+			certNode := Node{
+				ID:    "tls-cert:" + fingerprint,
+				Type:  NodeTLSCertificate,
+				Value: fingerprint,
+			}
+			nodesByID[hostNode.ID] = hostNode
+			nodesByID[certNode.ID] = certNode
+
+			edgeID := fmt.Sprintf("presents-certificate:%s:%d:%s", target, details.Port, fingerprint)
+			edge, exists := edgesByID[edgeID]
+			if !exists {
+				edge = &Edge{
+					ID:     edgeID,
+					Type:   EdgePresentsCertificate,
+					Source: hostNode.ID,
+					Target: certNode.ID,
+					Port:   details.Port,
+				}
+				edgesByID[edgeID] = edge
+			}
+			edge.EvidenceIDs = appendUnique(edge.EvidenceIDs, record.ID)
+			for _, observationID := range observationByEvidence[record.ID] {
+				edge.ObservationIDs = appendUnique(edge.ObservationIDs, observationID)
+			}
 		}
 	}
 
@@ -182,6 +257,18 @@ func (g Graph) Validate() error {
 			if ip == nil || ip.String() != node.Value || node.ID != "ip:"+node.Value {
 				return fmt.Errorf("IP node %q is not normalized", node.ID)
 			}
+		case NodeTCPPort:
+			if !strings.HasPrefix(node.ID, "tcp-port:") {
+				return fmt.Errorf("TCP port node %q has an invalid identity", node.ID)
+			}
+		case NodeTLSCertificate:
+			fingerprint := strings.ToLower(strings.TrimSpace(node.Value))
+			if len(fingerprint) != 64 || fingerprint != node.Value || node.ID != "tls-cert:"+fingerprint {
+				return fmt.Errorf("TLS certificate node %q is invalid or not normalized", node.ID)
+			}
+			if _, err := hex.DecodeString(fingerprint); err != nil {
+				return fmt.Errorf("TLS certificate node %q has an invalid fingerprint", node.ID)
+			}
 		default:
 			return fmt.Errorf("node %q has unsupported type %q", node.ID, node.Type)
 		}
@@ -211,11 +298,38 @@ func (g Graph) Validate() error {
 		if !sourceExists || !targetExists {
 			return fmt.Errorf("edge %q references a missing node", edge.ID)
 		}
-		if edge.Type != EdgeResolvesTo || source.Type != NodeDomain || target.Type != NodeIP {
-			return fmt.Errorf("edge %q has invalid type or endpoints", edge.ID)
-		}
-		if edge.ID != "resolves-to:"+source.Value+":"+target.Value {
-			return fmt.Errorf("edge %q has an invalid identity", edge.ID)
+		switch edge.Type {
+		case EdgeResolvesTo:
+			if source.Type != NodeDomain || target.Type != NodeIP || edge.Port != 0 {
+				return fmt.Errorf("edge %q has invalid DNS type or endpoints", edge.ID)
+			}
+			if edge.ID != "resolves-to:"+source.Value+":"+target.Value {
+				return fmt.Errorf("edge %q has an invalid identity", edge.ID)
+			}
+		case EdgeHasOpenPort:
+			if (source.Type != NodeDomain && source.Type != NodeIP) || target.Type != NodeTCPPort {
+				return fmt.Errorf("edge %q has invalid TCP endpoints", edge.ID)
+			}
+			if edge.Port < 1 || edge.Port > 65535 {
+				return fmt.Errorf("edge %q has an invalid TCP port", edge.ID)
+			}
+			expectedID := fmt.Sprintf("has-open-port:%s:%d", source.Value, edge.Port)
+			if edge.ID != expectedID || target.ID != fmt.Sprintf("tcp-port:%s:%d", source.Value, edge.Port) || target.Value != fmt.Sprintf("%s:%d", source.Value, edge.Port) {
+				return fmt.Errorf("edge %q has an invalid TCP identity", edge.ID)
+			}
+		case EdgePresentsCertificate:
+			if (source.Type != NodeDomain && source.Type != NodeIP) || target.Type != NodeTLSCertificate {
+				return fmt.Errorf("edge %q has invalid TLS endpoints", edge.ID)
+			}
+			if edge.Port < 1 || edge.Port > 65535 {
+				return fmt.Errorf("edge %q has an invalid TLS port", edge.ID)
+			}
+			expectedID := fmt.Sprintf("presents-certificate:%s:%d:%s", source.Value, edge.Port, target.Value)
+			if edge.ID != expectedID {
+				return fmt.Errorf("edge %q has an invalid TLS identity", edge.ID)
+			}
+		default:
+			return fmt.Errorf("edge %q has unsupported type %q", edge.ID, edge.Type)
 		}
 		if !isSortedUnique(edge.EvidenceIDs) || !isSortedUnique(edge.ObservationIDs) {
 			return fmt.Errorf("edge %q references must be sorted and unique", edge.ID)

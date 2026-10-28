@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -334,5 +336,153 @@ func TestBuildRejectsObservationEvidenceIDWithSurroundingWhitespace(t *testing.T
 
 	if _, err := Build(records, observations); err == nil {
 		t.Fatal("expected error for observation evidence ID with surrounding whitespace")
+	}
+}
+
+func TestBuildCreatesTLSCertificateGraph(t *testing.T) {
+	fingerprint := strings.Repeat("a1", 32)
+	details := evidence.TLSCertificateDetails{
+		Target:             "example.com",
+		Port:               443,
+		Subject:            "CN=example.com",
+		Issuer:             "CN=Test CA",
+		SerialNumber:       "12345",
+		DNSNames:           []string{"example.com"},
+		NotBefore:          time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		NotAfter:           time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC),
+		SHA256Fingerprint:  fingerprint,
+		SignatureAlgorithm: "ECDSA-SHA256",
+		PublicKeyAlgorithm: "ECDSA",
+		TLSVersion:         "TLS 1.3",
+		Verified:           true,
+	}
+
+	value, err := json.Marshal(details)
+	if err != nil {
+		t.Fatalf("could not marshal TLS details: %v", err)
+	}
+
+	records := []evidence.Evidence{
+		{
+			ID:       "tls-evidence-1",
+			EntityID: "example.com",
+			Type:     evidence.TypeTLSCertificate,
+			Value:    string(value),
+		},
+	}
+
+	observations := []evidence.Observation{
+		{
+			ID:         "tls-observation-1",
+			EvidenceID: "tls-evidence-1",
+			Source:     "tls",
+			ObservedAt: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+			EventIDs:   []string{"tls-event-1"},
+		},
+	}
+
+	got, err := Build(records, observations)
+	if err != nil {
+		t.Fatalf("Build() returned error: %v", err)
+	}
+
+	if err := got.Validate(); err != nil {
+		t.Fatalf("generated graph is invalid: %v", err)
+	}
+
+	if len(got.Nodes) != 2 {
+		t.Fatalf("expected 2 nodes, got %d", len(got.Nodes))
+	}
+	if len(got.Edges) != 1 {
+		t.Fatalf("expected 1 edge, got %d", len(got.Edges))
+	}
+
+	var foundDomain, foundCertificate bool
+	for _, node := range got.Nodes {
+		switch node.Type {
+		case NodeDomain:
+			foundDomain = node.ID == "domain:example.com"
+		case NodeTLSCertificate:
+			foundCertificate = node.ID == "tls-cert:"+fingerprint &&
+				node.Value == fingerprint
+		}
+	}
+	if !foundDomain || !foundCertificate {
+		t.Fatalf("expected domain and certificate nodes, got %+v", got.Nodes)
+	}
+
+	edge := got.Edges[0]
+	expectedID := "presents-certificate:example.com:443:" + fingerprint
+	if edge.ID != expectedID {
+		t.Fatalf("unexpected edge ID: %q", edge.ID)
+	}
+	if edge.Type != EdgePresentsCertificate || edge.Port != 443 {
+		t.Fatalf("unexpected TLS edge type or port: %+v", edge)
+	}
+	if edge.Source != "domain:example.com" ||
+		edge.Target != "tls-cert:"+fingerprint {
+		t.Fatalf("unexpected TLS edge endpoints: %+v", edge)
+	}
+	if len(edge.EvidenceIDs) != 1 || edge.EvidenceIDs[0] != "tls-evidence-1" {
+		t.Fatalf("unexpected evidence references: %v", edge.EvidenceIDs)
+	}
+	if len(edge.ObservationIDs) != 1 ||
+		edge.ObservationIDs[0] != "tls-observation-1" {
+		t.Fatalf("unexpected observation references: %v", edge.ObservationIDs)
+	}
+}
+
+func TestValidateRejectsNonHexTLSFingerprint(t *testing.T) {
+	fingerprint := strings.Repeat("z", 64)
+	graph := Graph{
+		Nodes: []Node{
+			{ID: "tls-cert:" + fingerprint, Type: NodeTLSCertificate, Value: fingerprint},
+		},
+		Edges: []Edge{},
+	}
+
+	if err := graph.Validate(); err == nil {
+		t.Fatal("expected non-hex TLS fingerprint to be rejected")
+	}
+}
+
+func TestBuildCreatesTLSGraphForIPAddress(t *testing.T) {
+	fingerprint := strings.Repeat("b2", 32)
+	details := evidence.TLSCertificateDetails{
+		Target:            "192.0.2.10",
+		Port:              8443,
+		NotBefore:         time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		NotAfter:          time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC),
+		SHA256Fingerprint: fingerprint,
+		TLSVersion:        "TLS 1.3",
+	}
+
+	value, err := json.Marshal(details)
+	if err != nil {
+		t.Fatalf("could not marshal TLS details: %v", err)
+	}
+
+	record := evidence.Evidence{
+		ID:       "tls-ip-evidence",
+		EntityID: "192.0.2.10",
+		Type:     evidence.TypeTLSCertificate,
+		Value:    string(value),
+	}
+
+	got, err := Build([]evidence.Evidence{record}, nil)
+	if err != nil {
+		t.Fatalf("Build() returned error: %v", err)
+	}
+
+	if err := got.Validate(); err != nil {
+		t.Fatalf("generated graph is invalid: %v", err)
+	}
+	if len(got.Nodes) != 2 || len(got.Edges) != 1 {
+		t.Fatalf("unexpected graph size: %d nodes, %d edges", len(got.Nodes), len(got.Edges))
+	}
+
+	edge := got.Edges[0]
+	if edge.Source != "ip:192.0.2.10" || edge.Port != 8443 {
+		t.Fatalf("unexpected IP TLS edge: %+v", edge)
 	}
 }

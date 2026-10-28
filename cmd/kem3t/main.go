@@ -31,8 +31,11 @@ func run() error {
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 
-	mode := flags.String("mode", "demo", "Mode: demo, dns, or history")
-	target := flags.String("target", "", "Target hostname for DNS mode")
+	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, or history")
+	target := flags.String("target", "", "Target hostname or IP address")
+	port := flags.Int("port", 443, "TCP port for TLS mode")
+	startPort := flags.Int("start-port", 1, "First TCP port to scan")
+	endPort := flags.Int("end-port", 1024, "Last TCP port to scan")
 	snapshotDir := flags.String(
 		"snapshot-dir",
 		".kem3t/snapshots",
@@ -53,6 +56,16 @@ func run() error {
 			return fmt.Errorf("-target is required in DNS mode")
 		}
 		return runDNS(strings.TrimSpace(*target), *snapshotDir)
+	case "tls":
+		if strings.TrimSpace(*target) == "" {
+			return fmt.Errorf("-target is required in TLS mode")
+		}
+		return runTLS(strings.TrimSpace(*target), *port, *snapshotDir)
+	case "tcp":
+		if strings.TrimSpace(*target) == "" {
+			return fmt.Errorf("-target is required in TCP mode")
+		}
+		return runTCP(strings.TrimSpace(*target), *startPort, *endPort)
 	default:
 		return fmt.Errorf("unsupported mode %q", *mode)
 	}
@@ -89,6 +102,54 @@ func runDemo() error {
 		return fmt.Errorf("collector failed: %w", err)
 	}
 
+	return nil
+}
+
+func runTCP(target string, startPort, endPort int) error {
+	result, err := pipeline.RunTCP(
+		context.Background(),
+		target,
+		startPort,
+		endPort,
+		"snapshots",
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("[TCP PORT SCAN] %s (%d-%d)\n", target, startPort, endPort)
+	for _, event := range result.Events {
+		fmt.Printf("[OPEN] %s/tcp\n", event.Data["port"])
+	}
+	fmt.Printf("Open ports: %d\n", len(result.Events))
+	fmt.Printf("Evidence records: %d | Graph nodes: %d | Graph edges: %d\n",
+		len(result.Evidence), len(result.Graph.Nodes), len(result.Graph.Edges))
+	return nil
+}
+
+func runTLS(target string, port int, snapshotDir string) error {
+	result, err := pipeline.RunTLS(
+		context.Background(),
+		target,
+		port,
+		snapshotDir,
+	)
+	if err != nil {
+		return err
+	}
+
+	if result.Event != nil {
+		fmt.Println("[TLS CERTIFICATE]")
+		fmt.Printf("Target: %s\n", result.Event.Target)
+		fmt.Printf("Port: %s\n", result.Event.Data["port"])
+		fmt.Printf("Subject: %s\n", result.Event.Data["subject"])
+		fmt.Printf("Issuer: %s\n", result.Event.Data["issuer"])
+		fmt.Printf("TLS Version: %s\n", result.Event.Data["tls_version"])
+		fmt.Printf("Verified: %s\n", result.Event.Data["verified"])
+		fmt.Printf("SHA-256: %s\n", result.Event.Data["sha256_fingerprint"])
+	}
+
+	printInfrastructureGraph(result.Graph)
 	return nil
 }
 

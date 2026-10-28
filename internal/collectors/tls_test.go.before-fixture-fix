@@ -1,0 +1,148 @@
+package collectors
+
+import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
+	"github.com/itsFuRy007/kem3t/internal/events"
+	"net"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestParseTLSCertificate(t *testing.T) {
+	pair, err := tls.X509KeyPair([]byte(testCertificatePEM), []byte(testPrivateKeyPEM))
+	if err != nil {
+		t.Fatalf("load test certificate: %v", err)
+	}
+	cert, err := x509.ParseCertificate(pair.Certificate[0])
+	if err != nil {
+		t.Fatalf("parse test certificate: %v", err)
+	}
+	got, err := ParseTLSCertificate(cert)
+	if err != nil {
+		t.Fatalf("ParseTLSCertificate() error = %v", err)
+	}
+	if got.SHA256Fingerprint == "" || len(got.SHA256Fingerprint) != 64 {
+		t.Fatalf("unexpected SHA-256 fingerprint: %q", got.SHA256Fingerprint)
+	}
+	if got.Subject == "" || got.Issuer == "" {
+		t.Fatalf("subject and issuer should be populated: %+v", got)
+	}
+	if len(got.DNSNames) != 1 || got.DNSNames[0] != "localhost" {
+		t.Fatalf("unexpected DNS SANs: %v", got.DNSNames)
+	}
+	if got.NotBefore.IsZero() || got.NotAfter.IsZero() {
+		t.Fatal("certificate validity dates should be populated")
+	}
+}
+func TestParseTLSCertificateRejectsNil(t *testing.T) {
+	if _, err := ParseTLSCertificate(nil); err == nil {
+		t.Fatal("expected an error for a nil certificate")
+	}
+}
+func TestTLSCollectorEmitsCertificateEvent(t *testing.T) {
+	certificate, err := tls.X509KeyPair([]byte(testCertificatePEM), []byte(testPrivateKeyPEM))
+	if err != nil {
+		t.Fatalf("load test certificate: %v", err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+	server := tls.NewListener(listener, &tls.Config{
+		Certificates: []tls.Certificate{certificate},
+		MinVersion:   tls.VersionTLS12,
+	})
+	defer server.Close()
+	go func() {
+		conn, acceptErr := server.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer conn.Close()
+		if tlsConn, ok := conn.(*tls.Conn); ok {
+			_ = tlsConn.Handshake()
+		}
+	}()
+	_, portText, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatalf("split listener address: %v", err)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		t.Fatalf("parse listener port: %v", err)
+	}
+	output := make(chan events.Event, 1)
+	collector := &TLS{
+		Target:  "localhost",
+		Port:    port,
+		Timeout: 3 * time.Second,
+	}
+	err = collector.Run(context.Background(), output)
+	if err != nil {
+		t.Fatalf("TLS.Run() error = %v", err)
+	}
+	select {
+	case event := <-output:
+		if event.Type != events.EventTLSCertificateFound {
+			t.Fatalf("unexpected event type: %s", event.Type)
+		}
+		if event.Target != "localhost" {
+			t.Fatalf("unexpected event target: %q", event.Target)
+		}
+		if event.Data["sha256_fingerprint"] == "" {
+			t.Fatal("fingerprint is missing")
+		}
+		if event.Data["tls_version"] == "" {
+			t.Fatal("TLS version is missing")
+		}
+		if event.Data["verified"] != "false" {
+			t.Fatalf("self-signed test certificate should not be marked verified: %q", event.Data["verified"])
+		}
+	case <-time.After(4 * time.Second):
+		t.Fatal("timed out waiting for TLS event")
+	}
+}
+func TestTLSCollectorRejectsURL(t *testing.T) {
+	output := make(chan events.Event, 1)
+	err := (&TLS{Target: "https://localhost"}).Run(context.Background(), output)
+	if err == nil || !strings.Contains(err.Error(), "not a URL") {
+		t.Fatalf("expected URL validation error, got %v", err)
+	}
+}
+func TestTLSCollectorRejectsInvalidPort(t *testing.T) {
+	output := make(chan events.Event, 1)
+	err := (&TLS{Target: "localhost", Port: 70000}).Run(context.Background(), output)
+	if err == nil {
+		t.Fatal("expected invalid port error")
+	}
+}
+func TestTestCertificateIsValidPEM(t *testing.T) {
+	block, _ := pem.Decode([]byte(testCertificatePEM))
+	if block == nil || block.Type != "CERTIFICATE" {
+		t.Fatal("test certificate PEM is invalid")
+	}
+}
+
+const testCertificatePEM = `-----BEGIN CERTIFICATE-----
+MIIBjTCCATOgAwIBAgIUCvQ6z4lZr9uQ9rYt8tD7v0G6YxkwCgYIKoZIzj0EAwIw
+FDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MTAyNzAwMDAwMFoXDTI3MTAyNzAw
+MDAwMFowFDESMBAGA1UEAwwJbG9jYWxob3N0MFkwEwYHKoZIzj0CAQYIKoZIzj0D
+AQcDQgAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+o1MwUTAdBgNVHQ4EFgQUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwHwYDVR0jBBgw
+FoAUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwDwYDVR0TAQH/BAUwAwEB/zAVBgNV
+HREEDjAMgglsb2NhbGhvc3QwCgYIKoZIzj0EAwIDSAAwRQIhAKAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAiAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAA==
+-----END CERTIFICATE-----`
+const testPrivateKeyPEM = `-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAoAoG
+CCqGSM49AwEHoUQDQgAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+-----END EC PRIVATE KEY-----`
