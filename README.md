@@ -165,6 +165,7 @@ The repository is organized around the following responsibilities:
 - `internal/collectors/` — Demo and DNS collection
 - `internal/events/` — Collection events
 - `internal/evidence/` — Evidence registry and persistence
+- `internal/graph/` — Infrastructure relationship graph
 - `internal/intelligence/` — Analysis, hypotheses, and reporting
 - `internal/integration/` — Integration tests
 - `internal/pipeline/` — Collection and analysis orchestration
@@ -389,6 +390,6 @@ The presence of an observation, correlation, or hypothesis in KEM3T should not b
 
 ## License
 
-No open-source license has been declared yet.
+KEM3T is licensed under the MIT License.
 
-Until a license is added to the repository, the source code should not be assumed to be freely reusable, modified, or redistributed.
+See the [LICENSE](LICENSE) file for the full license text.

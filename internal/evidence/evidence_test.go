@@ -42,6 +42,44 @@ func TestEvidenceValidateRejectsMissingFields(t *testing.T) {
 
 }
 
+func TestEvidenceValidateRejectsInvalidDomains(t *testing.T) {
+	tests := []struct {
+		name   string
+		domain string
+	}{
+		{"empty label", "api..example.com"},
+		{"leading hyphen", "-api.example.com"},
+		{"trailing hyphen", "api-.example.com"},
+		{"space", "api example.com"},
+		{"IP address", "192.0.2.10"},
+		{"underscore", "api_name.example.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := validEvidence()
+			e.EntityID = tt.domain
+			if err := e.Validate(); err == nil {
+				t.Fatalf("Validate() accepted invalid domain %q", tt.domain)
+			}
+		})
+	}
+}
+
+func TestIsValidDomain(t *testing.T) {
+	valid := []string{
+		"example.com",
+		"api.example.test",
+		"localhost",
+		"api.example.com.",
+	}
+	for _, domain := range valid {
+		if !IsValidDomain(domain) {
+			t.Errorf("IsValidDomain(%q) = false, want true", domain)
+		}
+	}
+}
+
 func TestEvidenceValidateAcceptsIPv6(t *testing.T) {
 	e := validEvidence()
 	e.Value = "2001:db8::10"

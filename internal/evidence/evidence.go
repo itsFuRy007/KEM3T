@@ -31,6 +31,9 @@ func (e Evidence) Validate() error {
 	if strings.TrimSpace(e.EntityID) == "" {
 		return errors.New("evidence entity ID is required")
 	}
+	if !IsValidDomain(e.EntityID) {
+		return errors.New("evidence entity ID must be a valid domain")
+	}
 
 	if e.Type != TypeDNSAddress {
 		return errors.New("evidence type is invalid")

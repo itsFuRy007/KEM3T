@@ -12,6 +12,7 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/collectors"
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/pipeline"
 )
@@ -106,6 +107,7 @@ func runDNS(target, snapshotDir string) error {
 	}
 
 	printIntelligenceReport(result.Report)
+	printInfrastructureGraph(result.Graph)
 
 	if result.BaselineCreated {
 		fmt.Println("\n[BASELINE CREATED]")
@@ -304,4 +306,29 @@ func runHistory(target, snapshotDir string) error {
 	}
 
 	return nil
+}
+
+func printInfrastructureGraph(g graph.Graph) {
+	fmt.Println("\n[INFRASTRUCTURE GRAPH]")
+	fmt.Printf("Nodes: %d\n", len(g.Nodes))
+	fmt.Printf("Relationships: %d\n", len(g.Edges))
+
+	if len(g.Edges) == 0 {
+		fmt.Println("No relationships available.")
+		return
+	}
+
+	nodeValues := make(map[string]string, len(g.Nodes))
+	for _, node := range g.Nodes {
+		nodeValues[node.ID] = node.Value
+	}
+
+	for _, edge := range g.Edges {
+		fmt.Printf(
+			"[%s] %s -> %s\n",
+			edge.Type,
+			nodeValues[edge.Source],
+			nodeValues[edge.Target],
+		)
+	}
 }

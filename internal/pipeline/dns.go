@@ -13,6 +13,7 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/collectors"
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/snapshots"
 )
@@ -30,6 +31,7 @@ type DNSResult struct {
 	History          *intelligence.DNSHistoryComparison
 	BaselineCreated  bool
 	EvidenceRegistry *evidence.Registry
+	Graph            graph.Graph
 }
 
 func RunDNS(
@@ -189,6 +191,11 @@ func runDNSWithCollector(
 
 	findings := aggregator.Findings()
 
+	dnsGraph, err := graph.BuildFromRegistry(registry)
+	if err != nil {
+		return DNSResult{}, fmt.Errorf("build DNS graph: %w", err)
+	}
+
 	reportEngine := &intelligence.ReportEngine{}
 	report, err := reportEngine.Build(target, findings, registry)
 	if err != nil {
@@ -217,6 +224,7 @@ func runDNSWithCollector(
 		Report:           report,
 		CurrentSnapshot:  currentSnapshot,
 		EvidenceRegistry: registry,
+		Graph:            dnsGraph,
 	}
 
 	previousSnapshot, err := snapshotStore.Load(target)

@@ -9,6 +9,7 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/changes"
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
 )
 
@@ -471,5 +472,53 @@ func TestRunDNSBuildsIntelligenceReport(t *testing.T) {
 	}
 	if report.Hypotheses == nil {
 		t.Error("expected hypotheses to be initialized")
+	}
+}
+
+func TestRunDNSBuildsGraphFromEvidence(t *testing.T) {
+	result, err := runDNSWithCollector(
+		context.Background(),
+		"example.com",
+		t.TempDir(),
+		&fakeCollector{
+			events: dnsEvents("192.0.2.10", "192.0.2.11"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("runDNSWithCollector() error = %v", err)
+	}
+
+	if err := result.Graph.Validate(); err != nil {
+		t.Fatalf("Graph.Validate() error = %v", err)
+	}
+
+	if len(result.Graph.Nodes) != 3 {
+		t.Fatalf("graph nodes = %d, want 3", len(result.Graph.Nodes))
+	}
+	if len(result.Graph.Edges) != 2 {
+		t.Fatalf("graph edges = %d, want 2", len(result.Graph.Edges))
+	}
+
+	domainFound := false
+	for _, node := range result.Graph.Nodes {
+		if node.Type == graph.NodeDomain && node.Value == "example.com" {
+			domainFound = true
+			break
+		}
+	}
+	if !domainFound {
+		t.Fatal("graph does not contain the example.com domain node")
+	}
+
+	for _, edge := range result.Graph.Edges {
+		if edge.Type != graph.EdgeResolvesTo {
+			t.Errorf("edge type = %q, want %q", edge.Type, graph.EdgeResolvesTo)
+		}
+		if len(edge.EvidenceIDs) == 0 {
+			t.Errorf("edge %q has no evidence references", edge.ID)
+		}
+		if len(edge.ObservationIDs) == 0 {
+			t.Errorf("edge %q has no observation references", edge.ID)
+		}
 	}
 }
