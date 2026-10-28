@@ -8,7 +8,7 @@
 ![Networking](https://img.shields.io/badge/Networking-Infrastructure-blue?style=for-the-badge)
 ![Security](https://img.shields.io/badge/Information-Security-red?style=for-the-badge)
 
-*Discover. Analyze. Monitor.*
+*Discover. Analyze. Correlate. Investigate.*
 
 </div>
 
@@ -16,7 +16,7 @@
 
 ## Overview
 
-KEM3T is a research-oriented security and networking platform for analyzing infrastructure and transforming raw network observations into structured intelligence.
+KEM3T is a research-oriented networking and information security project focused on infrastructure discovery, evidence management, historical analysis, and explainable intelligence generation.
 
 Instead of treating every collection operation as an isolated result, KEM3T maintains persistent evidence and historical context so that observations can be compared, correlated, and interpreted over time.
 
@@ -35,9 +35,23 @@ KEM3T does not treat correlations or hypotheses as proof. They are investigative
 
 ## Current Features
 
-### DNS Collection
+### DNS Collection and Historical Analysis
 
-KEM3T can collect DNS-related observations for a target and preserve the resulting information for later analysis.
+KEM3T collects DNS-related observations, stores snapshots, and compares subsequent collections to identify address changes.
+
+Implemented capabilities include DNS collection, baseline creation, persistent snapshots, historical comparison, and change reporting.
+
+### TCP Port Discovery
+
+KEM3T supports TCP connection checks over a configurable port range. Open-port observations are integrated with evidence generation and infrastructure graph construction.
+
+This is connection-based port discovery, not comprehensive service fingerprinting or vulnerability detection.
+
+### TLS Certificate Inspection
+
+KEM3T includes a TLS pipeline and CLI mode that can collect certificate subject, issuer, negotiated TLS version, verification status, and SHA-256 fingerprint.
+
+TLS results can be represented in the infrastructure graph and analyzed by the intelligence layer.
 
 Supported CLI modes include:
 
@@ -162,7 +176,7 @@ The repository is organized around the following responsibilities:
 
 - `cmd/kem3t/` — CLI entry point
 - `internal/changes/` — Change detection
-- `internal/collectors/` — Demo and DNS collection
+- `internal/collectors/` — Demo, DNS, TCP, and TLS collection
 - `internal/events/` — Collection events
 - `internal/evidence/` — Evidence registry and persistence
 - `internal/graph/` — Infrastructure relationship graph
@@ -307,13 +321,55 @@ The implemented intelligence pipeline includes:
 - Intelligence reporting
 - DNS pipeline integration
 
-The v1.1 release will be published after final documentation, verification, and release checks are completed.
+The project has progressed beyond its original DNS-focused foundation. TCP port discovery, TLS certificate inspection, initial infrastructure graph construction, and related integration tests are now implemented. Release readiness must still be verified before publishing a version.
 
 ---
 
 ## Development Roadmap
 
-Future development is expected to expand KEM3T in several directions.
+The roadmap below separates implemented capabilities from planned work.
+
+### Completed
+
+- [x] DNS collection and historical snapshots
+- [x] DNS change detection
+- [x] Persistent evidence registration and validation
+- [x] Collection run and observation tracking
+- [x] TCP port discovery over configurable ranges
+- [x] TLS certificate inspection
+- [x] Initial infrastructure graph construction
+- [x] TCP pipeline integration with evidence and graph generation
+- [x] TLS pipeline integration with graph output
+- [x] Correlation analysis and hypothesis generation
+- [x] Alternative explanations and evidence-linked verification steps
+- [x] Rule-based finding prioritization and intelligence reporting
+- [x] Unit and integration tests for implemented workflows
+
+### Planned: Collection and Infrastructure Modeling
+
+- [ ] Expand infrastructure entity and relationship types
+- [ ] Improve service identification beyond basic TCP port discovery
+- [ ] Strengthen relationships between domains, addresses, services, and certificates
+- [ ] Normalize observations across collection modes
+- [ ] Add further cross-pipeline integration scenarios
+
+### Planned: Intelligence Quality
+
+- [ ] Expand correlation and relationship-detection rules
+- [ ] Improve evidence provenance and traceability
+- [ ] Refine confidence and uncertainty representation
+- [ ] Expand historical analysis across observation types
+- [ ] Improve finding prioritization and verification logic
+
+### Planned: Reliability and Usability
+
+- [ ] Review concurrency limits and timeout behavior
+- [ ] Improve error handling and operational diagnostics
+- [ ] Expand regression and edge-case testing
+- [ ] Add structured report export options
+- [ ] Establish reproducible release and verification procedures
+
+Roadmap items are future goals, not claims of existing functionality.
 
 ### Infrastructure Graph Modeling
 
