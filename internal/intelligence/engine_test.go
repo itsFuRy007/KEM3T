@@ -162,3 +162,117 @@ func TestAnalyzeSubdomainClassification(t *testing.T) {
 		})
 	}
 }
+
+func TestAnalyzeTCPPort(t *testing.T) {
+	engine := &Engine{}
+
+	tests := []struct {
+		name        string
+		state       string
+		wantFinding bool
+		wantErr     bool
+	}{
+		{name: "open TCP port", state: "open", wantFinding: true},
+		{name: "closed TCP port", state: "closed", wantFinding: false},
+		{name: "invalid port", state: "open", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			port := "443"
+			if tt.name == "invalid port" {
+				port = "invalid"
+			}
+
+			event := events.Event{
+				ID:        "tcp-test",
+				Type:      events.EventPortDiscovered,
+				Timestamp: time.Now().UTC(),
+				Target:    "example.com",
+				Source:    "test",
+				Data: map[string]string{
+					"protocol": "tcp",
+					"state":    tt.state,
+					"port":     port,
+				},
+			}
+
+			finding, err := engine.Analyze(event)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Analyze error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if (finding != nil) != tt.wantFinding {
+				t.Fatalf("finding present = %v, want %v", finding != nil, tt.wantFinding)
+			}
+			if finding != nil && len(finding.Evidence) != 1 {
+				t.Errorf("expected one evidence event, got %d", len(finding.Evidence))
+			}
+		})
+	}
+}
+
+func TestAnalyzeTLSCertificate(t *testing.T) {
+	engine := &Engine{}
+	now := time.Now().UTC()
+
+	tests := []struct {
+		name         string
+		notAfter     time.Time
+		verified     string
+		wantPriority Priority
+	}{
+		{
+			name:         "valid verified certificate",
+			notAfter:     now.Add(24 * time.Hour),
+			verified:     "true",
+			wantPriority: PriorityInfo,
+		},
+		{
+			name:         "expired certificate",
+			notAfter:     now.Add(-24 * time.Hour),
+			verified:     "true",
+			wantPriority: PriorityInterest,
+		},
+		{
+			name:         "verification failed",
+			notAfter:     now.Add(24 * time.Hour),
+			verified:     "false",
+			wantPriority: PriorityInterest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event := events.Event{
+				ID:        "tls-test",
+				Type:      events.EventTLSCertificateFound,
+				Timestamp: now,
+				Target:    "example.com",
+				Source:    "test",
+				Data: map[string]string{
+					"port":        "443",
+					"not_after":   tt.notAfter.Format(time.RFC3339),
+					"verified":    tt.verified,
+					"tls_version": "TLS 1.3",
+				},
+			}
+
+			finding, err := engine.Analyze(event)
+			if err != nil {
+				t.Fatalf("Analyze returned unexpected error: %v", err)
+			}
+			if finding == nil {
+				t.Fatal("expected a finding, got nil")
+			}
+			if finding.Priority != tt.wantPriority {
+				t.Errorf("priority = %q, want %q", finding.Priority, tt.wantPriority)
+			}
+			if len(finding.Evidence) != 1 {
+				t.Errorf("expected one evidence event, got %d", len(finding.Evidence))
+			}
+		})
+	}
+}

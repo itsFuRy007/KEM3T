@@ -486,3 +486,79 @@ func TestBuildCreatesTLSGraphForIPAddress(t *testing.T) {
 		t.Fatalf("unexpected IP TLS edge: %+v", edge)
 	}
 }
+
+// TestBuildCreatesTCPPortGraph verifies that TCP port evidence creates a host,
+// port node, and HAS_OPEN_PORT edge with evidence and observation references.
+func TestBuildCreatesTCPPortGraph(t *testing.T) {
+	details := evidence.TCPPortDetails{
+		Target:   "example.com",
+		Protocol: "tcp",
+		Port:     443,
+		State:    "open",
+	}
+	value, err := json.Marshal(details)
+	if err != nil {
+		t.Fatalf("marshal TCP details: %v", err)
+	}
+
+	record := evidence.Evidence{
+		ID:       "tcp-port:example.com:443",
+		EntityID: "example.com",
+		Type:     evidence.TypeTCPPort,
+		Value:    string(value),
+	}
+	observation := evidence.Observation{
+		ID:         "observation:tcp-443",
+		EvidenceID: record.ID,
+		Source:     "tcp",
+		ObservedAt: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+		EventIDs:   []string{"event:tcp-443"},
+	}
+
+	g, err := Build([]evidence.Evidence{record}, []evidence.Observation{observation})
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+
+	if err := g.Validate(); err != nil {
+		t.Fatalf("Graph.Validate() error = %v", err)
+	}
+
+	nodes := make(map[string]Node)
+	for _, node := range g.Nodes {
+		nodes[node.ID] = node
+	}
+
+	if node, ok := nodes["domain:example.com"]; !ok || node.Type != NodeDomain {
+		t.Fatalf("missing expected domain node: %+v", node)
+	}
+	if node, ok := nodes["tcp-port:example.com:443"]; !ok ||
+		node.Type != NodeTCPPort || node.Value != "example.com:443" {
+		t.Fatalf("missing or invalid TCP port node: %+v", node)
+	}
+
+	var found bool
+	for _, edge := range g.Edges {
+		if edge.ID != "has-open-port:example.com:443" {
+			continue
+		}
+		found = true
+		if edge.Type != EdgeHasOpenPort ||
+			edge.Source != "domain:example.com" ||
+			edge.Target != "tcp-port:example.com:443" ||
+			edge.Port != 443 {
+			t.Fatalf("unexpected TCP edge: %+v", edge)
+		}
+		if len(edge.EvidenceIDs) != 1 || edge.EvidenceIDs[0] != record.ID {
+			t.Errorf("unexpected edge evidence IDs: %v", edge.EvidenceIDs)
+		}
+		if len(edge.ObservationIDs) != 1 ||
+			edge.ObservationIDs[0] != observation.ID {
+			t.Errorf("unexpected edge observation IDs: %v", edge.ObservationIDs)
+		}
+		break
+	}
+	if !found {
+		t.Fatal("missing HAS_OPEN_PORT edge for example.com:443")
+	}
+}
