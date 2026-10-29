@@ -1,6 +1,7 @@
 package intelligence
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -117,8 +118,14 @@ func (e *CorrelationEngine) correlateEvidence(records []evidence.Evidence, obser
 				return nil, fmt.Errorf("decode TLS evidence %q: %w", record.ID, err)
 			}
 			fingerprint := strings.ToLower(strings.TrimSpace(details.SHA256Fingerprint))
-			if fingerprint == "" {
-				return nil, fmt.Errorf("TLS evidence %q has an empty certificate fingerprint", record.ID)
+			if len(fingerprint) != 64 {
+				return nil, fmt.Errorf("TLS evidence %q has an invalid SHA-256 certificate fingerprint length", record.ID)
+			}
+			if _, err := hex.DecodeString(fingerprint); err != nil {
+				return nil, fmt.Errorf("TLS evidence %q has a non-hexadecimal SHA-256 certificate fingerprint", record.ID)
+			}
+			if normalizeCorrelationEntity(record.EntityID) == "" {
+				return nil, fmt.Errorf("TLS evidence %q has an empty entity", record.ID)
 			}
 			byFingerprint[fingerprint] = append(byFingerprint[fingerprint], item)
 		}
