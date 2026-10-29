@@ -30,7 +30,7 @@ func (s testStage) Run(ctx context.Context, target string, registry *evidence.Re
 func TestEngineUsesOneRegistryForGraphAndReport(t *testing.T) {
 	registry:=evidence.NewRegistry()
 	snapshotDir:=t.TempDir()
-	engine:=Engine{Registry:registry,Stages:[]Stage{testStage{name:"dns"}},SnapshotDir:snapshotDir}
+	engine:=Engine{Registry:registry,Stages:[]Stage{testStage{name:"dns"}},SnapshotDir:snapshotDir,Now:func()time.Time{return time.Date(2026,1,1,0,0,0,0,time.UTC)}}
 	result,err:=engine.Run(context.Background(),"example.com")
 	if err!=nil { t.Fatal(err) }
 	if result.Target!="example.com" || len(result.Graph.Nodes)!=2 || len(result.Graph.Edges)!=1 { t.Fatalf("unexpected graph: %+v",result.Graph) }
@@ -38,7 +38,7 @@ func TestEngineUsesOneRegistryForGraphAndReport(t *testing.T) {
 	runs,err:=registry.CollectionRuns("example.com")
 	if err!=nil || len(runs)!=1 || runs[0].Status!=evidence.CollectionRunCompleted { t.Fatalf("unexpected run history: %+v, %v",runs,err) }
 	store,err:=history.NewStore(filepath.Join(snapshotDir,"history")); if err!=nil {t.Fatal(err)}
-	snapshots,err:=store.List(); if err!=nil||len(snapshots)!=1||snapshots[0].Collector!="investigation" {t.Fatalf("unified history snapshot was not persisted: %+v, %v",snapshots,err)}
+	snapshots,err:=store.List(); if err!=nil||len(snapshots)!=1||snapshots[0].Collector!="investigation"||len(snapshots[0].Records)!=1 {t.Fatalf("unified history snapshot was not persisted: %+v, %v",snapshots,err)}
 }
 
 func TestEnginePreservesSuccessfulEvidenceWhenStageFails(t *testing.T) {
