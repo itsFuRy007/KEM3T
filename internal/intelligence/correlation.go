@@ -1,6 +1,7 @@
 package intelligence
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"sort"
@@ -13,7 +14,8 @@ import (
 type CorrelationType string
 
 const (
-	CorrelationSharedIPAddress CorrelationType = "SHARED_IP_ADDRESS"
+	CorrelationSharedIPAddress             CorrelationType = "SHARED_IP_ADDRESS"
+	CorrelationSharedTLSCertificateFingerprint CorrelationType = "SHARED_TLS_CERTIFICATE_FINGERPRINT"
 )
 
 // Correlation represents a relationship between distinct entities.
@@ -31,31 +33,25 @@ type Correlation struct {
 	Limitations      string          `json:"limitations"`
 }
 
-// CorrelationEngine discovers relationships in normalized evidence.
+type correlationEvidenceItem struct {
+	record       evidence.Evidence
+	observations []evidence.Observation
+}
+
+// CorrelationEngine discovers evidence-backed relationships between entities.
 type CorrelationEngine struct{}
 
-// Correlate discovers IP addresses associated with multiple entities.
-// Results cover the entire registry and are deterministic.
-func (e *CorrelationEngine) Correlate(
-	registry *evidence.Registry,
-) ([]Correlation, error) {
+// Correlate discovers relationships across the complete evidence registry.
+func (e *CorrelationEngine) Correlate(registry *evidence.Registry) ([]Correlation, error) {
 	if registry == nil {
 		return nil, fmt.Errorf("evidence registry is required")
 	}
-
-	return e.CorrelateEvidence(
-		registry.AllEvidence(),
-		registry.AllObservations(),
-	)
+	return e.CorrelateEvidence(registry.AllEvidence(), registry.AllObservations())
 }
 
-// CorrelateForTarget discovers shared-IP relationships that include target.
-// Related entities remain visible so the report can provide investigation context,
-// but correlations unrelated to the requested target are excluded.
-func (e *CorrelationEngine) CorrelateForTarget(
-	registry *evidence.Registry,
-	target string,
-) ([]Correlation, error) {
+// CorrelateForTarget discovers relationships that include target. Related
+// entities remain visible as investigation context; unrelated groups are omitted.
+func (e *CorrelationEngine) CorrelateForTarget(registry *evidence.Registry, target string) ([]Correlation, error) {
 	if registry == nil {
 		return nil, fmt.Errorf("evidence registry is required")
 	}
@@ -63,28 +59,16 @@ func (e *CorrelationEngine) CorrelateForTarget(
 	if target == "" {
 		return nil, fmt.Errorf("correlation target is required")
 	}
-
-	return e.correlateEvidence(
-		registry.AllEvidence(),
-		registry.AllObservations(),
-		target,
-	)
+	return e.correlateEvidence(registry.AllEvidence(), registry.AllObservations(), target)
 }
 
-// CorrelateEvidence discovers shared-IP relationships from supplied records.
-func (e *CorrelationEngine) CorrelateEvidence(
-	records []evidence.Evidence,
-	observations []evidence.Observation,
-) ([]Correlation, error) {
+// CorrelateEvidence discovers relationships from supplied evidence and provenance.
+func (e *CorrelationEngine) CorrelateEvidence(records []evidence.Evidence, observations []evidence.Observation) ([]Correlation, error) {
 	return e.correlateEvidence(records, observations, "")
 }
 
-// CorrelateEvidenceForTarget discovers shared-IP relationships that include target.
-func (e *CorrelationEngine) CorrelateEvidenceForTarget(
-	records []evidence.Evidence,
-	observations []evidence.Observation,
-	target string,
-) ([]Correlation, error) {
+// CorrelateEvidenceForTarget discovers relationships that include target.
+func (e *CorrelationEngine) CorrelateEvidenceForTarget(records []evidence.Evidence, observations []evidence.Observation, target string) ([]Correlation, error) {
 	target = normalizeCorrelationEntity(target)
 	if target == "" {
 		return nil, fmt.Errorf("correlation target is required")
@@ -92,16 +76,7 @@ func (e *CorrelationEngine) CorrelateEvidenceForTarget(
 	return e.correlateEvidence(records, observations, target)
 }
 
-func (e *CorrelationEngine) correlateEvidence(
-	records []evidence.Evidence,
-	observations []evidence.Observation,
-	target string,
-) ([]Correlation, error) {
-	type evidenceItem struct {
-		record       evidence.Evidence
-		observations []evidence.Observation
-	}
-
+func (e *CorrelationEngine) correlateEvidence(records []evidence.Evidence, observations []evidence.Observation, target string) ([]Correlation, error) {
 	observationByEvidence := make(map[string][]evidence.Observation)
 	seenObservations := make(map[string]struct{}, len(observations))
 	for _, observation := range observations {
@@ -112,13 +87,11 @@ func (e *CorrelationEngine) correlateEvidence(
 			return nil, fmt.Errorf("duplicate observation ID %q", observation.ID)
 		}
 		seenObservations[observation.ID] = struct{}{}
-		observationByEvidence[observation.EvidenceID] = append(
-			observationByEvidence[observation.EvidenceID],
-			observation,
-		)
+		observationByEvidence[observation.EvidenceID] = append(observationByEvidence[observation.EvidenceID], observation)
 	}
 
-	byAddress := make(map[string][]evidenceItem)
+	byAddress := make(map[string][]correlationEvidenceItem)
+	byFingerprint := make(map[string][]correlationEvidenceItem)
 	seenEvidence := make(map[string]struct{}, len(records))
 	for _, record := range records {
 		if err := record.Validate(); err != nil {
@@ -129,38 +102,66 @@ func (e *CorrelationEngine) correlateEvidence(
 		}
 		seenEvidence[record.ID] = struct{}{}
 
-		if record.Type != evidence.TypeDNSAddress {
-			continue
+		item := correlationEvidenceItem{record: record, observations: observationByEvidence[record.ID]}
+		switch record.Type {
+		case evidence.TypeDNSAddress:
+			entity := normalizeCorrelationEntity(record.EntityID)
+			ip := net.ParseIP(strings.TrimSpace(record.Value))
+			if entity == "" || ip == nil {
+				return nil, fmt.Errorf("evidence %q has an empty entity or invalid IP address", record.ID)
+			}
+			byAddress[ip.String()] = append(byAddress[ip.String()], item)
+		case evidence.TypeTLSCertificate:
+			var details evidence.TLSCertificateDetails
+			if err := json.Unmarshal([]byte(record.Value), &details); err != nil {
+				return nil, fmt.Errorf("decode TLS evidence %q: %w", record.ID, err)
+			}
+			fingerprint := strings.ToLower(strings.TrimSpace(details.SHA256Fingerprint))
+			if fingerprint == "" {
+				return nil, fmt.Errorf("TLS evidence %q has an empty certificate fingerprint", record.ID)
+			}
+			byFingerprint[fingerprint] = append(byFingerprint[fingerprint], item)
 		}
-
-		entity := normalizeCorrelationEntity(record.EntityID)
-		ip := net.ParseIP(strings.TrimSpace(record.Value))
-		if entity == "" || ip == nil {
-			return nil, fmt.Errorf("evidence %q has an empty entity or invalid IP address", record.ID)
-		}
-
-		byAddress[ip.String()] = append(byAddress[ip.String()], evidenceItem{
-			record:       record,
-			observations: observationByEvidence[record.ID],
-		})
 	}
 
 	for _, observation := range observations {
 		if _, exists := seenEvidence[observation.EvidenceID]; !exists {
-			return nil, fmt.Errorf(
-				"observation %q references missing evidence %q",
-				observation.ID,
-				observation.EvidenceID,
-			)
+			return nil, fmt.Errorf("observation %q references missing evidence %q", observation.ID, observation.EvidenceID)
 		}
 	}
 
 	results := make([]Correlation, 0)
-	for address, items := range byAddress {
+	results = append(results, buildCorrelations(
+		byAddress, target, CorrelationSharedIPAddress, "shared-ip:",
+		"OBSERVED_SHARED_ADDRESS",
+		"%d distinct entities were observed resolving to the same normalized IP address.",
+		"A shared IP address does not by itself prove common ownership, a direct relationship, or a vulnerability. Confidence applies only to the observed association, not to any ownership or security conclusion.",
+	)...)
+	results = append(results, buildCorrelations(
+		byFingerprint, target, CorrelationSharedTLSCertificateFingerprint, "shared-tls-cert:",
+		"OBSERVED_SHARED_CERTIFICATE_FINGERPRINT",
+		"%d distinct entities were observed presenting the same TLS certificate SHA-256 fingerprint.",
+		"A matching certificate fingerprint establishes that the same certificate was observed, not common ownership or a vulnerability. Certificates may be centrally managed or reused across unrelated services; verify with independent evidence.",
+	)...)
+
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Type != results[j].Type {
+			return results[i].Type < results[j].Type
+		}
+		if results[i].SharedValue != results[j].SharedValue {
+			return results[i].SharedValue < results[j].SharedValue
+		}
+		return results[i].ID < results[j].ID
+	})
+	return results, nil
+}
+
+func buildCorrelations(groups map[string][]correlationEvidenceItem, target string, correlationType CorrelationType, idPrefix, confidenceScope, explanationTemplate, limitations string) []Correlation {
+	results := make([]Correlation, 0)
+	for sharedValue, items := range groups {
 		entitiesSet := make(map[string]struct{})
 		evidenceIDsSet := make(map[string]struct{})
 		observationIDsSet := make(map[string]struct{})
-
 		for _, item := range items {
 			entitiesSet[normalizeCorrelationEntity(item.record.EntityID)] = struct{}{}
 			evidenceIDsSet[item.record.ID] = struct{}{}
@@ -168,7 +169,6 @@ func (e *CorrelationEngine) correlateEvidence(
 				observationIDsSet[observation.ID] = struct{}{}
 			}
 		}
-
 		if len(entitiesSet) < 2 {
 			continue
 		}
@@ -177,35 +177,15 @@ func (e *CorrelationEngine) correlateEvidence(
 				continue
 			}
 		}
-
 		entities := sortedSet(entitiesSet)
-		evidenceIDs := sortedSet(evidenceIDsSet)
-		observationIDs := sortedSet(observationIDsSet)
-
 		results = append(results, Correlation{
-			ID:               "shared-ip:" + address,
-			Type:             CorrelationSharedIPAddress,
-			Entities:         entities,
-			SharedValue:      address,
-			EvidenceIDs:      evidenceIDs,
-			ObservationIDs:   observationIDs,
-			ObservationCount: len(observationIDs),
-			// HIGH refers only to confidence that the stored records show the
-			// association. It does not indicate common ownership or risk.
-			Confidence:      "HIGH",
-			ConfidenceScope: "OBSERVED_SHARED_ADDRESS",
-			Explanation:     fmt.Sprintf("%d distinct entities were observed resolving to the same normalized IP address.", len(entities)),
-			Limitations:     "A shared IP address does not by itself prove common ownership, a direct relationship, or a vulnerability. Confidence applies only to the observed association, not to any ownership or security conclusion.",
+			ID: idPrefix + sharedValue, Type: correlationType, Entities: entities, SharedValue: sharedValue,
+			EvidenceIDs: sortedSet(evidenceIDsSet), ObservationIDs: sortedSet(observationIDsSet),
+			ObservationCount: len(observationIDsSet), Confidence: "HIGH", ConfidenceScope: confidenceScope,
+			Explanation: fmt.Sprintf(explanationTemplate, len(entities)), Limitations: limitations,
 		})
 	}
-
-	sort.Slice(results, func(i, j int) bool {
-		if results[i].SharedValue == results[j].SharedValue {
-			return results[i].ID < results[j].ID
-		}
-		return results[i].SharedValue < results[j].SharedValue
-	})
-	return results, nil
+	return results
 }
 
 func normalizeCorrelationEntity(value string) string {
