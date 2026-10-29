@@ -2,6 +2,9 @@ package externalintel
 
 import (
  "context"
+ "crypto/sha256"
+ "encoding/hex"
+ "errors"
  "encoding/json"
  "fmt"
  "io"
@@ -142,3 +145,32 @@ func selectASNService(bootstrap asnBootstrap,asn uint32)(string,error){
 }
 
 func sortUint32(values []uint32){for i:=1;i<len(values);i++{for j:=i;j>0&&values[j]<values[j-1];j--{values[j],values[j-1]=values[j-1],values[j]}}}
+
+ 
+func RegisterASNReport(registry *evidence.Registry, report ASNReport)(bool,error){
+ if registry==nil{return false,fmt.Errorf("evidence registry is required")}
+ ip:=net.ParseIP(strings.TrimSpace(report.Target));if ip==nil{return false,fmt.Errorf("ASN report target is invalid")}
+ if report.RetrievedAt.IsZero(){return false,fmt.Errorf("ASN retrieval timestamp is required")}
+ if len(report.Records)==0{return false,fmt.Errorf("ASN report has no origin records")}
+ details:=evidence.ASNOriginDetails{Target:ip.String()}
+ records:=append([]ASNRecord(nil),report.Records...)
+ sortASNRecords(records)
+ for _,record:=range records{
+  if record.ASN==0{return false,fmt.Errorf("ASN must be positive")}
+  _,prefix,err:=net.ParseCIDR(record.Prefix);if err!=nil||!prefix.Contains(ip){return false,fmt.Errorf("ASN prefix %q does not contain target IP",record.Prefix)}
+  if strings.TrimSpace(record.MappingSource)==""||strings.TrimSpace(record.RDAPSource)==""{return false,fmt.Errorf("ASN source attribution is required")}
+  details.Records=append(details.Records,evidence.ASNOriginRecord{ASN:record.ASN,Prefix:prefix.String(),Country:strings.TrimSpace(record.Country),Registry:strings.TrimSpace(record.Registry),Allocated:strings.TrimSpace(record.Allocated),NetworkName:strings.TrimSpace(record.NetworkName),MappingSource:strings.TrimSpace(record.MappingSource),RDAPSource:strings.TrimSpace(record.RDAPSource)})
+ }
+ value,err:=json.Marshal(details);if err!=nil{return false,fmt.Errorf("encode ASN evidence: %w",err)}
+ sum:=sha256.Sum256(value);key:=hex.EncodeToString(sum[:])
+ item:=evidence.Evidence{ID:"asn-origin:"+key,EntityID:ip.String(),Type:evidence.TypeASNOrigin,Value:string(value)}
+ if err:=registry.AddEvidence(item);err!=nil&&!errors.Is(err,evidence.ErrEvidenceExists){return false,fmt.Errorf("register ASN evidence: %w",err)}
+ eventID:="asn-origin:"+key+":"+fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
+ observation:=evidence.Observation{ID:"observation:"+eventID,EvidenceID:item.ID,Source:"Team Cymru origin DNS; IANA RDAP",ObservedAt:report.RetrievedAt.UTC(),EventIDs:[]string{eventID}}
+ if err:=registry.AddObservation(observation);err!=nil{if errors.Is(err,evidence.ErrObservationExists){return false,nil};return false,fmt.Errorf("register ASN observation: %w",err)}
+ return true,nil
+}
+
+func sortASNRecords(records []ASNRecord){
+ for i:=1;i<len(records);i++{for j:=i;j>0&&records[j].ASN<records[j-1].ASN;j--{records[j],records[j-1]=records[j-1],records[j]}}
+}
