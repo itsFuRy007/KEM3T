@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"net"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/history"
 )
 
 type testStage struct {
@@ -27,13 +29,16 @@ func (s testStage) Run(ctx context.Context, target string, registry *evidence.Re
 
 func TestEngineUsesOneRegistryForGraphAndReport(t *testing.T) {
 	registry:=evidence.NewRegistry()
-	engine:=Engine{Registry:registry,Stages:[]Stage{testStage{name:"dns"}}}
+	snapshotDir:=t.TempDir()
+	engine:=Engine{Registry:registry,Stages:[]Stage{testStage{name:"dns"}},SnapshotDir:snapshotDir}
 	result,err:=engine.Run(context.Background(),"example.com")
 	if err!=nil { t.Fatal(err) }
 	if result.Target!="example.com" || len(result.Graph.Nodes)!=2 || len(result.Graph.Edges)!=1 { t.Fatalf("unexpected graph: %+v",result.Graph) }
 	if result.Report.Target!="example.com" { t.Fatalf("unexpected report target %q",result.Report.Target) }
 	runs,err:=registry.CollectionRuns("example.com")
 	if err!=nil || len(runs)!=1 || runs[0].Status!=evidence.CollectionRunCompleted { t.Fatalf("unexpected run history: %+v, %v",runs,err) }
+	store,err:=history.NewStore(filepath.Join(snapshotDir,"history")); if err!=nil {t.Fatal(err)}
+	snapshots,err:=store.List(); if err!=nil||len(snapshots)!=1||snapshots[0].Collector!="investigation" {t.Fatalf("unified history snapshot was not persisted: %+v, %v",snapshots,err)}
 }
 
 func TestEnginePreservesSuccessfulEvidenceWhenStageFails(t *testing.T) {
