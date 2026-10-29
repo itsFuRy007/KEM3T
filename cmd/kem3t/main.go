@@ -34,7 +34,7 @@ func run() error {
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 
-	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, ct, rdap, or asn")
+	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, ct, rdap, asn, or pdns")
 	target := flags.String("target", "", "Target hostname or IP address")
 	port := flags.Int("port", 443, "TCP port for TLS mode")
 	httpScheme := flags.String("http-scheme", "auto", "HTTP scheme: auto, http, or https")
@@ -67,6 +67,9 @@ func run() error {
 	case "asn":
 		if strings.TrimSpace(*target) == "" { return fmt.Errorf("-target is required in ASN mode") }
 		return runASN(strings.TrimSpace(*target), *snapshotDir)
+	case "pdns":
+		if strings.TrimSpace(*target) == "" { return fmt.Errorf("-target is required in passive-DNS mode") }
+		return runPassiveDNS(strings.TrimSpace(*target), *snapshotDir)
 	case "demo":
 		return runDemo()
 	case "dns":
@@ -622,6 +625,26 @@ func runASN(target,snapshotDir string)error{
  fmt.Println("\n[INTERPRETATION LIMITS]")
  for _,limitation:=range report.Limitations{fmt.Printf("- %s\n",limitation)}
  fmt.Printf("New observation: %t\n",added)
+ printInfrastructureGraph(infrastructureGraph)
+ return nil
+}
+
+func runPassiveDNS(target,snapshotDir string)error{
+ ctx,cancel:=context.WithTimeout(context.Background(),20*time.Second);defer cancel()
+ client:=&externalintel.PassiveDNSClient{APIKey:strings.TrimSpace(os.Getenv("OTX_API_KEY"))}
+ report,err:=client.LookupDomain(ctx,target);if err!=nil{return err}
+ if strings.TrimSpace(snapshotDir)==""{return fmt.Errorf("snapshot directory is required")}
+ if err:=os.MkdirAll(snapshotDir,0750);err!=nil{return fmt.Errorf("create snapshot directory: %w",err)}
+ registry,err:=evidence.OpenRegistry(filepath.Join(snapshotDir,"evidence.db"));if err!=nil{return fmt.Errorf("open evidence registry: %w",err)};defer registry.Close()
+ added,err:=externalintel.RegisterPassiveDNSReport(registry,report);if err!=nil{return err}
+ infrastructureGraph,err:=graph.BuildFromRegistry(registry);if err!=nil{return fmt.Errorf("build passive-DNS infrastructure graph: %w",err)}
+ fmt.Println("[PASSIVE DNS INTELLIGENCE]")
+ fmt.Printf("Target: %s\nSource: %s\nRetrieved: %s\nProvider records: %d\nScoped unique observations: %d\n",report.Target,report.Source,report.RetrievedAt.Format(time.RFC3339),report.SourceRecordCount,len(report.Records))
+ for _,record:=range report.Records{fmt.Printf("[HISTORICAL DNS] %s %s %s | first: %s | last: %s | ASN: %s\n",record.Hostname,record.RecordType,record.Address,record.FirstSeen,record.LastSeen,record.ASN)}
+ if report.Truncated{fmt.Println("Warning: provider response may be truncated; treat this as a partial historical view.")}
+ fmt.Println("\n[INTERPRETATION LIMITS]")
+ for _,limitation:=range report.Limitations{fmt.Printf("- %s\n",limitation)}
+ fmt.Printf("New observations: %d\n",added)
  printInfrastructureGraph(infrastructureGraph)
  return nil
 }
