@@ -31,7 +31,8 @@ The goal is to move from isolated scan results toward a traceable picture of inf
 - **Infrastructure graph and investigation pivots:** represent observed domains, IPs, TCP ports, HTTP services, network services, and TLS certificates with evidence-backed relationships; traverse deterministic one-hop pivots and inspect relationship provenance without inventing facts.
 - **External infrastructure intelligence:** collect Certificate Transparency (CT), domain RDAP registration metadata, IP RDAP network-range context, origin-ASN mappings, historical passive DNS, and OTX community pulse references. Normalize observations, retain source attribution and retrieval history, and connect CT certificates, registrar/nameserver relationships, IP allocation ranges, ASN/prefix relationships, historical hostname-to-IP mappings, and threat-report references to the evidence-backed graph. External records are investigative leads—not proof of ownership, current hosting, maliciousness, or compromise.
 - **Evidence-traceable intelligence workflow:** scope correlations and findings to the requested target, correlate shared live DNS addresses, shared TLS certificate fingerprints, shared Certificate Transparency record IDs across target scopes, and shared historical passive-DNS addresses. Keep historical DNS relationships distinct from current resolution, normalize comparable entities and values, retain evidence and observation references, and expose the exact scope of qualitative confidence. Generate hypotheses with explicit alternatives, limitations, and actionable verification steps. The verification API accepts investigator-classified independent evidence, preserves both supporting and contradicting facts, reports mixed outcomes instead of hiding conflicts, and excludes reused/non-independent evidence from assessment. Qualitative confidence is not silently converted into a probability or verdict.
-- **CLI:** run demo, DNS, TCP, TLS, HTTP, history, CT, domain RDAP, IP RDAP, origin ASN, passive DNS, and threat-intelligence modes.
+- **Batch DNS investigations:** validate and deduplicate target lists, run DNS investigations through a bounded worker pool, isolate each target's history/evidence store, preserve input-order output, and report partial failures without discarding successful results.
+- **CLI:** run demo, DNS, TCP, TLS, HTTP, history, batch DNS, CT, domain RDAP, IP RDAP, origin ASN, passive DNS, and threat-intelligence modes.
 
 ### HTTP/HTTPS safety boundaries
 
@@ -110,6 +111,14 @@ go run ./cmd/kem3t -mode history
 go run ./cmd/kem3t -mode history -target example.com
 ~~~
 
+Run bounded DNS investigations from a target file (one hostname/IP per line; blank lines and `#` comments are ignored):
+
+~~~bash
+go run ./cmd/kem3t -mode batch-dns -targets-file targets.txt -workers 4
+~~~
+
+Batch DNS evidence and snapshots are isolated per canonical target under `.kem3t/snapshots/batch-dns/`. Output follows target-file order. Per-target failures are reported without suppressing successful results; the command exits non-zero if any target failed. Use only targets you own or are authorized to assess.
+
 ### External intelligence examples
 
 Inspect public Certificate Transparency records and persist their evidence/graph relationships:
@@ -162,6 +171,7 @@ DNS snapshots, generalized run snapshots, and the evidence database use .kem3t/s
 - internal/history/ — generalized run snapshots, cross-run comparisons, timelines, and anomaly review signals
 - internal/pipeline/ — collection and analysis orchestration
 - internal/scale/ — bounded, cancellation-aware scheduling primitives for large investigation batches
+- internal/batch/ — validated target lists and isolated batch DNS orchestration
 - internal/intelligence/ — correlation, hypotheses, prioritization, and reports
 - internal/integration/ — integration tests
 
