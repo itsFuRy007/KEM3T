@@ -6,8 +6,7 @@ import (
 )
 
 // PivotKind identifies a supported one-hop investigation pivot. Pivots only
-// traverse relationships already present in the evidence-backed graph; they
-// never infer new infrastructure facts.
+// traverse relationships already present in the evidence-backed graph.
 type PivotKind string
 
 const (
@@ -18,11 +17,14 @@ const (
 	PivotServiceToHosts     PivotKind = "SERVICE_TO_HOSTS"
 	PivotCertificateToHosts PivotKind = "CERTIFICATE_TO_HOSTS"
 	PivotHostToCertificates PivotKind = "HOST_TO_CERTIFICATES"
+	PivotHostToTCPPorts     PivotKind = "HOST_TO_TCP_PORTS"
+	PivotTCPPortToHosts     PivotKind = "TCP_PORT_TO_HOSTS"
+	PivotHostToHTTPServices PivotKind = "HOST_TO_HTTP_SERVICES"
+	PivotHTTPServiceToHosts PivotKind = "HTTP_SERVICE_TO_HOSTS"
 )
 
 // Pivot returns deterministic one-hop related nodes for a graph entity.
-// Every result is backed by an existing graph edge and therefore retains the
-// graph's evidence boundary. No new relationship is inferred by this API.
+// Every result is backed by an existing graph edge; no relationship is inferred.
 func Pivot(g Graph, nodeID string, kind PivotKind) ([]Node, error) {
 	if err := validatePivotKind(kind); err != nil {
 		return nil, err
@@ -30,14 +32,24 @@ func Pivot(g Graph, nodeID string, kind PivotKind) ([]Node, error) {
 	if err := g.Validate(); err != nil {
 		return nil, fmt.Errorf("validate graph before pivot: %w", err)
 	}
-	if _, ok := findNode(g.Nodes, nodeID); !ok {
+	sourceNode, ok := findNode(g.Nodes, nodeID)
+	if !ok {
 		return nil, fmt.Errorf("pivot source node %q does not exist", nodeID)
 	}
 
+	// Index nodes once so traversal cost is linear in graph size rather than
+	// repeatedly scanning all nodes for every edge.
+	nodesByID := make(map[string]Node, len(g.Nodes))
+	for _, node := range g.Nodes {
+		nodesByID[node.ID] = node
+	}
 	nodeIDs := make(map[string]struct{})
 	for _, edge := range g.Edges {
-		source, _ := findNode(g.Nodes, edge.Source)
-		target, _ := findNode(g.Nodes, edge.Target)
+		source, sourceOK := nodesByID[edge.Source]
+		target, targetOK := nodesByID[edge.Target]
+		if !sourceOK || !targetOK {
+			continue // Validate normally guarantees endpoints exist.
+		}
 
 		switch kind {
 		case PivotDomainToIPs:
@@ -68,22 +80,34 @@ func Pivot(g Graph, nodeID string, kind PivotKind) ([]Node, error) {
 			if source.ID == nodeID && (source.Type == NodeDomain || source.Type == NodeIP) && edge.Type == EdgePresentsCertificate && target.Type == NodeTLSCertificate {
 				nodeIDs[target.ID] = struct{}{}
 			}
+		case PivotHostToTCPPorts:
+			if source.ID == nodeID && (source.Type == NodeDomain || source.Type == NodeIP) && edge.Type == EdgeHasOpenPort && target.Type == NodeTCPPort {
+				nodeIDs[target.ID] = struct{}{}
+			}
+		case PivotTCPPortToHosts:
+			if target.ID == nodeID && target.Type == NodeTCPPort && edge.Type == EdgeHasOpenPort && (source.Type == NodeDomain || source.Type == NodeIP) {
+				nodeIDs[source.ID] = struct{}{}
+			}
+		case PivotHostToHTTPServices:
+			if source.ID == nodeID && (source.Type == NodeDomain || source.Type == NodeIP) && edge.Type == EdgeServesHTTP && target.Type == NodeHTTPService {
+				nodeIDs[target.ID] = struct{}{}
+			}
+		case PivotHTTPServiceToHosts:
+			if target.ID == nodeID && target.Type == NodeHTTPService && edge.Type == EdgeServesHTTP && (source.Type == NodeDomain || source.Type == NodeIP) {
+				nodeIDs[source.ID] = struct{}{}
+			}
 		}
 	}
 
 	result := make([]Node, 0, len(nodeIDs))
 	for id := range nodeIDs {
-		node, ok := findNode(g.Nodes, id)
-		if ok {
-			result = append(result, node)
-		}
+		result = append(result, nodesByID[id])
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result, nil
 }
 
-// Related returns all direct neighbors of a node. It traverses both incoming
-// and outgoing evidence-backed relationships without inventing new edges.
+// Related returns all direct neighbors of a node through existing graph edges.
 func Related(g Graph, nodeID string) ([]Node, error) {
 	if err := g.Validate(); err != nil {
 		return nil, fmt.Errorf("validate graph before related lookup: %w", err)
@@ -92,6 +116,10 @@ func Related(g Graph, nodeID string) ([]Node, error) {
 		return nil, fmt.Errorf("related source node %q does not exist", nodeID)
 	}
 
+	nodesByID := make(map[string]Node, len(g.Nodes))
+	for _, node := range g.Nodes {
+		nodesByID[node.ID] = node
+	}
 	nodeIDs := make(map[string]struct{})
 	for _, edge := range g.Edges {
 		if edge.Source == nodeID {
@@ -104,10 +132,7 @@ func Related(g Graph, nodeID string) ([]Node, error) {
 
 	result := make([]Node, 0, len(nodeIDs))
 	for id := range nodeIDs {
-		node, ok := findNode(g.Nodes, id)
-		if ok {
-			result = append(result, node)
-		}
+		result = append(result, nodesByID[id])
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result, nil
@@ -121,7 +146,11 @@ func validatePivotKind(kind PivotKind) error {
 		PivotIPToServices,
 		PivotServiceToHosts,
 		PivotCertificateToHosts,
-		PivotHostToCertificates:
+		PivotHostToCertificates,
+		PivotHostToTCPPorts,
+		PivotTCPPortToHosts,
+		PivotHostToHTTPServices,
+		PivotHTTPServiceToHosts:
 		return nil
 	default:
 		return fmt.Errorf("unsupported pivot kind %q", kind)
