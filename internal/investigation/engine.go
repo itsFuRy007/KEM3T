@@ -86,6 +86,9 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		}
 		seen[name] = struct{}{}
 	}
+	maxStages := e.MaxStages
+	if maxStages <= 0 { maxStages = 16 }
+	if len(e.Stages) > maxStages { return Result{}, fmt.Errorf("initial stage count %d exceeds maximum %d", len(e.Stages), maxStages) }
 	started := now().UTC()
 	evidenceBefore := make(map[string]struct{})
 	for _, item := range e.Registry.AllEvidence() { evidenceBefore[item.ID] = struct{}{} }
@@ -97,7 +100,9 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		return Result{}, fmt.Errorf("start investigation run: %w", err)
 	}
 	result = Result{Target: target, RunID: run.ID, Stages: make([]StageOutcome, 0, len(e.Stages))}
-	for _, stage := range e.Stages {
+	queue := append([]Stage(nil), e.Stages...)
+	for index := 0; index < len(queue); index++ {
+		stage := queue[index]
 		if err := ctx.Err(); err != nil {
 			retErr = err
 			break
@@ -110,6 +115,39 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 			result.Partial = true
 		}
 		result.Stages = append(result.Stages, outcome)
+		if e.Planner != nil && ctx.Err() == nil {
+			next, planErr := e.Planner.Next(ctx, PlanningState{
+				Target: target, Evidence: e.Registry.AllEvidence(),
+				Observations: e.Registry.AllObservations(),
+				Completed: append([]StageOutcome(nil), result.Stages...),
+			})
+			if planErr != nil {
+				retErr = fmt.Errorf("plan next investigation stages: %w", planErr)
+				result.Partial = true
+				break
+			}
+			for _, candidate := range next {
+				if candidate == nil || strings.TrimSpace(candidate.Name()) == "" {
+					retErr = errors.New("planner returned a nil or unnamed stage")
+					result.Partial = true
+					break
+				}
+				name := strings.TrimSpace(candidate.Name())
+				if _, exists := seen[name]; exists {
+					retErr = fmt.Errorf("planner returned duplicate investigation stage %q", name)
+					result.Partial = true
+					break
+				}
+				seen[name] = struct{}{}
+				queue = append(queue, candidate)
+				if len(queue) > maxStages {
+					retErr = fmt.Errorf("adaptive investigation exceeded maximum of %d stages", maxStages)
+					result.Partial = true
+					break
+				}
+			}
+			if retErr != nil { break }
+		}
 	}
 	if ctx.Err() != nil && retErr == nil {
 		retErr = ctx.Err()
