@@ -34,7 +34,7 @@ func run() error {
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 
-	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, ct, rdap, asn, pdns, or threat")
+	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, ct, rdap, iprdap, asn, pdns, or threat")
 	target := flags.String("target", "", "Target hostname or IP address")
 	port := flags.Int("port", 443, "TCP port for TLS mode")
 	httpScheme := flags.String("http-scheme", "auto", "HTTP scheme: auto, http, or https")
@@ -64,6 +64,9 @@ func run() error {
 			return fmt.Errorf("-target is required in RDAP mode")
 		}
 		return runRDAP(strings.TrimSpace(*target), *snapshotDir)
+	case "iprdap":
+		if strings.TrimSpace(*target)=="" { return fmt.Errorf("-target is required in IP RDAP mode") }
+		return runIPRDAP(strings.TrimSpace(*target),*snapshotDir)
 	case "asn":
 		if strings.TrimSpace(*target) == "" { return fmt.Errorf("-target is required in ASN mode") }
 		return runASN(strings.TrimSpace(*target), *snapshotDir)
@@ -666,6 +669,24 @@ func runThreatIntel(target,snapshotDir string)error{
  for _,pulse:=range report.Pulses{fmt.Printf("[COMMUNITY REPORT] %s | ID: %s | Tags: %s | Created: %s | Modified: %s\n",pulse.Name,pulse.ID,strings.Join(pulse.Tags,", "),pulse.Created,pulse.Modified)}
  if len(report.Pulses)==0{fmt.Println("No pulse records were returned; this is not proof that the indicator is benign.")}
  if report.Truncated{fmt.Println("Warning: provider reports more pulses than returned records; this is a partial view.")}
+ fmt.Println("\n[INTERPRETATION LIMITS]")
+ for _,limitation:=range report.Limitations{fmt.Printf("- %s\n",limitation)}
+ fmt.Printf("New observation: %t\n",added)
+ printInfrastructureGraph(infrastructureGraph)
+ return nil
+}
+
+func runIPRDAP(target,snapshotDir string)error{
+ ctx,cancel:=context.WithTimeout(context.Background(),25*time.Second);defer cancel()
+ report,err:=(&externalintel.RDAPClient{}).LookupIP(ctx,target);if err!=nil{return err}
+ if strings.TrimSpace(snapshotDir)==""{return fmt.Errorf("snapshot directory is required")}
+ if err:=os.MkdirAll(snapshotDir,0750);err!=nil{return fmt.Errorf("create snapshot directory: %w",err)}
+ registry,err:=evidence.OpenRegistry(filepath.Join(snapshotDir,"evidence.db"));if err!=nil{return fmt.Errorf("open evidence registry: %w",err)};defer registry.Close()
+ added,err:=externalintel.RegisterIPRDAPReport(registry,report);if err!=nil{return err}
+ infrastructureGraph,err:=graph.BuildFromRegistry(registry);if err!=nil{return fmt.Errorf("build IP RDAP graph: %w",err)}
+ fmt.Println("[IP NETWORK REGISTRATION INTELLIGENCE]")
+ fmt.Printf("Target IP: %s\nSource: %s\nRetrieved: %s\n",report.Target,report.Source,report.RetrievedAt.Format(time.RFC3339))
+ fmt.Printf("Network handle: %s\nNetwork label: %s\nRange: %s - %s\nCountry label: %s\nNetwork type: %s\nStatus: %s\n",report.Handle,report.Name,report.StartAddress,report.EndAddress,report.Country,report.NetworkType,strings.Join(report.Status,", "))
  fmt.Println("\n[INTERPRETATION LIMITS]")
  for _,limitation:=range report.Limitations{fmt.Printf("- %s\n",limitation)}
  fmt.Printf("New observation: %t\n",added)
