@@ -359,9 +359,19 @@ func runHistory(target, snapshotDir string) error {
 	defer registry.Close()
 
 	target = strings.TrimSpace(target)
-	runs, err := registry.CollectionRuns(target)
+	runs, err := registry.CollectionRuns("")
 	if err != nil {
 		return fmt.Errorf("load collection history: %w", err)
+	}
+	if target != "" {
+		normalizedTarget := history.NormalizeTarget(target)
+		filteredRuns := make([]evidence.CollectionRun, 0, len(runs))
+		for _, run := range runs {
+			if history.NormalizeTarget(run.Target) == normalizedTarget {
+				filteredRuns = append(filteredRuns, run)
+			}
+		}
+		runs = filteredRuns
 	}
 	allEvidence := registry.AllEvidence()
 	allObservations := registry.AllObservations()
@@ -390,10 +400,10 @@ func runHistory(target, snapshotDir string) error {
 		return fmt.Errorf("load generalized history snapshots: %w", err)
 	}
 	if target != "" {
-		normalizedTarget := strings.TrimSuffix(strings.ToLower(target), ".")
+		normalizedTarget := history.NormalizeTarget(target)
 		filtered := make([]history.Snapshot, 0, len(snapshots))
 		for _, snapshot := range snapshots {
-			if strings.TrimSuffix(strings.ToLower(snapshot.Target), ".") == normalizedTarget {
+			if history.NormalizeTarget(snapshot.Target) == normalizedTarget {
 				filtered = append(filtered, snapshot)
 			}
 		}
