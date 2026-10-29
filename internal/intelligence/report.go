@@ -21,6 +21,7 @@ type IntelligenceReport struct {
 	Hypotheses              []Hypothesis              `json:"hypotheses"`
 	VerificationAssessments []VerificationAssessment `json:"verification_assessments"`
 	PrioritizedFindings     []PrioritizedFinding     `json:"prioritized_findings"`
+	Narrative               ResearchNarrative         `json:"narrative"`
 }
 
 // ReportEngine coordinates target-scoped correlation, discovery, hypothesis,
@@ -101,7 +102,7 @@ func (e *ReportEngine) BuildWithVerification(
 		assessments = append(assessments, assessment)
 	}
 
-	return IntelligenceReport{
+	report := IntelligenceReport{
 		Target: strings.TrimSpace(target),
 		Findings: append([]Finding{}, scopedFindings...),
 		Correlations: append([]Correlation{}, correlations...),
@@ -111,7 +112,13 @@ func (e *ReportEngine) BuildWithVerification(
 		Hypotheses: append([]Hypothesis{}, hypotheses...),
 		VerificationAssessments: append([]VerificationAssessment{}, assessments...),
 		PrioritizedFindings: append([]PrioritizedFinding{}, prioritized...),
-	}, nil
+	}
+	narrative, err := BuildResearchNarrative(report)
+	if err != nil {
+		return IntelligenceReport{}, fmt.Errorf("build researcher narrative: %w", err)
+	}
+	report.Narrative = narrative
+	return report, nil
 }
 
 // normalizeFindingTarget accepts hostnames, IP addresses, host:port values,
