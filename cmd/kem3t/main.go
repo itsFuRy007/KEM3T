@@ -34,7 +34,7 @@ func run() error {
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 
-	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, ct, rdap, asn, or pdns")
+	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, ct, rdap, asn, pdns, or threat")
 	target := flags.String("target", "", "Target hostname or IP address")
 	port := flags.Int("port", 443, "TCP port for TLS mode")
 	httpScheme := flags.String("http-scheme", "auto", "HTTP scheme: auto, http, or https")
@@ -70,6 +70,9 @@ func run() error {
 	case "pdns":
 		if strings.TrimSpace(*target) == "" { return fmt.Errorf("-target is required in passive-DNS mode") }
 		return runPassiveDNS(strings.TrimSpace(*target), *snapshotDir)
+	case "threat":
+		if strings.TrimSpace(*target) == "" { return fmt.Errorf("-target is required in threat-intelligence mode") }
+		return runThreatIntel(strings.TrimSpace(*target), *snapshotDir)
 	case "demo":
 		return runDemo()
 	case "dns":
@@ -645,6 +648,27 @@ func runPassiveDNS(target,snapshotDir string)error{
  fmt.Println("\n[INTERPRETATION LIMITS]")
  for _,limitation:=range report.Limitations{fmt.Printf("- %s\n",limitation)}
  fmt.Printf("New observations: %d\n",added)
+ printInfrastructureGraph(infrastructureGraph)
+ return nil
+}
+
+func runThreatIntel(target,snapshotDir string)error{
+ ctx,cancel:=context.WithTimeout(context.Background(),20*time.Second);defer cancel()
+ client:=&externalintel.ThreatIntelClient{APIKey:strings.TrimSpace(os.Getenv("OTX_API_KEY"))}
+ report,err:=client.Lookup(ctx,target);if err!=nil{return err}
+ if strings.TrimSpace(snapshotDir)==""{return fmt.Errorf("snapshot directory is required")}
+ if err:=os.MkdirAll(snapshotDir,0750);err!=nil{return fmt.Errorf("create snapshot directory: %w",err)}
+ registry,err:=evidence.OpenRegistry(filepath.Join(snapshotDir,"evidence.db"));if err!=nil{return fmt.Errorf("open evidence registry: %w",err)};defer registry.Close()
+ added,err:=externalintel.RegisterThreatIntelReport(registry,report);if err!=nil{return err}
+ infrastructureGraph,err:=graph.BuildFromRegistry(registry);if err!=nil{return fmt.Errorf("build threat-intelligence graph: %w",err)}
+ fmt.Println("[THREAT INTELLIGENCE CONTEXT]")
+ fmt.Printf("Indicator: %s (%s)\nSource: %s\nRetrieved: %s\nCommunity pulse count: %d\nReturned pulse records: %d\n",report.Target,report.IndicatorType,report.Source,report.RetrievedAt.Format(time.RFC3339),report.PulseCount,len(report.Pulses))
+ for _,pulse:=range report.Pulses{fmt.Printf("[COMMUNITY REPORT] %s | ID: %s | Tags: %s | Created: %s | Modified: %s\n",pulse.Name,pulse.ID,strings.Join(pulse.Tags,", "),pulse.Created,pulse.Modified)}
+ if len(report.Pulses)==0{fmt.Println("No pulse records were returned; this is not proof that the indicator is benign.")}
+ if report.Truncated{fmt.Println("Warning: provider reports more pulses than returned records; this is a partial view.")}
+ fmt.Println("\n[INTERPRETATION LIMITS]")
+ for _,limitation:=range report.Limitations{fmt.Printf("- %s\n",limitation)}
+ fmt.Printf("New observation: %t\n",added)
  printInfrastructureGraph(infrastructureGraph)
  return nil
 }
