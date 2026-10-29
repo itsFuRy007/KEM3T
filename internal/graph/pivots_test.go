@@ -16,14 +16,18 @@ func TestPivotTraversesEvidenceBackedInfrastructureRelationships(t *testing.T) {
 			{ID: "ip:192.0.2.10", Type: NodeIP, Value: "192.0.2.10"},
 			{ID: "service:192.0.2.10:443:https", Type: NodeNetworkService, Value: "192.0.2.10:443 (https)"},
 			{ID: "service:api.example.com:443:https", Type: NodeNetworkService, Value: "api.example.com:443 (https)"},
+			{ID: "tcp-port:api.example.com:8443", Type: NodeTCPPort, Value: "api.example.com:8443"},
+			{ID: "http-service:api.example.com:8080:https", Type: NodeHTTPService, Value: "https://api.example.com:8080"},
 			{ID: certificateID, Type: NodeTLSCertificate, Value: fingerprint},
 		},
 		Edges: []Edge{
+			{ID: "has-open-port:api.example.com:8443", Type: EdgeHasOpenPort, Source: "domain:api.example.com", Target: "tcp-port:api.example.com:8443", Port: 8443, EvidenceIDs: []string{"tcp-1"}},
 			{ID: "hosts-service:192.0.2.10:443:https", Type: EdgeHostsService, Source: "ip:192.0.2.10", Target: "service:192.0.2.10:443:https", Port: 443, EvidenceIDs: []string{"service-1"}},
 			{ID: "hosts-service:api.example.com:443:https", Type: EdgeHostsService, Source: "domain:api.example.com", Target: "service:api.example.com:443:https", Port: 443, EvidenceIDs: []string{"service-2"}},
 			{ID: "presents-certificate:api.example.com:443:" + fingerprint, Type: EdgePresentsCertificate, Source: "domain:api.example.com", Target: certificateID, Port: 443, EvidenceIDs: []string{"tls-1"}},
 			{ID: "resolves-to:api.example.com:192.0.2.10", Type: EdgeResolvesTo, Source: "domain:api.example.com", Target: "ip:192.0.2.10", EvidenceIDs: []string{"dns-1"}},
 			{ID: "resolves-to:www.example.com:192.0.2.10", Type: EdgeResolvesTo, Source: "domain:www.example.com", Target: "ip:192.0.2.10", EvidenceIDs: []string{"dns-2"}},
+			{ID: "serves-http:api.example.com:8080:https", Type: EdgeServesHTTP, Source: "domain:api.example.com", Target: "http-service:api.example.com:8080:https", Port: 8080, EvidenceIDs: []string{"http-1"}},
 		},
 	}
 
@@ -34,7 +38,7 @@ func TestPivotTraversesEvidenceBackedInfrastructureRelationships(t *testing.T) {
 			t.Fatalf("Pivot(%q, %q) returned error: %v", kind, source, err)
 		}
 		if len(got) != len(want) {
-			t.Fatalf("Pivot(%q, %q) returned %d nodes, want %d", kind, source, len(got), len(want))
+			t.Fatalf("Pivot(%q, %q) returned %d nodes, want %d: %+v", kind, source, len(got), len(want), got)
 		}
 		for i, id := range want {
 			if got[i].ID != id {
@@ -50,6 +54,10 @@ func TestPivotTraversesEvidenceBackedInfrastructureRelationships(t *testing.T) {
 	assertPivot(PivotServiceToHosts, "service:192.0.2.10:443:https", "ip:192.0.2.10")
 	assertPivot(PivotHostToCertificates, "domain:api.example.com", certificateID)
 	assertPivot(PivotCertificateToHosts, certificateID, "domain:api.example.com")
+	assertPivot(PivotHostToTCPPorts, "domain:api.example.com", "tcp-port:api.example.com:8443")
+	assertPivot(PivotTCPPortToHosts, "tcp-port:api.example.com:8443", "domain:api.example.com")
+	assertPivot(PivotHostToHTTPServices, "domain:api.example.com", "http-service:api.example.com:8080:https")
+	assertPivot(PivotHTTPServiceToHosts, "http-service:api.example.com:8080:https", "domain:api.example.com")
 }
 
 func TestRelatedReturnsDeterministicNeighbors(t *testing.T) {
@@ -82,5 +90,18 @@ func TestPivotRejectsUnknownSourceAndUnsupportedKind(t *testing.T) {
 	}
 	if _, err := Pivot(graph, "domain:example.com", PivotKind("UNKNOWN")); err == nil {
 		t.Fatal("expected unsupported pivot kind to be rejected")
+	}
+}
+
+func TestPivotReturnsEmptyForNoMatchingRelationship(t *testing.T) {
+	graph := Graph{
+		Nodes: []Node{{ID: "domain:example.com", Type: NodeDomain, Value: "example.com"}},
+	}
+	got, err := Pivot(graph, "domain:example.com", PivotDomainToIPs)
+	if err != nil {
+		t.Fatalf("Pivot() returned error for a valid node with no matches: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("Pivot() returned unexpected nodes: %+v", got)
 	}
 }
