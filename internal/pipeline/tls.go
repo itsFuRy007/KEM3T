@@ -144,6 +144,7 @@ func RunTLS(
 	}
 
 	result.Normalized = observations.NormalizeEvents([]events.Event{*result.Event})
+	observations.AttachEvidence(&result.Normalized, []evidence.Observation{result.Observation})
 	if len(result.Normalized.Rejected) > 0 {
 		return TLSResult{}, fmt.Errorf("normalize TLS event: %s", result.Normalized.Rejected[0].Reason)
 	}
