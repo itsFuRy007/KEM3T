@@ -98,3 +98,36 @@ func NewDNSStage(target string) *CollectorStage {
 		Convert: evidence.FromDNSEvent,
 	}
 }
+
+
+// NewTCPStage adds an explicitly bounded TCP port-range check. Callers must
+// supply the exact target and range they are authorized to assess.
+func NewTCPStage(target string, startPort, endPort int) *CollectorStage {
+	return &CollectorStage{
+		StageName: "tcp",
+		Collector: &collectors.TCP{Target: target, StartPort: startPort, EndPort: endPort},
+		Accept: func(event events.Event) bool { return event.Type == events.EventPortDiscovered },
+		Convert: evidence.FromTCPEvent,
+	}
+}
+
+// NewTLSStage performs one explicitly requested TLS certificate observation.
+func NewTLSStage(target string, port int) *CollectorStage {
+	if port == 0 { port = 443 }
+	return &CollectorStage{
+		StageName: "tls",
+		Collector: &collectors.TLS{Target: target, Port: port},
+		Accept: func(event events.Event) bool { return event.Type == events.EventTLSCertificateFound },
+		Convert: evidence.FromTLSEvent,
+	}
+}
+
+// NewHTTPStage performs one explicitly requested bounded HTTP(S) observation.
+func NewHTTPStage(target, scheme string, port int) *CollectorStage {
+	return &CollectorStage{
+		StageName: "http",
+		Collector: &collectors.HTTP{Target: target, Scheme: scheme, Port: port},
+		Accept: func(event events.Event) bool { return event.Type == events.EventHTTPObserved },
+		Convert: evidence.FromHTTPEvent,
+	}
+}
