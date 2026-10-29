@@ -136,7 +136,7 @@ func (c *RDAPClient) LookupDomain(ctx context.Context, target string) (RDAPRepor
 func rdapGET(ctx context.Context, client *http.Client, endpoint string) ([]byte,error) {
  req,err:=http.NewRequestWithContext(ctx,http.MethodGet,endpoint,nil); if err!=nil{return nil,fmt.Errorf("create RDAP request: %w",err)}
  req.Header.Set("Accept","application/rdap+json, application/json"); req.Header.Set("User-Agent","KEM3T-External-Intelligence/1.0 (research)")
- resp,err:=client.Do(req); if err!=nil{return nil,err}; defer resp.Body.Close()
+ resp,err:=doExternalRequest(ctx, client, req); if err!=nil{return nil,err}; defer resp.Body.Close()
  if resp.StatusCode<200 || resp.StatusCode>=300 { _,_=io.Copy(io.Discard,io.LimitReader(resp.Body,2048));return nil,fmt.Errorf("HTTP %d",resp.StatusCode) }
  body,err:=io.ReadAll(io.LimitReader(resp.Body,maxRDAPResponseBytes+1));if err!=nil{return nil,err}
  if len(body)>maxRDAPResponseBytes{return nil,fmt.Errorf("response exceeds %d bytes",maxRDAPResponseBytes)}

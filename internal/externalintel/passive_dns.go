@@ -79,7 +79,7 @@ func(c *PassiveDNSClient)LookupDomain(ctx context.Context,rawTarget string)(Pass
  req,err:=http.NewRequestWithContext(ctx,http.MethodGet,endpointURL.String(),nil);if err!=nil{return PassiveDNSReport{},err}
  req.Header.Set("Accept","application/json");req.Header.Set("User-Agent","KEM3T-External-Intelligence/1.0 (research)")
  if key:=strings.TrimSpace(c.APIKey);key!=""{req.Header.Set("X-OTX-API-KEY",key)}
- resp,err:=client.Do(req);if err!=nil{return PassiveDNSReport{},fmt.Errorf("query OTX passive DNS: %w",err)}
+ resp,err:=doExternalRequest(ctx, client, req);if err!=nil{return PassiveDNSReport{},fmt.Errorf("query OTX passive DNS: %w",err)}
  if resp.StatusCode<200||resp.StatusCode>=300{status:=resp.StatusCode;_,_=io.Copy(io.Discard,io.LimitReader(resp.Body,2048));resp.Body.Close();return PassiveDNSReport{},fmt.Errorf("OTX passive-DNS source returned HTTP %d",status)}
  body,err:=io.ReadAll(io.LimitReader(resp.Body,maxPassiveDNSBytes+1));resp.Body.Close();if err!=nil{return PassiveDNSReport{},fmt.Errorf("read OTX response: %w",err)}
  if len(body)>maxPassiveDNSBytes{return PassiveDNSReport{},fmt.Errorf("OTX response exceeds %d bytes",maxPassiveDNSBytes)}

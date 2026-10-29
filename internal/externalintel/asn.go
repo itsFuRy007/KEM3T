@@ -81,7 +81,7 @@ func (c *ASNClient) LookupIP(ctx context.Context, rawIP string) (ASNReport,error
  params:=query.Query();params.Set("name",qname);params.Set("type","TXT");query.RawQuery=params.Encode()
  req,err:=http.NewRequestWithContext(ctx,http.MethodGet,query.String(),nil);if err!=nil{return ASNReport{},err}
  req.Header.Set("Accept","application/dns-json");req.Header.Set("User-Agent","KEM3T-External-Intelligence/1.0 (research)")
- resp,err:=client.Do(req);if err!=nil{return ASNReport{},fmt.Errorf("query origin ASN mapping: %w",err)}
+ resp,err:=doExternalRequest(ctx, client, req);if err!=nil{return ASNReport{},fmt.Errorf("query origin ASN mapping: %w",err)}
  if resp.StatusCode<200||resp.StatusCode>=300{resp.Body.Close();return ASNReport{},fmt.Errorf("origin ASN DNS returned HTTP %d",resp.StatusCode)}
  body,readErr:=io.ReadAll(io.LimitReader(resp.Body,(1<<20)+1));resp.Body.Close();if readErr!=nil{return ASNReport{},readErr};if len(body)>1<<20{return ASNReport{},fmt.Errorf("origin ASN DNS response exceeds 1048576 bytes")}
  var dns dohResponse;if err:=json.Unmarshal(body,&dns);err!=nil{return ASNReport{},fmt.Errorf("decode ASN DNS response: %w",err)}
