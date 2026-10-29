@@ -199,6 +199,9 @@ func (p InvestigationPlan) Validate() error {
 	if normalizeFindingTarget(p.Target) == "" || strings.TrimSpace(p.Revision) == "" || strings.TrimSpace(p.Summary) == "" {
 		return fmt.Errorf("plan target, revision, and summary are required")
 	}
+	if p.Revision != planRevision(p) {
+		return fmt.Errorf("plan revision does not match its contents")
+	}
 	seen := make(map[string]struct{}, len(p.Items))
 	for i, item := range p.Items {
 		if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.SourceID) == "" || strings.TrimSpace(item.SourceKind) == "" || strings.TrimSpace(item.Action) == "" {
@@ -207,11 +210,20 @@ func (p InvestigationPlan) Validate() error {
 		if item.Priority < 0 || item.Priority > 100 || item.PriorityLabel == "" {
 			return fmt.Errorf("plan item %q has invalid priority", item.ID)
 		}
+		if item.ID != taskID(item.SourceKind, item.SourceID, item.Action) {
+			return fmt.Errorf("plan item %q has an invalid deterministic ID", item.ID)
+		}
 		switch item.Status {
 		case TaskRecommended, TaskCompleted, TaskInconclusive, TaskBlocked, TaskNotApplicable, TaskStale:
 		default: return fmt.Errorf("plan item %q has unsupported status %q", item.ID, item.Status)
 		}
 		if len(item.References) == 0 { return fmt.Errorf("plan item %q has no evidence references", item.ID) }
+		for _, ref := range item.References {
+			if strings.TrimSpace(ref) == "" { return fmt.Errorf("plan item %q has an empty reference", item.ID) }
+		}
+		for _, evidenceID := range item.EvidenceIDs {
+			if strings.TrimSpace(evidenceID) == "" { return fmt.Errorf("plan item %q has an empty evidence ID", item.ID) }
+		}
 		if _, exists := seen[item.ID]; exists { return fmt.Errorf("duplicate plan item ID %q", item.ID) }
 		seen[item.ID] = struct{}{}
 	}
