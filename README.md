@@ -161,6 +161,7 @@ DNS snapshots, generalized run snapshots, and the evidence database use .kem3t/s
 - internal/snapshots/ — DNS snapshot handling
 - internal/history/ — generalized run snapshots, cross-run comparisons, timelines, and anomaly review signals
 - internal/pipeline/ — collection and analysis orchestration
+- internal/scale/ — bounded, cancellation-aware scheduling primitives for large investigation batches
 - internal/intelligence/ — correlation, hypotheses, prioritization, and reports
 - internal/integration/ — integration tests
 
@@ -247,7 +248,8 @@ The project is under active development. Checkboxes below distinguish implemente
 ### Phase 7 — Scale
 - [x] Bounded HTTP body inspection and redirect handling
 - [x] Configurable TCP port range
-- [ ] Shared concurrency controls and rate limits
+- [x] Bounded worker-pool primitive with cancellation-aware scheduling, per-target error isolation, and deterministic result ordering
+- [ ] Shared provider-aware rate limits and backoff
 - [ ] Target lists and large-scope scheduling
 - [ ] Performance benchmarks and storage optimization
 
