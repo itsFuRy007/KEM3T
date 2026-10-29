@@ -149,6 +149,25 @@ func TestDNSInvestigationExportRejectsInconsistentTemporalContext(t *testing.T) 
 			want: "counts do not match",
 		},
 		{
+			name: "history address mismatch",
+			export: NewDNSInvestigationExport(
+				"example.com", &IntelligenceReport{Target: "example.com"},
+				current, &previous, nil,
+				&DNSHistoryComparison{Target: "example.com", Added: []string{"192.0.2.99"}, Removed: []string{}, Unchanged: []string{}, PreviousCount: 1, CurrentCount: 1}, false,
+			),
+			want: "address sets do not match",
+		},
+		{
+			name: "detected change mismatch",
+			export: NewDNSInvestigationExport(
+				"example.com", &IntelligenceReport{Target: "example.com"},
+				current, &previous,
+				[]changes.Change{{Target: "example.com", Type: changes.AddressAdded, Address: "192.0.2.99"}},
+				validHistory, false,
+			),
+			want: "detected changes do not match",
+		},
+		{
 			name: "baseline with previous snapshot",
 			export: NewDNSInvestigationExport(
 				"example.com", &IntelligenceReport{Target: "example.com"},
