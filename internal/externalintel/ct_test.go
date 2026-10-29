@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/graph"
 )
 
 func TestCTLookupNormalizesDeduplicatesAndScopesNames(t *testing.T) {
@@ -79,5 +82,45 @@ func TestCTPropagatesContextCancellation(t *testing.T) {
 	client := &CTClient{Endpoint: server.URL, HTTPClient: server.Client()}
 	if _, err := client.LookupDomain(ctx, "example.com"); err == nil {
 		t.Fatal("expected cancellation error")
+	}
+}
+
+func TestRegisterCTReportBuildsEvidenceBackedGraph(t *testing.T) {
+	registry := evidence.NewRegistry()
+	retrieved := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	report := CTReport{
+		Target: "example.com", Source: "crt.sh", RetrievedAt: retrieved,
+		Records: []CTRecord{{
+			CertificateID: 42, DNSNames: []string{"example.com", "www.example.com", "api.example.com"},
+			IssuerName: "Example CA", NotBefore: "2026-01-01", NotAfter: "2027-01-01",
+		}},
+	}
+	added, err := RegisterCTReport(registry, report)
+	if err != nil { t.Fatal(err) }
+	if added != 3 { t.Fatalf("registered observations = %d, want 3", added) }
+
+	g, err := graph.BuildFromRegistry(registry)
+	if err != nil { t.Fatal(err) }
+	if len(g.Nodes) != 4 { t.Fatalf("graph nodes = %d, want 4", len(g.Nodes)) }
+	if len(g.Edges) != 4 { t.Fatalf("graph edges = %d, want 4", len(g.Edges)) }
+	for _, edge := range g.Edges {
+		if len(edge.EvidenceIDs) == 0 || len(edge.ObservationIDs) == 0 {
+			t.Fatalf("CT graph edge lacks provenance: %+v", edge)
+		}
+	}
+
+	added, err = RegisterCTReport(registry, report)
+	if err != nil { t.Fatal(err) }
+	if added != 0 { t.Fatalf("duplicate report added %d observations, want 0", added) }
+}
+
+func TestRegisterCTReportRejectsOutOfScopeName(t *testing.T) {
+	registry := evidence.NewRegistry()
+	report := CTReport{
+		Target: "example.com", Source: "crt.sh", RetrievedAt: time.Now().UTC(),
+		Records: []CTRecord{{CertificateID: 9, DNSNames: []string{"attacker.test"}}},
+	}
+	if _, err := RegisterCTReport(registry, report); err == nil {
+		t.Fatal("expected out-of-scope CT name to be rejected")
 	}
 }
