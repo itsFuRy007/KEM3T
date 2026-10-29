@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
 )
 
 // ExportSchemaVersion identifies the canonical structured investigation export contract.
