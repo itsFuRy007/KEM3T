@@ -239,15 +239,15 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 	}
 
 	for _, gap := range report.IntelligenceGaps {
-		refs := append([]string{"gap:" + gap.ID}, gap.References...)
+		refs := append([]string{gap.ID}, gap.References...)
 		n.Signals = append(n.Signals, NarrativeSignal{
-			ID: "gap:" + gap.ID, Kind: "INTELLIGENCE_GAP",
+			ID: gap.ID, Kind: "INTELLIGENCE_GAP",
 			Summary: gap.Unknown + " " + gap.WhyItMatters,
 			Confidence: "UNRESOLVED_QUESTION:" + gap.Priority,
 			AlternativeExplanations: gap.AlternativeExplanations,
 			References: stableUnique(refs),
 		})
-		addSteps("gap", gap.ID, gap.WhyItMatters, []string{gap.SuggestedAction})
+		addSteps("intelligence-gap", gap.ID, gap.WhyItMatters, []string{gap.SuggestedAction})
 	}
 
 	sort.Slice(n.Signals, func(i, j int) bool {
