@@ -6,6 +6,7 @@ import (
  "encoding/hex"
  "errors"
  "encoding/json"
+ "encoding/hex"
  "fmt"
  "io"
  "net"
@@ -129,7 +130,7 @@ func (c *ASNClient) LookupIP(ctx context.Context, rawIP string) (ASNReport,error
 
 func cymruOriginName(ip net.IP)string{
  if v4:=ip.To4();v4!=nil{return fmt.Sprintf("%d.%d.%d.%d.origin.asn.cymru.com",v4[3],v4[2],v4[1],v4[0])}
- hexIP:=fmt.Sprintf("%x",ip.To16());parts:=make([]string,0,32);for i:=len(hexIP)-1;i>=0;i--{parts=append(parts,string(hexIP[i]))};return strings.Join(parts,".")+".origin6.asn.cymru.com"
+ hexIP:=hex.EncodeToString(ip.To16());parts:=make([]string,0,32);for i:=len(hexIP)-1;i>=0;i--{parts=append(parts,string(hexIP[i]))};return strings.Join(parts,".")+".origin6.asn.cymru.com"
 }
 
 func selectASNService(bootstrap asnBootstrap,asn uint32)(string,error){
