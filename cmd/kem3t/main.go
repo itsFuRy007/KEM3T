@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/history"
+	"github.com/itsFuRy007/kem3t/internal/investigation"
 	"github.com/itsFuRy007/kem3t/internal/pipeline"
 )
 
@@ -36,7 +38,7 @@ func run() error {
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 
-	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, batch-dns, ct, rdap, iprdap, asn, pdns, or threat")
+	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, investigate, history, batch-dns, ct, rdap, iprdap, asn, pdns, or threat")
 	exportJSON := flags.String("export-json", "", "Write the target-scoped DNS intelligence report as versioned JSON (DNS mode only)")
 	planStatePath := flags.String("plan-state", "", "Load and update adaptive investigation feedback state (DNS mode only)")
 	target := flags.String("target", "", "Target hostname or IP address")
@@ -47,6 +49,7 @@ func run() error {
 	httpPort := flags.Int("http-port", 0, "HTTP port override (0 uses scheme defaults)")
 	startPort := flags.Int("start-port", 1, "First TCP port to scan")
 	endPort := flags.Int("end-port", 1024, "Last TCP port to scan")
+	enableActive := flags.Bool("enable-active", false, "In investigate mode, explicitly enable bounded TCP/TLS/HTTP checks against the supplied target")
 	snapshotDir := flags.String(
 		"snapshot-dir",
 		".kem3t/snapshots",
@@ -66,6 +69,9 @@ func run() error {
 	}
 
 	switch selectedMode {
+	case "investigate":
+		if strings.TrimSpace(*target) == "" { return fmt.Errorf("-target is required in investigate mode") }
+		return runInvestigation(strings.TrimSpace(*target), *snapshotDir, *enableActive, *startPort, *endPort, *port, *httpScheme, *httpPort)
 	case "history":
 		return runHistory(*target, *snapshotDir)
 	case "batch-dns":
@@ -120,6 +126,60 @@ func run() error {
 	default:
 		return fmt.Errorf("unsupported mode %q", *mode)
 	}
+}
+
+
+func runInvestigation(target, snapshotDir string, enableActive bool, startPort, endPort, tlsPort int, httpScheme string, httpPort int) error {
+	if strings.TrimSpace(snapshotDir) == "" { return fmt.Errorf("snapshot directory is required") }
+	if enableActive && (startPort < 1 || endPort > 65535 || startPort > endPort) {
+		return fmt.Errorf("invalid authorized TCP port range %d-%d", startPort, endPort)
+	}
+	if enableActive && (tlsPort < 1 || tlsPort > 65535) { return fmt.Errorf("TLS port must be between 1 and 65535") }
+	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
+	if err != nil { return fmt.Errorf("open shared evidence registry: %w", err) }
+	defer registry.Close()
+
+	stages := []investigation.Stage{
+		investigation.NewDNSStage(target),
+		investigation.NewCTStage(),
+	}
+	if net.ParseIP(target) != nil {
+		stages = append(stages, investigation.NewIPRDAPStage(), investigation.NewASNStage())
+	} else {
+		stages = append(stages, investigation.NewRDAPDomainStage())
+	}
+	if apiKey := strings.TrimSpace(os.Getenv("KEM3T_OTX_API_KEY")); apiKey != "" {
+		stages = append(stages,
+			investigation.NewPassiveDNSStageWithClient(&externalintel.PassiveDNSClient{APIKey: apiKey}),
+			investigation.NewThreatIntelStageWithClient(&externalintel.ThreatIntelClient{APIKey: apiKey}),
+		)
+	}
+	if enableActive {
+		stages = append(stages,
+			investigation.NewTCPStage(target, startPort, endPort),
+			investigation.NewTLSStage(target, tlsPort),
+			investigation.NewHTTPStage(target, httpScheme, httpPort),
+		)
+	}
+	engine := investigation.Engine{Registry: registry, Stages: stages, SnapshotDir: snapshotDir}
+	result, err := engine.Run(context.Background(), target)
+	if err != nil { return fmt.Errorf("investigation: %w", err) }
+
+	fmt.Println("[UNIFIED INVESTIGATION]")
+	fmt.Printf("Target: %s\nRun ID: %s\nPartial: %t\n", result.Target, result.RunID, result.Partial)
+	for _, stage := range result.Stages {
+		state := "completed"
+		if stage.Error != "" { state = "failed/partial" }
+		fmt.Printf("[%s] %s — events: %d, evidence: %d, observations: %d\n", state, stage.Name, stage.Result.Events, stage.Result.Evidence, stage.Result.Observations)
+		if stage.Error != "" { fmt.Printf("  Error: %s\n", stage.Error) }
+		for _, limitation := range stage.Result.Limitations { fmt.Printf("  Limitation: %s\n", limitation) }
+	}
+	fmt.Printf("\nEvidence records: %d | Observations: %d\n", len(registry.AllEvidence()), len(registry.AllObservations()))
+	printIntelligenceReport(result.Report)
+	printInvestigationPlan(result.Report.InvestigationPlan)
+	printInfrastructureGraph(result.Graph)
+	fmt.Printf("\n[HISTORY] Unified investigation snapshot saved under %s/history\n", snapshotDir)
+	return nil
 }
 
 func runDemo() error {
