@@ -9,6 +9,9 @@ import (
  "encoding/json"
  "testing"
  "time"
+
+ "github.com/itsFuRy007/kem3t/internal/evidence"
+ "github.com/itsFuRy007/kem3t/internal/graph"
 )
 
 func TestASNLookupCombinesOriginMappingAndRDAP(t *testing.T){
@@ -53,4 +56,19 @@ func TestSelectASNServiceFindsRange(t *testing.T){
  }}
  got,err:=selectASNService(bootstrap,15169);if err!=nil{t.Fatal(err)}
  if got!="https://two.example/rdap/"{t.Fatalf("service=%q",got)}
+}
+
+func TestRegisterASNReportBuildsEvidenceBackedGraph(t *testing.T){
+ registry:=evidence.NewRegistry()
+ report:=ASNReport{Target:"8.8.8.8",RetrievedAt:time.Date(2026,10,29,12,0,0,0,time.UTC),Records:[]ASNRecord{{ASN:15169,Prefix:"8.8.8.0/24",Country:"US",Registry:"arin",NetworkName:"GOOGLE",MappingSource:"Team Cymru origin DNS via Cloudflare DNS-over-HTTPS",RDAPSource:"rdap.example.test"}}}
+ added,err:=RegisterASNReport(registry,report);if err!=nil{t.Fatal(err)};if !added{t.Fatal("expected observation to be added")}
+ g,err:=graph.BuildFromRegistry(registry);if err!=nil{t.Fatal(err)}
+ if len(g.Nodes)!=3||len(g.Edges)!=2{t.Fatalf("unexpected graph size: %d nodes, %d edges",len(g.Nodes),len(g.Edges))}
+ for _,edge:=range g.Edges{if len(edge.EvidenceIDs)==0||len(edge.ObservationIDs)==0{t.Fatalf("missing provenance: %+v",edge)}}
+}
+
+func TestRegisterASNReportRejectsPrefixNotContainingTarget(t *testing.T){
+ registry:=evidence.NewRegistry()
+ report:=ASNReport{Target:"8.8.8.8",RetrievedAt:time.Now().UTC(),Records:[]ASNRecord{{ASN:15169,Prefix:"1.1.1.0/24",MappingSource:"source",RDAPSource:"rdap.test"}}}
+ if _,err:=RegisterASNReport(registry,report);err==nil{t.Fatal("expected non-containing prefix rejection")}
 }
