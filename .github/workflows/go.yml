@@ -9,6 +9,7 @@ on:
       - phase8-temporal-investigation-export
       - phase8-unified-discovery-report
       - phase8-researcher-narrative
+      - phase8-intelligence-gap-detection
   pull_request:
     branches:
       - main

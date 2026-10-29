@@ -18,6 +18,7 @@ type IntelligenceReport struct {
 	Discoveries              []Discovery              `json:"discoveries"`
 	DiscoveryPaths           []DiscoveryPath          `json:"discovery_paths"`
 	DiscoveryPivots          []DiscoveryPivot         `json:"discovery_pivots"`
+	IntelligenceGaps         []IntelligenceGap         `json:"intelligence_gaps"`
 	Hypotheses              []Hypothesis              `json:"hypotheses"`
 	VerificationAssessments []VerificationAssessment `json:"verification_assessments"`
 	PrioritizedFindings     []PrioritizedFinding     `json:"prioritized_findings"`
@@ -112,7 +113,13 @@ func (e *ReportEngine) BuildWithVerification(
 		Hypotheses: append([]Hypothesis{}, hypotheses...),
 		VerificationAssessments: append([]VerificationAssessment{}, assessments...),
 		PrioritizedFindings: append([]PrioritizedFinding{}, prioritized...),
+		IntelligenceGaps: []IntelligenceGap{},
 	}
+	gaps, err := BuildIntelligenceGaps(report)
+	if err != nil {
+		return IntelligenceReport{}, fmt.Errorf("detect intelligence gaps: %w", err)
+	}
+	report.IntelligenceGaps = gaps
 	narrative, err := BuildResearchNarrative(report)
 	if err != nil {
 		return IntelligenceReport{}, fmt.Errorf("build researcher narrative: %w", err)
