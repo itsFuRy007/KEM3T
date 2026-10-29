@@ -34,7 +34,7 @@ func run() error {
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 
-	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, or ct")
+	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, ct, or rdap")
 	target := flags.String("target", "", "Target hostname or IP address")
 	port := flags.Int("port", 443, "TCP port for TLS mode")
 	httpScheme := flags.String("http-scheme", "auto", "HTTP scheme: auto, http, or https")
@@ -59,6 +59,11 @@ func run() error {
 			return fmt.Errorf("-target is required in CT mode")
 		}
 		return runCT(strings.TrimSpace(*target), *snapshotDir)
+	case "rdap":
+		if strings.TrimSpace(*target) == "" {
+			return fmt.Errorf("-target is required in RDAP mode")
+		}
+		return runRDAP(strings.TrimSpace(*target), *snapshotDir)
 	case "demo":
 		return runDemo()
 	case "dns":
@@ -565,6 +570,34 @@ func runCT(target, snapshotDir string) error {
 		fmt.Printf("- %s\n", limitation)
 	}
 	fmt.Printf("Evidence records added: %d\n", added)
+	printInfrastructureGraph(infrastructureGraph)
+	return nil
+}
+
+func runRDAP(target, snapshotDir string) error {
+	ctx,cancel:=context.WithTimeout(context.Background(),25*time.Second)
+	defer cancel()
+	report,err:=(&externalintel.RDAPClient{}).LookupDomain(ctx,target)
+	if err!=nil{return err}
+	if strings.TrimSpace(snapshotDir)==""{return fmt.Errorf("snapshot directory is required")}
+	if err:=os.MkdirAll(snapshotDir,0750);err!=nil{return fmt.Errorf("create snapshot directory: %w",err)}
+	registry,err:=evidence.OpenRegistry(filepath.Join(snapshotDir,"evidence.db"))
+	if err!=nil{return fmt.Errorf("open evidence registry: %w",err)}
+	defer registry.Close()
+	added,err:=externalintel.RegisterRDAPReport(registry,report)
+	if err!=nil{return err}
+	infrastructureGraph,err:=graph.BuildFromRegistry(registry)
+	if err!=nil{return fmt.Errorf("build RDAP infrastructure graph: %w",err)}
+	fmt.Println("[DOMAIN REGISTRATION INTELLIGENCE]")
+	fmt.Printf("Target: %s\nSource: %s\nRetrieved: %s\n",report.Target,report.Source,report.RetrievedAt.Format(time.RFC3339))
+	if report.Handle!=""{fmt.Printf("Registry handle: %s\n",report.Handle)}
+	if report.Registrar!=""{fmt.Printf("Registrar label: %s\n",report.Registrar)}
+	fmt.Printf("Status values: %s\n",strings.Join(report.Status,", "))
+	for _,ns:=range report.NameServers{fmt.Printf("[NAMESERVER] %s\n",ns)}
+	for _,event:=range report.Events{fmt.Printf("[REGISTRATION EVENT] %s: %s\n",event.Action,event.Date)}
+	fmt.Println("\n[INTERPRETATION LIMITS]")
+	for _,limitation:=range report.Limitations{fmt.Printf("- %s\n",limitation)}
+	fmt.Printf("New observation: %t\n",added)
 	printInfrastructureGraph(infrastructureGraph)
 	return nil
 }
