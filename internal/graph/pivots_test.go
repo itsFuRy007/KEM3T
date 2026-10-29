@@ -15,6 +15,7 @@ func TestPivotTraversesEvidenceBackedInfrastructureRelationships(t *testing.T) {
 			{ID: "domain:www.example.com", Type: NodeDomain, Value: "www.example.com"},
 			{ID: "ip:192.0.2.10", Type: NodeIP, Value: "192.0.2.10"},
 			{ID: "service:192.0.2.10:443:https", Type: NodeNetworkService, Value: "192.0.2.10:443 (https)"},
+			{ID: "service:api.example.com:443:https", Type: NodeNetworkService, Value: "api.example.com:443 (https)"},
 			{ID: certificateID, Type: NodeTLSCertificate, Value: fingerprint},
 		},
 		Edges: []Edge{
@@ -25,8 +26,6 @@ func TestPivotTraversesEvidenceBackedInfrastructureRelationships(t *testing.T) {
 			{ID: "resolves-to:www.example.com:192.0.2.10", Type: EdgeResolvesTo, Source: "domain:www.example.com", Target: "ip:192.0.2.10", EvidenceIDs: []string{"dns-2"}},
 		},
 	}
-	// Add the service node used by the domain-to-service relationship.
-	graph.Nodes = append(graph.Nodes, Node{ID: "service:api.example.com:443:https", Type: NodeNetworkService, Value: "api.example.com:443 (https)"})
 
 	assertPivot := func(kind PivotKind, source string, want ...string) {
 		t.Helper()
