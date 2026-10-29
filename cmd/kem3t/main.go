@@ -564,5 +564,7 @@ func runCT(target, snapshotDir string) error {
 	for _, limitation := range report.Limitations {
 		fmt.Printf("- %s\n", limitation)
 	}
+	fmt.Printf("Evidence records added: %d\n", added)
+	printInfrastructureGraph(infrastructureGraph)
 	return nil
 }
