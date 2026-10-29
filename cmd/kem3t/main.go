@@ -72,7 +72,7 @@ func run() error {
 		if strings.TrimSpace(*target) == "" {
 			return fmt.Errorf("-target is required in TCP mode")
 		}
-		return runTCP(strings.TrimSpace(*target), *startPort, *endPort)
+		return runTCP(strings.TrimSpace(*target), *startPort, *endPort, *snapshotDir)
 	default:
 		return fmt.Errorf("unsupported mode %q", *mode)
 	}
@@ -112,7 +112,7 @@ func runDemo() error {
 	return nil
 }
 
-func runTCP(target string, startPort, endPort int) error {
+func runTCP(target string, startPort, endPort int, snapshotDir string) error {
 	result, err := pipeline.RunTCP(
 		context.Background(),
 		target,
