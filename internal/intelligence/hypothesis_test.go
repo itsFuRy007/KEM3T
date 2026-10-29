@@ -273,11 +273,11 @@ func TestHypothesisEngineRejectsMalformedCorrelationClaims(t *testing.T) {
 		},
 		{
 			name: "wrong confidence scope",
-			correlation: Correlation{ID: "scope", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.10", ConfidenceScope: "OBSERVED_SHARED_ADDRESS", EvidenceIDs: []string{"ev-a"}, ConfidenceScope: "OWNERSHIP_CONFIRMED"},
+			correlation: Correlation{ID: "scope", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.10", EvidenceIDs: []string{"ev-a"}, ConfidenceScope: "OWNERSHIP_CONFIRMED"},
 		},
 		{
 			name: "duplicate evidence IDs",
-			correlation: Correlation{ID: "dup", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.10", ConfidenceScope: "OBSERVED_SHARED_ADDRESS", EvidenceIDs: []string{"ev-a", " ev-a "}, ConfidenceScope: "OBSERVED_SHARED_ADDRESS"},
+			correlation: Correlation{ID: "dup", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.10", EvidenceIDs: []string{"ev-a", " ev-a "}, ConfidenceScope: "OBSERVED_SHARED_ADDRESS"},
 		},
 		{
 			name: "malformed TLS fingerprint",
@@ -298,7 +298,7 @@ func TestHypothesisEngineRejectsDuplicateCorrelationIDs(t *testing.T) {
 	correlation := Correlation{
 		ID: "same", Type: CorrelationSharedIPAddress,
 		Entities: []string{"a.example.com", "b.example.com"},
-		SharedValue: "192.0.2.10", ConfidenceScope: "OBSERVED_SHARED_ADDRESS", EvidenceIDs: []string{"ev-a"},
+		SharedValue: "192.0.2.10", EvidenceIDs: []string{"ev-a"},
 		ConfidenceScope: "OBSERVED_SHARED_ADDRESS",
 	}
 	_, err := (&HypothesisEngine{}).Generate([]Correlation{correlation, correlation})
