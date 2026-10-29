@@ -29,7 +29,7 @@ The goal is to move from isolated scan results toward a traceable picture of inf
 - **Evidence and provenance:** register and validate evidence, track collection runs and observations, and persist records.
 - **Normalized observations and service model:** convert DNS, TCP, TLS, and HTTP/HTTPS collector events into a shared representation while retaining source, event IDs, timestamps, attributes, and evidence references. Service aggregation combines observations for the same target and port without guessing an application from the port number alone.
 - **Infrastructure graph and investigation pivots:** represent observed domains, IPs, TCP ports, HTTP services, network services, and TLS certificates with evidence-backed relationships; traverse deterministic one-hop pivots and inspect relationship provenance without inventing facts.
-- **Initial intelligence workflow:** correlate observations, generate evidence-linked hypotheses with alternatives and verification steps, prioritize findings, and produce an intelligence report.
+- **Evidence-traceable intelligence workflow:** scope correlations to the requested target, normalize comparable DNS entities and addresses, retain evidence and observation references, and expose the exact scope of qualitative confidence. Generate hypotheses with explicit alternatives, limitations, and actionable verification steps; prioritize findings without treating a correlation as proof.
 - **CLI:** run demo, DNS, TCP, TLS, HTTP, and history modes.
 
 ### HTTP/HTTPS safety boundaries
@@ -184,7 +184,7 @@ The project is under active development. Checkboxes below distinguish implemente
 - [x] Hypothesis generation and alternative explanations
 - [x] Verification steps and rule-based prioritization
 - [x] Initial intelligence reports
-- [ ] Improve confidence calibration, traceability, and verification quality
+- [x] Scope reports to target-related correlations while retaining related entities as context\n- [x] Make confidence scope explicit and keep shared-IP hypotheses conservatively low-confidence\n- [x] Validate provenance links and expose supporting evidence/observation references in reports\n- [x] Improve verification guidance with explicit alternatives and limitations
 
 ### Phase 6 — External Intelligence
 - [ ] Certificate Transparency (CT)
