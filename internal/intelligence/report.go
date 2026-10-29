@@ -2,6 +2,8 @@ package intelligence
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"strings"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
@@ -32,7 +34,7 @@ func (e *ReportEngine) Build(
 	findings []Finding,
 	registry *evidence.Registry,
 ) (IntelligenceReport, error) {
-	target = normalizeCorrelationEntity(target)
+	target = normalizeFindingTarget(target)
 	if target == "" {
 		return IntelligenceReport{}, fmt.Errorf("report target is required")
 	}
@@ -65,13 +67,27 @@ func (e *ReportEngine) Build(
 		return IntelligenceReport{}, fmt.Errorf("generate hypotheses: %w", err)
 	}
 
-	prioritized, err := prioritizationEngine.Prioritize(findings)
+	scopedFindings := make([]Finding, 0, len(findings))
+	for i, finding := range findings {
+		if err := finding.Validate(); err != nil {
+			return IntelligenceReport{}, fmt.Errorf("finding %d is invalid: %w", i, err)
+		}
+		inScope, err := findingWithinTargetScope(finding, target)
+		if err != nil {
+			return IntelligenceReport{}, fmt.Errorf("scope finding %q: %w", finding.Title, err)
+		}
+		if inScope {
+			scopedFindings = append(scopedFindings, finding)
+		}
+	}
+
+	prioritized, err := prioritizationEngine.Prioritize(scopedFindings)
 	if err != nil {
 		return IntelligenceReport{}, fmt.Errorf("prioritize findings: %w", err)
 	}
 
 	// Normalize empty collections to JSON arrays rather than null.
-	reportFindings := append([]Finding{}, findings...)
+	reportFindings := append([]Finding{}, scopedFindings...)
 	reportCorrelations := append([]Correlation{}, correlations...)
 	reportHypotheses := append([]Hypothesis{}, hypotheses...)
 	reportPrioritized := append([]PrioritizedFinding{}, prioritized...)
@@ -83,4 +99,47 @@ func (e *ReportEngine) Build(
 		Hypotheses:          reportHypotheses,
 		PrioritizedFindings: reportPrioritized,
 	}, nil
+}
+
+
+// normalizeFindingTarget accepts hostnames, IP addresses, host:port values,
+// and URLs while keeping report scope anchored to the actual host.
+func normalizeFindingTarget(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if parsed, err := url.Parse(value); err == nil && parsed.Hostname() != "" {
+		value = parsed.Hostname()
+	} else if host, _, err := net.SplitHostPort(value); err == nil {
+		value = host
+	}
+	return normalizeCorrelationEntity(value)
+}
+
+// findingWithinTargetScope excludes unrelated findings and refuses to include a
+// mixed-scope aggregate whose summary may contain facts from outside the report.
+// A domain scope includes the exact hostname and its true subdomains, but not
+// lookalikes such as example.com.attacker.test.
+func findingWithinTargetScope(finding Finding, target string) (bool, error) {
+	if len(finding.Evidence) == 0 {
+		return false, fmt.Errorf("finding has no evidence")
+	}
+	inScope := 0
+	for _, event := range finding.Evidence {
+		eventTarget := normalizeFindingTarget(event.Target)
+		if eventTarget == "" {
+			return false, fmt.Errorf("evidence event %q has an empty target", event.ID)
+		}
+		if eventTarget == target || (net.ParseIP(target) == nil && strings.HasSuffix(eventTarget, "."+target)) {
+			inScope++
+		}
+	}
+	if inScope == 0 {
+		return false, nil
+	}
+	if inScope != len(finding.Evidence) {
+		return false, fmt.Errorf("finding contains evidence both inside and outside target %q; split the finding before reporting", target)
+	}
+	return true, nil
 }
