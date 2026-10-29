@@ -13,6 +13,7 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
+	"github.com/itsFuRy007/kem3t/internal/observations"
 )
 
 type HTTPResult struct {
@@ -21,6 +22,7 @@ type HTTPResult struct {
 	Observation      evidence.Observation
 	EvidenceRegistry *evidence.Registry
 	Graph            graph.Graph
+	Normalized       observations.Collection
 }
 
 // RunHTTP performs one bounded HTTP(S) observation and persists its evidence
@@ -99,6 +101,10 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 	}
 	if err := <-errCh; err != nil { return HTTPResult{}, err }
 	if result.Event == nil { return HTTPResult{}, fmt.Errorf("HTTP collector returned no response event") }
+	result.Normalized = observations.NormalizeEvents([]events.Event{*result.Event})
+	if len(result.Normalized.Rejected) > 0 {
+		return HTTPResult{}, fmt.Errorf("normalize HTTP event: %s", result.Normalized.Rejected[0].Reason)
+	}
 	builtGraph, err := graph.BuildFromRegistry(registry)
 	if err != nil { return HTTPResult{}, fmt.Errorf("build infrastructure graph: %w", err) }
 	result.Graph = builtGraph
