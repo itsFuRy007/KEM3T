@@ -67,6 +67,21 @@ type Anomaly struct {
 	ChangeCount int     `json:"change_count"`
 }
 
+func CollectorForEvidence(kind evidence.Type) string {
+	switch kind {
+	case evidence.TypeDNSAddress:
+		return "dns"
+	case evidence.TypeTCPPort:
+		return "tcp"
+	case evidence.TypeTLSCertificate:
+		return "tls"
+	case evidence.TypeHTTPService:
+		return "http"
+	default:
+		return "unknown"
+	}
+}
+
 func CollectorForRun(runID string) string {
 	prefix, _, ok := strings.Cut(strings.ToLower(strings.TrimSpace(runID)), "-")
 	if !ok { return "unknown" }
@@ -94,7 +109,7 @@ func BuildSnapshot(run evidence.CollectionRun, records []evidence.Evidence, obse
 	for _, observation := range observations {
 		if observation.ObservedAt.Before(run.StartedAt) || observation.ObservedAt.After(run.FinishedAt) { continue }
 		item, ok := evidenceByID[observation.EvidenceID]
-		if !ok || NormalizeTarget(item.EntityID) != target { continue }
+		if !ok || NormalizeTarget(item.EntityID) != target || CollectorForEvidence(item.Type) != collector { continue }
 		key, err := recordKey(item)
 		if err != nil { return Snapshot{}, fmt.Errorf("build history key for evidence %q: %w", item.ID, err) }
 		record, exists := byKey[key]
