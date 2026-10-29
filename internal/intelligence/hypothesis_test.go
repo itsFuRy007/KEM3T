@@ -259,3 +259,49 @@ func TestHypothesisEngineGeneratesSharedTLSCertificateHypothesis(t *testing.T) {
 		t.Fatalf("expected independent verification guidance, got %#v", got.Verification)
 	}
 }
+
+
+func TestHypothesisEngineRejectsMalformedCorrelationClaims(t *testing.T) {
+	cases := []struct {
+		name string
+		correlation Correlation
+	}{
+		{
+			name: "non canonical shared IP",
+			correlation: Correlation{ID: "ip", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.010", EvidenceIDs: []string{"ev-a"}, ConfidenceScope: "OBSERVED_SHARED_ADDRESS"},
+		},
+		{
+			name: "wrong confidence scope",
+			correlation: Correlation{ID: "scope", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.10", EvidenceIDs: []string{"ev-a"}, ConfidenceScope: "OWNERSHIP_CONFIRMED"},
+		},
+		{
+			name: "duplicate evidence IDs",
+			correlation: Correlation{ID: "dup", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.10", EvidenceIDs: []string{"ev-a", " ev-a "}, ConfidenceScope: "OBSERVED_SHARED_ADDRESS"},
+		},
+		{
+			name: "malformed TLS fingerprint",
+			correlation: Correlation{ID: "tls", Type: CorrelationSharedTLSCertificateFingerprint, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "not-a-fingerprint", EvidenceIDs: []string{"tls-a"}, ConfidenceScope: "OBSERVED_SHARED_CERTIFICATE_FINGERPRINT"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := (&HypothesisEngine{}).Generate([]Correlation{tc.correlation})
+			if err == nil {
+				t.Fatal("expected malformed correlation to be rejected")
+			}
+		})
+	}
+}
+
+func TestHypothesisEngineRejectsDuplicateCorrelationIDs(t *testing.T) {
+	correlation := Correlation{
+		ID: "same", Type: CorrelationSharedIPAddress,
+		Entities: []string{"a.example.com", "b.example.com"},
+		SharedValue: "192.0.2.10", EvidenceIDs: []string{"ev-a"},
+		ConfidenceScope: "OBSERVED_SHARED_ADDRESS",
+	}
+	_, err := (&HypothesisEngine{}).Generate([]Correlation{correlation, correlation})
+	if err == nil {
+		t.Fatal("expected duplicate correlation IDs to be rejected")
+	}
+}
