@@ -145,6 +145,16 @@ func (e *CorrelationEngine) correlateEvidence(
 		})
 	}
 
+	for _, observation := range observations {
+		if _, exists := seenEvidence[observation.EvidenceID]; !exists {
+			return nil, fmt.Errorf(
+				"observation %q references missing evidence %q",
+				observation.ID,
+				observation.EvidenceID,
+			)
+		}
+	}
+
 	results := make([]Correlation, 0)
 	for address, items := range byAddress {
 		entitiesSet := make(map[string]struct{})
