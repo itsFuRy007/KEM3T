@@ -727,6 +727,15 @@ func runBatchDNS(targetsFile, snapshotDir string, workers int) error {
 		fmt.Printf("[OK] %s | unique addresses=%d | changes=%d | %s\n", result.Target, result.AddressCount, result.ChangeCount, state)
 	}
 	fmt.Printf("Completed: %d | Failed: %d\n", len(results)-failures, failures)
+	report := batch.BuildDNSBatchReport(results, time.Now().UTC())
+	for _, shared := range report.SharedAddresses {
+		targets := make([]string, 0, len(shared.Observations))
+		for _, observation := range shared.Observations {
+			targets = append(targets, observation.Target)
+		}
+		fmt.Printf("[SHARED DNS ADDRESS] %s | targets=%s | investigate as a lead, not proof of common ownership\n", shared.Address, strings.Join(targets, ", "))
+	}
+	fmt.Printf("Batch report: %s\n", filepath.Join(snapshotDir, "batch-dns", "report.json"))
 	if failures > 0 {
 		return fmt.Errorf("%d of %d target investigations failed; successful results were preserved", failures, len(results))
 	}
