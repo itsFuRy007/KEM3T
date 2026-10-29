@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS observations (
 );
 CREATE INDEX IF NOT EXISTS idx_observations_evidence_time
 ON observations(evidence_id, observed_at, id);
+-- Supports LoadAll's chronological observation scan without a temporary sort.
+CREATE INDEX IF NOT EXISTS idx_observations_time_id
+ON observations(observed_at, id);
 
 CREATE TABLE IF NOT EXISTS collection_runs (
     id TEXT PRIMARY KEY,
