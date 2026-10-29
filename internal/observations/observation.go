@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/itsFuRy007/kem3t/internal/events"
+	"github.com/itsFuRy007/kem3t/internal/evidence"
 )
 
 // Kind identifies the normalized observation category independently of the
@@ -34,6 +35,7 @@ type Observation struct {
 	Source     string            `json:"source"`
 	ObservedAt time.Time         `json:"observed_at"`
 	Attributes map[string]string `json:"attributes,omitempty"`
+	EvidenceIDs []string `json:"evidence_ids,omitempty"`
 }
 
 // Normalize converts supported collector events to a stable shared shape.
@@ -115,4 +117,37 @@ func parsePort(raw string) (int, error) {
 		return 0, fmt.Errorf("port must be between 1 and 65535")
 	}
 	return port, nil
+}
+
+
+// AttachEvidence links normalized observations to the existing evidence
+// provenance records by their original collector event IDs, then rebuilds
+// service aggregates so every service carries its evidence references.
+func AttachEvidence(collection *Collection, links []evidence.Observation) {
+	if collection == nil {
+		return
+	}
+	evidenceByEvent := make(map[string][]string)
+	for _, link := range links {
+		for _, eventID := range link.EventIDs {
+			evidenceByEvent[strings.TrimSpace(eventID)] = appendUniqueID(evidenceByEvent[strings.TrimSpace(eventID)], link.EvidenceID)
+		}
+	}
+	for i := range collection.Observations {
+		observation := &collection.Observations[i]
+		for _, id := range evidenceByEvent[observation.EventID] {
+			observation.EvidenceIDs = appendUniqueID(observation.EvidenceIDs, id)
+		}
+		sort.Strings(observation.EvidenceIDs)
+	}
+	collection.Services = BuildServices(collection.Observations)
+}
+
+func appendUniqueID(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
