@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/observations"
 )
 
 type NodeType string
@@ -19,6 +20,7 @@ const (
 	NodeTLSCertificate NodeType = "TLS_CERTIFICATE"
 	NodeTCPPort        NodeType = "TCP_PORT"
 	NodeHTTPService    NodeType = "HTTP_SERVICE"
+	NodeNetworkService NodeType = "NETWORK_SERVICE"
 )
 
 type EdgeType string
@@ -28,6 +30,7 @@ const (
 	EdgePresentsCertificate EdgeType = "PRESENTS_CERTIFICATE"
 	EdgeHasOpenPort         EdgeType = "HAS_OPEN_PORT"
 	EdgeServesHTTP          EdgeType = "SERVES_HTTP"
+	EdgeHostsService         EdgeType = "HOSTS_SERVICE"
 )
 
 type Node struct {
@@ -289,6 +292,10 @@ func (g Graph) Validate() error {
 			if ip == nil || ip.String() != node.Value || node.ID != "ip:"+node.Value {
 				return fmt.Errorf("IP node %q is not normalized", node.ID)
 			}
+		case NodeNetworkService:
+			if !strings.HasPrefix(node.ID, "service:") || strings.TrimSpace(node.Value) == "" {
+				return fmt.Errorf("network service node %q has an invalid identity", node.ID)
+			}
 		case NodeHTTPService:
 			if !strings.HasPrefix(node.ID, "http-service:") || !strings.Contains(node.Value, "://") {
 				return fmt.Errorf("HTTP service node %q has an invalid identity", node.ID)
@@ -372,6 +379,16 @@ func (g Graph) Validate() error {
 			if edge.ID != expectedID || target.Value != fmt.Sprintf("%s://%s:%d", scheme, source.Value, edge.Port) {
 				return fmt.Errorf("edge %q has an invalid HTTP identity", edge.ID)
 			}
+		case EdgeHostsService:
+			if (source.Type != NodeDomain && source.Type != NodeIP) || target.Type != NodeNetworkService {
+				return fmt.Errorf("edge %q has invalid service endpoints", edge.ID)
+			}
+			if edge.Port < 1 || edge.Port > 65535 {
+				return fmt.Errorf("edge %q has an invalid service port", edge.ID)
+			}
+			if edge.ID != fmt.Sprintf("hosts-service:%s:%d:%s", source.Value, edge.Port, strings.TrimPrefix(target.ID, "service:")) || target.ID != fmt.Sprintf("service:%s:%d:%s", source.Value, edge.Port, strings.TrimPrefix(target.ID, fmt.Sprintf("service:%s:%d:", source.Value, edge.Port))) {
+				return fmt.Errorf("edge %q has an invalid service identity", edge.ID)
+			}
 		case EdgePresentsCertificate:
 			if (source.Type != NodeDomain && source.Type != NodeIP) || target.Type != NodeTLSCertificate {
 				return fmt.Errorf("edge %q has invalid TLS endpoints", edge.ID)
@@ -423,4 +440,74 @@ func isSortedUnique(values []string) bool {
 		}
 	}
 	return true
+}
+
+
+// AttachServices adds normalized service nodes and host-to-service relationships
+// to an existing infrastructure graph. Services without evidence references
+// are skipped because graph relationships must remain evidence-backed.
+func AttachServices(g Graph, services []observations.Service) (Graph, error) {
+	nodes := make(map[string]Node, len(g.Nodes))
+	edges := make(map[string]Edge, len(g.Edges))
+	for _, node := range g.Nodes {
+		nodes[node.ID] = node
+	}
+	for _, edge := range g.Edges {
+		edges[edge.ID] = edge
+	}
+	for _, service := range services {
+		target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(service.Target)), ".")
+		if target == "" || service.Port < 1 || service.Port > 65535 || len(service.EvidenceIDs) == 0 {
+			continue
+		}
+		var host Node
+		if ip := net.ParseIP(target); ip != nil {
+			host = Node{ID: "ip:" + ip.String(), Type: NodeIP, Value: ip.String()}
+		} else {
+			if !evidence.IsValidDomain(target) {
+				return Graph{}, fmt.Errorf("service %q has invalid target %q", service.ID, target)
+			}
+			host = Node{ID: "domain:" + target, Type: NodeDomain, Value: target}
+		}
+		serviceID := fmt.Sprintf("service:%s:%d:%s", target, service.Port, service.Application)
+		if service.Application == "" {
+			serviceID = fmt.Sprintf("service:%s:%d:unknown", target, service.Port)
+		}
+		serviceNode := Node{ID: serviceID, Type: NodeNetworkService, Value: fmt.Sprintf("%s:%d (%s)", target, service.Port, service.Application)}
+		if service.Application == "" {
+			serviceNode.Value = fmt.Sprintf("%s:%d (unknown application)", target, service.Port)
+		}
+		nodes[host.ID] = host
+		nodes[serviceNode.ID] = serviceNode
+		edgeID := fmt.Sprintf("hosts-service:%s:%d:%s", target, service.Port, strings.TrimPrefix(serviceID, fmt.Sprintf("service:%s:%d:", target, service.Port)))
+		edge := edges[edgeID]
+		edge.ID, edge.Type, edge.Source, edge.Target, edge.Port = edgeID, EdgeHostsService, host.ID, serviceNode.ID, service.Port
+		edge.EvidenceIDs = appendUnique(edge.EvidenceIDs, service.EvidenceIDs...)
+		sort.Strings(edge.EvidenceIDs)
+		edge.EvidenceIDs = uniqueStrings(edge.EvidenceIDs)
+		edges[edgeID] = edge
+	}
+	result := Graph{Nodes: make([]Node, 0, len(nodes)), Edges: make([]Edge, 0, len(edges))}
+	for _, node := range nodes {
+		result.Nodes = append(result.Nodes, node)
+	}
+	for _, edge := range edges {
+		result.Edges = append(result.Edges, edge)
+	}
+	sort.Slice(result.Nodes, func(i, j int) bool { return result.Nodes[i].ID < result.Nodes[j].ID })
+	sort.Slice(result.Edges, func(i, j int) bool { return result.Edges[i].ID < result.Edges[j].ID })
+	if err := result.Validate(); err != nil {
+		return Graph{}, fmt.Errorf("validate graph with services: %w", err)
+	}
+	return result, nil
+}
+
+func uniqueStrings(values []string) []string {
+	out := values[:0]
+	for _, value := range values {
+		if len(out) == 0 || out[len(out)-1] != value {
+			out = append(out, value)
+		}
+	}
+	return out
 }
