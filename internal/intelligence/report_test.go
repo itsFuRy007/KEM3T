@@ -127,7 +127,7 @@ func TestReportEngineBuildsCorrelationsAndHypotheses(t *testing.T) {
 	}
 
 	engine := &ReportEngine{}
-	report, err := engine.Build("example.com", nil, registry)
+	report, err := engine.Build("a.example.com", nil, registry)
 	if err != nil {
 		t.Fatalf("Build returned error: %v", err)
 	}
@@ -139,6 +139,9 @@ func TestReportEngineBuildsCorrelationsAndHypotheses(t *testing.T) {
 	correlation := report.Correlations[0]
 	if correlation.Type != CorrelationSharedIPAddress {
 		t.Fatalf("unexpected correlation type: %q", correlation.Type)
+	}
+	if correlation.ConfidenceScope != "OBSERVED_SHARED_ADDRESS" {
+		t.Fatalf("unexpected confidence scope: %q", correlation.ConfidenceScope)
 	}
 	if correlation.SharedValue != "192.0.2.50" {
 		t.Fatalf("unexpected shared IP: %q", correlation.SharedValue)
@@ -176,5 +179,40 @@ func TestReportEngineBuildsCorrelationsAndHypotheses(t *testing.T) {
 
 	if len(report.PrioritizedFindings) != 0 {
 		t.Fatalf("expected no prioritized findings, got %d", len(report.PrioritizedFindings))
+	}
+}
+
+func TestReportEngineExcludesCorrelationsUnrelatedToTarget(t *testing.T) {
+	registry := evidence.NewRegistry()
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close evidence registry: %v", err)
+		}
+	})
+
+	records := []evidence.Evidence{
+		{ID: "dns-a", EntityID: "a.example.com", Type: evidence.TypeDNSAddress, Value: "192.0.2.10"},
+		{ID: "dns-b", EntityID: "b.example.com", Type: evidence.TypeDNSAddress, Value: "192.0.2.10"},
+		{ID: "dns-c", EntityID: "c.example.net", Type: evidence.TypeDNSAddress, Value: "192.0.2.20"},
+		{ID: "dns-d", EntityID: "d.example.net", Type: evidence.TypeDNSAddress, Value: "192.0.2.20"},
+	}
+	for _, record := range records {
+		if err := registry.AddEvidence(record); err != nil {
+			t.Fatalf("AddEvidence(%q): %v", record.ID, err)
+		}
+	}
+
+	report, err := (&ReportEngine{}).Build("A.EXAMPLE.COM.", nil, registry)
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if len(report.Correlations) != 1 {
+		t.Fatalf("expected only target-related correlation, got %d", len(report.Correlations))
+	}
+	if report.Correlations[0].SharedValue != "192.0.2.10" {
+		t.Fatalf("unexpected unrelated correlation returned: %q", report.Correlations[0].SharedValue)
+	}
+	if report.Target != "a.example.com" {
+		t.Fatalf("expected normalized report target, got %q", report.Target)
 	}
 }
