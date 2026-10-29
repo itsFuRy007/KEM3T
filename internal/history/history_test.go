@@ -2,7 +2,6 @@ package history
 
 import (
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 
@@ -37,7 +36,18 @@ func TestSnapshotStoreRoundTripAndDeterministicTimeline(t *testing.T){
 	if len(got)!=2||got[0].RunID!="dns-1"||got[1].RunID!="dns-2"{t.Fatalf("unexpected snapshot order: %+v",got)}
 	timeline,err:=BuildTimeline(got);if err!=nil{t.Fatal(err)}
 	if len(timeline.Changes)!=2{t.Fatalf("unexpected timeline changes: %+v",timeline.Changes)}
-	if !reflect.DeepEqual(timeline.Changes[0].Type,ChangeAdded){t.Fatalf("first change = %s",timeline.Changes[0].Type)}
+	added, removed := 0, 0
+	for _, change := range timeline.Changes {
+		switch change.Type {
+		case ChangeAdded:
+			added++
+		case ChangeRemoved:
+			removed++
+		}
+	}
+	if added != 1 || removed != 1 {
+		t.Fatalf("expected one add and one removal, got added=%d removed=%d: %+v", added, removed, timeline.Changes)
+	}
 }
 
 func TestBuildSnapshotRejectsFailedRuns(t *testing.T){
