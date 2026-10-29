@@ -56,7 +56,12 @@ func run() error {
 		return err
 	}
 
-	switch strings.ToLower(strings.TrimSpace(*mode)) {
+	selectedMode := strings.ToLower(strings.TrimSpace(*mode))
+	if strings.TrimSpace(*exportJSON) != "" && selectedMode != "dns" {
+		return fmt.Errorf("-export-json is supported only in DNS mode")
+	}
+
+	switch selectedMode {
 	case "history":
 		return runHistory(*target, *snapshotDir)
 	case "batch-dns":
@@ -109,9 +114,6 @@ func run() error {
 		}
 		return runTCP(strings.TrimSpace(*target), *startPort, *endPort, *snapshotDir)
 	default:
-		if strings.TrimSpace(*exportJSON) != "" {
-			return fmt.Errorf("-export-json is supported only in DNS mode")
-		}
 		return fmt.Errorf("unsupported mode %q", *mode)
 	}
 }
