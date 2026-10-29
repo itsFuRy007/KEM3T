@@ -15,6 +15,7 @@ func TestEntityAndRelationshipLookupExposeExistingGraphModel(t *testing.T) {
 				Source:      "domain:example.com",
 				Target:      "ip:192.0.2.10",
 				EvidenceIDs: []string{"dns-2", "dns-9"},
+				ObservationIDs: []string{"obs-1", "obs-2"},
 			},
 		},
 	}
@@ -34,12 +35,13 @@ func TestEntityAndRelationshipLookupExposeExistingGraphModel(t *testing.T) {
 	if edge.Type != EdgeResolvesTo || edge.Target != "ip:192.0.2.10" {
 		t.Fatalf("unexpected relationship: %+v", edge)
 	}
-	if len(edge.EvidenceIDs) != 2 {
-		t.Fatalf("unexpected evidence references: %+v", edge.EvidenceIDs)
+	if len(edge.EvidenceIDs) != 2 || len(edge.ObservationIDs) != 2 {
+		t.Fatalf("unexpected relationship references: evidence=%+v observations=%+v", edge.EvidenceIDs, edge.ObservationIDs)
 	}
 	edge.EvidenceIDs[0] = "mutated"
-	if graph.Edges[0].EvidenceIDs[0] != "dns-2" {
-		t.Fatal("Relationship() result aliases graph-owned evidence references")
+	edge.ObservationIDs[0] = "mutated"
+	if graph.Edges[0].EvidenceIDs[0] != "dns-2" || graph.Edges[0].ObservationIDs[0] != "obs-1" {
+		t.Fatal("Relationship() result aliases graph-owned provenance references")
 	}
 }
 
