@@ -115,6 +115,7 @@ DNS snapshots and the evidence database use .kem3t/snapshots by default. Overrid
 - cmd/kem3t/ — CLI entry point
 - internal/collectors/ — demo, DNS, TCP, TLS, and HTTP collectors
 - internal/events/ — collection events
+- internal/observations/ — normalized collector observations and conservative service model
 - internal/evidence/ — evidence validation and persistence
 - internal/graph/ — infrastructure graph entities and relationships
 - internal/changes/ — change detection
@@ -154,11 +155,11 @@ The project is under active development. Checkboxes below distinguish implemente
 - [x] TCP port discovery
 - [x] TLS certificate inspection
 - [x] Initial bounded HTTP/HTTPS service observation
-- [ ] **Step 1:** Normalize the result shapes from DNS, TCP, TLS, and HTTP/HTTPS
-- [ ] **Step 2:** Define a unified discovered-service model covering target, port, protocol, evidence, and information source
-- [ ] **Step 3:** Build service identification from observed behavior and evidence, not port numbers alone
-- [ ] **Step 4:** Connect identified service results to the Infrastructure Graph
-- [ ] **Step 5:** Add integration tests validating the Collector → Evidence → Graph flow
+- [x] **Step 1 (foundation):** Add a shared normalized observation shape for DNS, TCP, TLS, and HTTP/HTTPS events
+- [x] **Step 2 (foundation):** Add a unified discovered-service model with target, port, transport, evidence references, source, timestamp, and observed indicators
+- [ ] **Step 3:** Integrate service identification into collection pipelines using observed behavior and evidence, not port numbers alone
+- [ ] **Step 4:** Connect unified service records to the Infrastructure Graph
+- [ ] **Step 5:** Add end-to-end integration tests for Collector → normalized observation → Evidence → Graph
 - [ ] Expand DNS/TLS coverage and cross-collector normalization beyond the initial shared model
 
 ### Phase 3 — Infrastructure Graph
