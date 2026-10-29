@@ -22,7 +22,7 @@ The goal is to move from isolated scan results toward a traceable picture of inf
 
 ## Implemented capabilities
 
-- **DNS collection and history:** collect DNS observations, save snapshots, and compare subsequent results for address changes.
+- **Historical infrastructure analysis:** persist evidence-backed snapshots for completed DNS, TCP, TLS, and HTTP collection runs; compare like-for-like runs, build a chronological timeline, and flag high-change-volume runs for review.
 - **TCP discovery:** check a configurable port range and feed open-port observations into evidence and graph output.
 - **TLS inspection:** collect certificate and connection metadata, including subject, issuer, TLS version, verification status, and SHA-256 fingerprint.
 - **HTTP/HTTPS observation:** collect response status, final URL, redirect count, selected headers, page title, body-truncation state, and available TLS verification metadata.
@@ -109,7 +109,7 @@ go run ./cmd/kem3t -mode history
 go run ./cmd/kem3t -mode history -target example.com
 ~~~
 
-DNS snapshots and the evidence database use .kem3t/snapshots by default. Override the directory with -snapshot-dir <directory>. Run go run ./cmd/kem3t -h for all flags.
+DNS snapshots, generalized run snapshots, and the evidence database use .kem3t/snapshots by default. Generalized snapshots are stored under .kem3t/snapshots/history and are captured after successful collection; history mode also reconstructs snapshots for older completed runs. Override the root directory with -snapshot-dir <directory>. Run go run ./cmd/kem3t -h for all flags.
 
 ## Project structure
 
@@ -119,8 +119,9 @@ DNS snapshots and the evidence database use .kem3t/snapshots by default. Overrid
 - internal/observations/ — normalized collector observations and conservative service model
 - internal/evidence/ — evidence validation and persistence
 - internal/graph/ — infrastructure graph entities and relationships
-- internal/changes/ — change detection
+- internal/changes/ — DNS-specific change detection
 - internal/snapshots/ — DNS snapshot handling
+- internal/history/ — generalized run snapshots, cross-run comparisons, timelines, and anomaly review signals
 - internal/pipeline/ — collection and analysis orchestration
 - internal/intelligence/ — correlation, hypotheses, prioritization, and reports
 - internal/integration/ — integration tests
@@ -173,8 +174,10 @@ The project is under active development. Checkboxes below distinguish implemente
 ### Phase 4 — History
 - [x] DNS snapshots and change comparison
 - [x] Collection-run history
-- [ ] Generalize snapshots and change tracking across collection types
-- [ ] Timeline views and anomaly detection
+- [x] Generalize evidence-backed snapshots and change tracking across DNS, TCP, TLS, and HTTP runs
+- [x] Persist snapshots safely and deterministically for completed collection runs
+- [x] Build chronological timelines with added/removed/updated changes and evidence provenance
+- [x] Detect high-change-volume review signals without presenting heuristics as proof
 
 ### Phase 5 — Intelligence
 - [x] Initial correlation rules
