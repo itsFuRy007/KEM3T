@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -36,6 +37,7 @@ func run() error {
 	flags.SetOutput(os.Stderr)
 
 	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, batch-dns, ct, rdap, iprdap, asn, pdns, or threat")
+	exportJSON := flags.String("export-json", "", "Write the target-scoped DNS intelligence report as versioned JSON (DNS mode only)")
 	target := flags.String("target", "", "Target hostname or IP address")
 	targetsFile := flags.String("targets-file", "", "File with one hostname/IP per line (batch-dns mode)")
 	workers := flags.Int("workers", 4, "Maximum concurrent targets for batch-dns mode")
@@ -90,7 +92,7 @@ func run() error {
 		if strings.TrimSpace(*target) == "" {
 			return fmt.Errorf("-target is required in DNS mode")
 		}
-		return runDNS(strings.TrimSpace(*target), *snapshotDir)
+		return runDNS(strings.TrimSpace(*target), *snapshotDir, *exportJSON)
 	case "tls":
 		if strings.TrimSpace(*target) == "" {
 			return fmt.Errorf("-target is required in TLS mode")
@@ -107,6 +109,9 @@ func run() error {
 		}
 		return runTCP(strings.TrimSpace(*target), *startPort, *endPort, *snapshotDir)
 	default:
+		if strings.TrimSpace(*exportJSON) != "" {
+			return fmt.Errorf("-export-json is supported only in DNS mode")
+		}
 		return fmt.Errorf("unsupported mode %q", *mode)
 	}
 }
@@ -215,7 +220,7 @@ func runHTTP(target, scheme string, port int, snapshotDir string) error {
 	return nil
 }
 
-func runDNS(target, snapshotDir string) error {
+func runDNS(target, snapshotDir, exportJSON string) error {
 	result, err := pipeline.RunDNS(
 		context.Background(),
 		target,
@@ -230,6 +235,12 @@ func runDNS(target, snapshotDir string) error {
 	}
 
 	printIntelligenceReport(result.Report)
+	if strings.TrimSpace(exportJSON) != "" {
+		if err := writeInvestigationExport(exportJSON, result.Report); err != nil {
+			return fmt.Errorf("write investigation export: %w", err)
+		}
+		fmt.Printf("[INVESTIGATION EXPORT] %s\\n", exportJSON)
+	}
 	printInfrastructureGraph(result.Graph)
 
 	if result.BaselineCreated {
@@ -276,6 +287,51 @@ func runDNS(target, snapshotDir string) error {
 		storePath(snapshotDir, result.CurrentSnapshot.Target),
 	)
 
+	return nil
+}
+
+
+func writeInvestigationExport(path string, report intelligence.IntelligenceReport) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("export path is required")
+	}
+	export := intelligence.NewInvestigationExport(report.Target, &report)
+	data, err := json.MarshalIndent(export, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode scoped report: %w", err)
+	}
+	data = append(data, '\n')
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return fmt.Errorf("create export directory: %w", err)
+	}
+	file, err := os.CreateTemp(dir, ".kem3t-export-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary export: %w", err)
+	}
+	tempPath := file.Name()
+	defer os.Remove(tempPath)
+
+	if err := file.Chmod(0600); err != nil {
+		file.Close()
+		return fmt.Errorf("restrict export permissions: %w", err)
+	}
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		return fmt.Errorf("write export data: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		file.Close()
+		return fmt.Errorf("sync export data: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close export data: %w", err)
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		return fmt.Errorf("atomically replace export: %w", err)
+	}
 	return nil
 }
 
