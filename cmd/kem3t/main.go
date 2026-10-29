@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/itsFuRy007/kem3t/internal/batch"
 	"github.com/itsFuRy007/kem3t/internal/collectors"
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
@@ -34,8 +35,10 @@ func run() error {
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 
-	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, ct, rdap, iprdap, asn, pdns, or threat")
+	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, batch-dns, ct, rdap, iprdap, asn, pdns, or threat")
 	target := flags.String("target", "", "Target hostname or IP address")
+	targetsFile := flags.String("targets-file", "", "File with one hostname/IP per line (batch-dns mode)")
+	workers := flags.Int("workers", 4, "Maximum concurrent targets for batch-dns mode")
 	port := flags.Int("port", 443, "TCP port for TLS mode")
 	httpScheme := flags.String("http-scheme", "auto", "HTTP scheme: auto, http, or https")
 	httpPort := flags.Int("http-port", 0, "HTTP port override (0 uses scheme defaults)")
@@ -54,6 +57,11 @@ func run() error {
 	switch strings.ToLower(strings.TrimSpace(*mode)) {
 	case "history":
 		return runHistory(*target, *snapshotDir)
+	case "batch-dns":
+		if strings.TrimSpace(*targetsFile) == "" {
+			return fmt.Errorf("-targets-file is required in batch-dns mode")
+		}
+		return runBatchDNS(*targetsFile, *snapshotDir, *workers)
 	case "ct":
 		if strings.TrimSpace(*target) == "" {
 			return fmt.Errorf("-target is required in CT mode")
@@ -692,4 +700,35 @@ func runIPRDAP(target,snapshotDir string)error{
  fmt.Printf("New observation: %t\n",added)
  printInfrastructureGraph(infrastructureGraph)
  return nil
+}
+
+
+func runBatchDNS(targetsFile, snapshotDir string, workers int) error {
+	targets, err := batch.ReadTargetsFile(targetsFile)
+	if err != nil {
+		return err
+	}
+	results, err := batch.RunDNS(context.Background(), targets, workers, snapshotDir)
+	if err != nil {
+		return err
+	}
+	failures := 0
+	fmt.Printf("[BATCH DNS INVESTIGATION] targets=%d workers=%d\n", len(results), workers)
+	for _, result := range results {
+		if result.Err != nil {
+			failures++
+			fmt.Printf("[FAILED] %s: %v\n", result.Target, result.Err)
+			continue
+		}
+		state := "updated"
+		if result.BaselineCreated {
+			state = "baseline created"
+		}
+		fmt.Printf("[OK] %s | unique addresses=%d | changes=%d | %s\n", result.Target, result.AddressCount, result.ChangeCount, state)
+	}
+	fmt.Printf("Completed: %d | Failed: %d\n", len(results)-failures, failures)
+	if failures > 0 {
+		return fmt.Errorf("%d of %d target investigations failed; successful results were preserved", failures, len(results))
+	}
+	return nil
 }
