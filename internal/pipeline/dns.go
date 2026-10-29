@@ -42,19 +42,32 @@ func RunDNS(
 	target string,
 	snapshotDir string,
 ) (DNSResult, error) {
-	return runDNSWithCollector(
-		ctx,
-		target,
-		snapshotDir,
-		&collectors.DNS{Target: target},
-	)
+	return RunDNSWithPlanFeedback(ctx, target, snapshotDir, nil, nil)
 }
 
-func runDNSWithCollector(
+// RunDNSWithPlanFeedback runs DNS collection and adapts the resulting plan using
+// investigator feedback from the previous plan revision.
+func RunDNSWithPlanFeedback(
+	ctx context.Context,
+	target string,
+	snapshotDir string,
+	previousPlan *intelligence.InvestigationPlan,
+	feedback []intelligence.InvestigationFeedback,
+) (DNSResult, error) {
+	return runDNSWithCollectorAndPlan(ctx, target, snapshotDir, &collectors.DNS{Target: target}, previousPlan, feedback)
+}
+
+func runDNSWithCollector(ctx context.Context, target string, snapshotDir string, collector eventCollector) (DNSResult, error) {
+	return runDNSWithCollectorAndPlan(ctx, target, snapshotDir, collector, nil, nil)
+}
+
+func runDNSWithCollectorAndPlan(
 	ctx context.Context,
 	target string,
 	snapshotDir string,
 	collector eventCollector,
+	previousPlan *intelligence.InvestigationPlan,
+	feedback []intelligence.InvestigationFeedback,
 ) (result DNSResult, retErr error) {
 	if ctx == nil {
 		return DNSResult{}, fmt.Errorf("context is required")
@@ -209,7 +222,7 @@ func runDNSWithCollector(
 	}
 
 	reportEngine := &intelligence.ReportEngine{}
-	report, err := reportEngine.Build(target, findings, registry)
+	report, err := reportEngine.BuildWithInvestigationFeedback(target, findings, registry, nil, previousPlan, feedback)
 	if err != nil {
 		return DNSResult{}, fmt.Errorf("build intelligence report: %w", err)
 	}

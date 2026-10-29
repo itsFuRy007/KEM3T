@@ -522,3 +522,34 @@ func TestRunDNSBuildsGraphFromEvidence(t *testing.T) {
 		}
 	}
 }
+
+func TestRunDNSAdaptsPlanFromInvestigatorFeedback(t *testing.T) {
+	dir := t.TempDir()
+	first, err := runDNSWithCollectorAndPlan(
+		context.Background(), "example.com", dir,
+		&fakeCollector{events: dnsEvents("192.0.2.10", "192.0.2.11")}, nil, nil,
+	)
+	if err != nil { t.Fatalf("first run: %v", err) }
+	if len(first.Report.InvestigationPlan.Items) == 0 { t.Fatal("expected an initial investigation plan") }
+	previous := first.Report.InvestigationPlan
+	item := previous.Items[0]
+	if err := first.EvidenceRegistry.Close(); err != nil { t.Fatal(err) }
+
+	second, err := runDNSWithCollectorAndPlan(
+		context.Background(), "example.com", dir,
+		&fakeCollector{events: dnsEvents("192.0.2.10", "192.0.2.11")},
+		&previous,
+		[]intelligence.InvestigationFeedback{{ItemID: item.ID, Outcome: intelligence.FeedbackCompleted, EvidenceIDs: []string{"investigator-evidence-1"}}},
+	)
+	if err != nil { t.Fatalf("second run: %v", err) }
+	defer second.EvidenceRegistry.Close()
+	found := false
+	for _, task := range second.Report.InvestigationPlan.Items {
+		if task.ID == item.ID {
+			found = true
+			if task.Status != intelligence.TaskCompleted { t.Fatalf("task status = %s, want completed", task.Status) }
+			if len(task.EvidenceIDs) != 1 || task.EvidenceIDs[0] != "investigator-evidence-1" { t.Fatalf("feedback evidence not retained: %#v", task.EvidenceIDs) }
+		}
+	}
+	if !found { t.Fatal("previous task history was not retained in the next plan") }
+}

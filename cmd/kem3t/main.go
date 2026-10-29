@@ -38,6 +38,7 @@ func run() error {
 
 	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, batch-dns, ct, rdap, iprdap, asn, pdns, or threat")
 	exportJSON := flags.String("export-json", "", "Write the target-scoped DNS intelligence report as versioned JSON (DNS mode only)")
+	planStatePath := flags.String("plan-state", "", "Load and update adaptive investigation feedback state (DNS mode only)")
 	target := flags.String("target", "", "Target hostname or IP address")
 	targetsFile := flags.String("targets-file", "", "File with one hostname/IP per line (batch-dns mode)")
 	workers := flags.Int("workers", 4, "Maximum concurrent targets for batch-dns mode")
@@ -59,6 +60,9 @@ func run() error {
 	selectedMode := strings.ToLower(strings.TrimSpace(*mode))
 	if strings.TrimSpace(*exportJSON) != "" && selectedMode != "dns" {
 		return fmt.Errorf("-export-json is supported only in DNS mode")
+	}
+	if strings.TrimSpace(*planStatePath) != "" && selectedMode != "dns" {
+		return fmt.Errorf("-plan-state is supported only in DNS mode")
 	}
 
 	switch selectedMode {
@@ -97,7 +101,7 @@ func run() error {
 		if strings.TrimSpace(*target) == "" {
 			return fmt.Errorf("-target is required in DNS mode")
 		}
-		return runDNS(strings.TrimSpace(*target), *snapshotDir, *exportJSON)
+		return runDNSWithPlanState(strings.TrimSpace(*target), *snapshotDir, *exportJSON, *planStatePath)
 	case "tls":
 		if strings.TrimSpace(*target) == "" {
 			return fmt.Errorf("-target is required in TLS mode")
@@ -223,10 +227,30 @@ func runHTTP(target, scheme string, port int, snapshotDir string) error {
 }
 
 func runDNS(target, snapshotDir, exportJSON string) error {
-	result, err := pipeline.RunDNS(
+	return runDNSWithPlanState(target, snapshotDir, exportJSON, "")
+}
+
+func runDNSWithPlanState(target, snapshotDir, exportJSON, planStatePath string) error {
+	if strings.TrimSpace(planStatePath) != "" && filepath.Clean(planStatePath) == filepath.Clean(exportJSON) && strings.TrimSpace(exportJSON) != "" {
+		return fmt.Errorf("-plan-state and -export-json must use different paths")
+	}
+	state := intelligence.InvestigationPlanState{Feedback: []intelligence.InvestigationFeedback{}}
+	if strings.TrimSpace(planStatePath) != "" {
+		data, err := os.ReadFile(planStatePath)
+		if err != nil && !os.IsNotExist(err) { return fmt.Errorf("read investigation plan state: %w", err) }
+		if err == nil {
+			if err := json.Unmarshal(data, &state); err != nil { return fmt.Errorf("decode investigation plan state: %w", err) }
+			if state.PreviousPlan != nil {
+				if err := state.PreviousPlan.Validate(); err != nil { return fmt.Errorf("validate previous investigation plan: %w", err) }
+			}
+		}
+	}
+	result, err := pipeline.RunDNSWithPlanFeedback(
 		context.Background(),
 		target,
 		snapshotDir,
+		state.PreviousPlan,
+		state.Feedback,
 	)
 	if err != nil {
 		return err
@@ -237,11 +261,20 @@ func runDNS(target, snapshotDir, exportJSON string) error {
 	}
 
 	printIntelligenceReport(result.Report)
+	printInvestigationPlan(result.Report.InvestigationPlan)
 	if strings.TrimSpace(exportJSON) != "" {
 		if err := writeInvestigationExport(exportJSON, intelligence.NewDNSInvestigationExport(target, &result.Report, result.CurrentSnapshot, result.PreviousSnapshot, result.Changes, result.History, result.BaselineCreated)); err != nil {
 			return fmt.Errorf("write investigation export: %w", err)
 		}
 		fmt.Printf("[INVESTIGATION EXPORT] %s\n", exportJSON)
+	}
+	if strings.TrimSpace(planStatePath) != "" {
+		state.PreviousPlan = &result.Report.InvestigationPlan
+		state.Feedback = []intelligence.InvestigationFeedback{}
+		stateData, err := json.MarshalIndent(state, "", "  ")
+		if err != nil { return fmt.Errorf("encode investigation plan state: %w", err) }
+		if err := writeJSONAtomic(planStatePath, stateData); err != nil { return fmt.Errorf("write investigation plan state: %w", err) }
+		fmt.Printf("[ADAPTIVE PLAN STATE] %s\n", planStatePath)
 	}
 	printInfrastructureGraph(result.Graph)
 
@@ -294,46 +327,39 @@ func runDNS(target, snapshotDir, exportJSON string) error {
 
 
 func writeInvestigationExport(path string, export intelligence.InvestigationExport) error {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return fmt.Errorf("export path is required")
-	}
 	data, err := json.MarshalIndent(export, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode scoped report: %w", err)
-	}
-	data = append(data, '\n')
+	if err != nil { return fmt.Errorf("encode scoped report: %w", err) }
+	return writeJSONAtomic(path, data)
+}
 
+func writeJSONAtomic(path string, data []byte) error {
+	path = strings.TrimSpace(path)
+	if path == "" { return fmt.Errorf("output path is required") }
+	data = append(append([]byte(nil), data...), '\n')
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0750); err != nil {
-		return fmt.Errorf("create export directory: %w", err)
-	}
+	if err := os.MkdirAll(dir, 0750); err != nil { return fmt.Errorf("create output directory: %w", err) }
 	file, err := os.CreateTemp(dir, ".kem3t-export-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create temporary export: %w", err)
-	}
+	if err != nil { return fmt.Errorf("create temporary output: %w", err) }
 	tempPath := file.Name()
 	defer os.Remove(tempPath)
-
-	if err := file.Chmod(0600); err != nil {
-		file.Close()
-		return fmt.Errorf("restrict export permissions: %w", err)
-	}
-	if _, err := file.Write(data); err != nil {
-		file.Close()
-		return fmt.Errorf("write export data: %w", err)
-	}
-	if err := file.Sync(); err != nil {
-		file.Close()
-		return fmt.Errorf("sync export data: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("close export data: %w", err)
-	}
-	if err := os.Rename(tempPath, path); err != nil {
-		return fmt.Errorf("atomically replace export: %w", err)
-	}
+	if err := file.Chmod(0600); err != nil { file.Close(); return fmt.Errorf("restrict output permissions: %w", err) }
+	if _, err := file.Write(data); err != nil { file.Close(); return fmt.Errorf("write output: %w", err) }
+	if err := file.Sync(); err != nil { file.Close(); return fmt.Errorf("sync output: %w", err) }
+	if err := file.Close(); err != nil { return fmt.Errorf("close output: %w", err) }
+	if err := os.Rename(tempPath, path); err != nil { return fmt.Errorf("atomically replace output: %w", err) }
 	return nil
+}
+
+func printInvestigationPlan(plan intelligence.InvestigationPlan) {
+	fmt.Println("\n[ADAPTIVE INVESTIGATION PLAN]")
+	fmt.Printf("Target: %s | Revision: %s\n", plan.Target, plan.Revision)
+	fmt.Println(plan.Summary)
+	for _, item := range plan.Items {
+		fmt.Printf("[%s | %s | %s] %s\n", item.Status, item.PriorityLabel, item.ID, item.Action)
+		fmt.Printf("  Why: %s\n", item.Rationale)
+		fmt.Printf("  References: %s\n", strings.Join(item.References, ", "))
+		if len(item.EvidenceIDs) > 0 { fmt.Printf("  Outcome evidence: %s\n", strings.Join(item.EvidenceIDs, ", ")) }
+	}
 }
 
 func printIntelligenceReport(report intelligence.IntelligenceReport) {
