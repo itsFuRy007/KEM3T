@@ -237,3 +237,18 @@ func RegisterRDAPReport(registry *evidence.Registry, report RDAPReport) (bool,er
  if err:=registry.AddObservation(observation);err!=nil{if errors.Is(err,evidence.ErrObservationExists){return false,nil};return false,fmt.Errorf("register RDAP observation: %w",err)}
  return true,nil
 }
+
+func RegisterIPRDAPReport(registry *evidence.Registry,report IPRDAPReport)(bool,error){
+ if registry==nil{return false,fmt.Errorf("evidence registry is required")}
+ ip:=net.ParseIP(strings.TrimSpace(report.Target));if ip==nil{return false,fmt.Errorf("IP RDAP target is invalid")}
+ if strings.TrimSpace(report.Source)==""||report.RetrievedAt.IsZero(){return false,fmt.Errorf("IP RDAP source and retrieval timestamp are required")}
+ details:=evidence.IPRDAPNetworkDetails{Target:ip.String(),Handle:strings.TrimSpace(report.Handle),Name:strings.TrimSpace(report.Name),StartAddress:strings.TrimSpace(report.StartAddress),EndAddress:strings.TrimSpace(report.EndAddress),Country:strings.TrimSpace(report.Country),NetworkType:strings.TrimSpace(report.NetworkType),Status:uniqueSorted(report.Status)}
+ value,err:=json.Marshal(details);if err!=nil{return false,fmt.Errorf("encode IP RDAP evidence: %w",err)}
+ sum:=sha256.Sum256(value);key:=hex.EncodeToString(sum[:])
+ item:=evidence.Evidence{ID:"ip-rdap-network:"+key,EntityID:ip.String(),Type:evidence.TypeIPRDAPNetwork,Value:string(value)}
+ if err:=registry.AddEvidence(item);err!=nil&&!errors.Is(err,evidence.ErrEvidenceExists){return false,fmt.Errorf("register IP RDAP evidence: %w",err)}
+ eventID:="ip-rdap-network:"+key+":"+fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
+ observation:=evidence.Observation{ID:"observation:"+eventID,EvidenceID:item.ID,Source:report.Source,ObservedAt:report.RetrievedAt.UTC(),EventIDs:[]string{eventID}}
+ if err:=registry.AddObservation(observation);err!=nil{if errors.Is(err,evidence.ErrObservationExists){return false,nil};return false,fmt.Errorf("register IP RDAP observation: %w",err)}
+ return true,nil
+}
