@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+ "github.com/itsFuRy007/kem3t/internal/evidence"
 )
 
 type Store struct { Dir string }
@@ -59,3 +61,16 @@ func sha256Bytes(value []byte)string{
 	for i,b:=range sum{out[2*i]=hex[b>>4];out[2*i+1]=hex[b&15]}
 	return string(out)
 }
+
+ // PersistRunSnapshot builds and atomically stores the generalized snapshot for
+ // a successfully completed run while its evidence registry is still open.
+ func PersistRunSnapshot(snapshotDir string, run evidence.CollectionRun, registry *evidence.Registry) error {
+  if registry == nil { return fmt.Errorf("evidence registry is required") }
+  if strings.TrimSpace(snapshotDir) == "" { return fmt.Errorf("snapshot directory is required") }
+  snapshot, err := BuildSnapshot(run, registry.AllEvidence(), registry.AllObservations())
+  if err != nil { return err }
+  store, err := NewStore(filepath.Join(snapshotDir, "history"))
+  if err != nil { return err }
+  if err := store.Save(snapshot); err != nil { return err }
+  return nil
+ }
