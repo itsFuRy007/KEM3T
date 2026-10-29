@@ -229,7 +229,12 @@ func recordKey(item evidence.Evidence)(string,error){
 		var d evidence.TLSCertificateDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("%s|%s|%05d",item.Type,NormalizeTarget(item.EntityID),d.Port),nil
 	case evidence.TypeHTTPService:
 		var d evidence.HTTPServiceDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("%s|%s|%05d|%s",item.Type,NormalizeTarget(item.EntityID),d.Port,d.Scheme),nil
-	default:return "",fmt.Errorf("unsupported evidence type %q",item.Type)
+	default:
+		if CollectorForEvidence(item.Type) == "unknown" { return "", fmt.Errorf("unsupported evidence type %q", item.Type) }
+		// External-intelligence evidence IDs are source-specific stable identities.
+		// Use them as the record key so later observations can detect value changes
+		// without inventing fields or losing the original provenance.
+		return fmt.Sprintf("%s|%s|%s", item.Type, NormalizeTarget(item.EntityID), item.ID), nil
 	}
 }
 // NormalizeTarget canonicalizes a hostname/IP or an absolute HTTP(S) URL to its host.
