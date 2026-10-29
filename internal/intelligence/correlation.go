@@ -17,6 +17,8 @@ type CorrelationType string
 const (
 	CorrelationSharedIPAddress             CorrelationType = "SHARED_IP_ADDRESS"
 	CorrelationSharedTLSCertificateFingerprint CorrelationType = "SHARED_TLS_CERTIFICATE_FINGERPRINT"
+	CorrelationSharedCTCertificateRecord CorrelationType = "SHARED_CT_CERTIFICATE_RECORD"
+	CorrelationSharedHistoricalIPAddress CorrelationType = "SHARED_HISTORICAL_IP_ADDRESS"
 )
 
 // Correlation represents a relationship between distinct entities.
@@ -95,6 +97,8 @@ func (e *CorrelationEngine) correlateEvidence(records []evidence.Evidence, obser
 
 	byAddress := make(map[string][]correlationEvidenceItem)
 	byFingerprint := make(map[string][]correlationEvidenceItem)
+	byCTCertificate := make(map[string][]correlationEvidenceItem)
+	byHistoricalAddress := make(map[string][]correlationEvidenceItem)
 	seenEvidence := make(map[string]struct{}, len(records))
 	for _, record := range records {
 		if err := record.Validate(); err != nil {
@@ -114,6 +118,19 @@ func (e *CorrelationEngine) correlateEvidence(records []evidence.Evidence, obser
 				return nil, fmt.Errorf("evidence %q has an empty entity or invalid IP address", record.ID)
 			}
 			byAddress[ip.String()] = append(byAddress[ip.String()], item)
+		case evidence.TypeCTDNSName:
+			var details evidence.CTDNSNameDetails
+			if err:=json.Unmarshal([]byte(record.Value),&details);err!=nil{return nil,fmt.Errorf("decode CT evidence %q: %w",record.ID,err)}
+			if details.CertificateID>0 {
+				key:=strings.ToLower(strings.TrimSpace(details.Source))+"#"+fmt.Sprint(details.CertificateID)
+				byCTCertificate[key]=append(byCTCertificate[key],item)
+			}
+		case evidence.TypePassiveDNS:
+			var details evidence.PassiveDNSDetails
+			if err:=json.Unmarshal([]byte(record.Value),&details);err!=nil{return nil,fmt.Errorf("decode passive-DNS evidence %q: %w",record.ID,err)}
+			ip:=net.ParseIP(strings.TrimSpace(details.Address))
+			if ip==nil{return nil,fmt.Errorf("passive-DNS evidence %q has invalid address",record.ID)}
+			byHistoricalAddress[ip.String()]=append(byHistoricalAddress[ip.String()],item)
 		case evidence.TypeTLSCertificate:
 			var details evidence.TLSCertificateDetails
 			if err := json.Unmarshal([]byte(record.Value), &details); err != nil {
@@ -151,6 +168,18 @@ func (e *CorrelationEngine) correlateEvidence(records []evidence.Evidence, obser
 		"OBSERVED_SHARED_CERTIFICATE_FINGERPRINT",
 		"%d distinct entities were observed presenting the same TLS certificate SHA-256 fingerprint.",
 		"A matching certificate fingerprint establishes that the same certificate was observed, not common ownership or a vulnerability. Certificates may be centrally managed or reused across unrelated services; verify with independent evidence. Distinct source labels are reported as collection context and do not prove independent corroboration.",
+	)...)
+	results = append(results, buildCorrelations(
+		byCTCertificate, target, CorrelationSharedCTCertificateRecord, "shared-ct-cert:",
+		"OBSERVED_SHARED_CT_CERTIFICATE_RECORD",
+		"%d distinct target scopes returned the same Certificate Transparency record identifier.",
+		"A shared CT certificate record is a certificate-level relationship, not proof of common ownership, current hosting, or a vulnerability. Certificate records may cover multiple unrelated names; verify with live DNS/service evidence and independent sources. Repeated queries through the same CT provider are not independent corroboration.",
+	)...)
+	results = append(results, buildCorrelations(
+		byHistoricalAddress, target, CorrelationSharedHistoricalIPAddress, "shared-historical-ip:",
+		"OBSERVED_HISTORICAL_SHARED_ADDRESS",
+		"%d distinct target scopes have historical passive-DNS observations pointing to the same IP address.",
+		"Historical passive-DNS overlap does not prove current resolution, shared ownership, or a direct relationship. Provider timestamps can be incomplete, and multiple aggregators may mirror the same upstream data. Compare against current DNS and authorized service observations before acting.",
 	)...)
 
 	sort.Slice(results, func(i, j int) bool {
