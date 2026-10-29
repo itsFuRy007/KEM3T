@@ -128,6 +128,10 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 	if err != nil {
 		return TCPResult{}, fmt.Errorf("build infrastructure graph: %w", err)
 	}
+	builtGraph, err = graph.AttachServices(builtGraph, result.Normalized.Services)
+	if err != nil {
+		return TCPResult{}, fmt.Errorf("attach normalized services to graph: %w", err)
+	}
 	result.Graph = builtGraph
 	return result, nil
 }
