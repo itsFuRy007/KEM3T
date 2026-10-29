@@ -27,6 +27,7 @@ const (
 	NodeASN            NodeType = "AUTONOMOUS_SYSTEM"
 	NodeNetworkPrefix  NodeType = "NETWORK_PREFIX"
 	NodeThreatPulse    NodeType = "THREAT_INTELLIGENCE_PULSE"
+	NodeIPRange        NodeType = "IP_NETWORK_RANGE"
 )
 
 type EdgeType string
@@ -45,6 +46,7 @@ const (
 	EdgeASNAnnouncesPrefix  EdgeType = "ASN_ANNOUNCES_PREFIX"
 	EdgePassiveDNSResolvesTo EdgeType = "PASSIVE_DNS_RESOLVES_TO"
 	EdgeIndicatorMentionedInPulse EdgeType = "INDICATOR_MENTIONED_IN_PULSE"
+	EdgeIPInNetworkRange EdgeType = "IP_IN_REGISTERED_RANGE"
 )
 
 type Node struct {
@@ -375,6 +377,21 @@ func Build(records []evidence.Evidence, observations []evidence.Observation) (Gr
 				for _,observationID:=range observationByEvidence[record.ID]{edge.ObservationIDs=appendUnique(edge.ObservationIDs,observationID)}
 			}
 
+		case evidence.TypeIPRDAPNetwork:
+			var details evidence.IPRDAPNetworkDetails
+			if err:=json.Unmarshal([]byte(record.Value),&details);err!=nil{return Graph{},fmt.Errorf("decode IP RDAP evidence %q: %w",record.ID,err)}
+			ip:=net.ParseIP(details.Target);if ip==nil{return Graph{},fmt.Errorf("IP RDAP evidence %q has invalid target",record.ID)}
+			ipNode:=Node{ID:"ip:"+ip.String(),Type:NodeIP,Value:ip.String()}
+			rangeKey:=details.StartAddress+"|"+details.EndAddress+"|"+details.Handle
+			sum:=sha256.Sum256([]byte(rangeKey));rangeID:="ip-range:"+hex.EncodeToString(sum[:])
+			rangeValue:=strings.TrimSpace(details.Name);if rangeValue==""{rangeValue=details.StartAddress+" - "+details.EndAddress}
+			rangeNode:=Node{ID:rangeID,Type:NodeIPRange,Value:rangeValue}
+			nodesByID[ipNode.ID]=ipNode;nodesByID[rangeID]=rangeNode
+			edgeID:="ip-in-network-range:"+ip.String()+":"+rangeID
+			edge,exists:=edgesByID[edgeID];if !exists{edge=&Edge{ID:edgeID,Type:EdgeIPInNetworkRange,Source:ipNode.ID,Target:rangeID};edgesByID[edgeID]=edge}
+			edge.EvidenceIDs=appendUnique(edge.EvidenceIDs,record.ID)
+			for _,observationID:=range observationByEvidence[record.ID]{edge.ObservationIDs=appendUnique(edge.ObservationIDs,observationID)}
+
 		}
 	}
 
@@ -444,6 +461,8 @@ func (g Graph) Validate() error {
 			if !strings.HasPrefix(node.ID, "tcp-port:") {
 				return fmt.Errorf("TCP port node %q has an invalid identity", node.ID)
 			}
+		case NodeIPRange:
+			if !strings.HasPrefix(node.ID,"ip-range:")||strings.TrimSpace(node.Value)==""{return fmt.Errorf("IP range node %q has an invalid identity",node.ID)}
 		case NodeThreatPulse:
 			if !strings.HasPrefix(node.ID,"threat-pulse:")||strings.TrimSpace(node.Value)==""{return fmt.Errorf("threat pulse node %q has an invalid identity",node.ID)}
 		case NodeASN:
@@ -546,6 +565,8 @@ func (g Graph) Validate() error {
 			if application == "" || edge.ID != fmt.Sprintf("hosts-service:%s:%d:%s", source.Value, edge.Port, application) {
 				return fmt.Errorf("edge %q has an invalid service identity", edge.ID)
 			}
+		case EdgeIPInNetworkRange:
+			if source.Type!=NodeIP||target.Type!=NodeIPRange||edge.Port!=0||edge.ID!="ip-in-network-range:"+source.Value+":"+target.ID{return fmt.Errorf("edge %q has invalid IP range identity or endpoints",edge.ID)}
 		case EdgeIndicatorMentionedInPulse:
 			if (source.Type!=NodeDomain&&source.Type!=NodeIP)||target.Type!=NodeThreatPulse||edge.Port!=0||edge.ID!="indicator-mentioned-in-pulse:"+source.ID+":"+target.ID{return fmt.Errorf("edge %q has invalid threat-pulse identity or endpoints",edge.ID)}
 		case EdgePassiveDNSResolvesTo:
