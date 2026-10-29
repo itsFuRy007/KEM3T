@@ -66,8 +66,11 @@ func BuildAdaptiveInvestigationPlan(
 	if target == "" {
 		return InvestigationPlan{}, fmt.Errorf("investigation plan target is required")
 	}
-	if previous != nil && normalizeFindingTarget(previous.Target) != target {
-		return InvestigationPlan{}, fmt.Errorf("previous plan target does not match report target")
+	if previous != nil {
+		if err := previous.Validate(); err != nil { return InvestigationPlan{}, fmt.Errorf("previous plan is invalid: %w", err) }
+		if normalizeFindingTarget(previous.Target) != target {
+			return InvestigationPlan{}, fmt.Errorf("previous plan target does not match report target")
+		}
 	}
 
 	candidates := make(map[string]InvestigationTask)
@@ -133,9 +136,8 @@ func BuildAdaptiveInvestigationPlan(
 			}
 			// Preserve completed work as audit history. Other obsolete tasks remain
 			// visible but are explicitly marked as no longer suggested.
-			old.Status = TaskStale
-			if old.Status == TaskCompleted {
-				old.Status = TaskCompleted
+			if old.Status != TaskCompleted && old.Status != TaskInconclusive && old.Status != TaskBlocked && old.Status != TaskNotApplicable {
+				old.Status = TaskStale
 			}
 			items[old.ID] = old
 		}
@@ -260,4 +262,11 @@ func planRevision(plan InvestigationPlan) string {
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
 	return hex.EncodeToString(sum[:12])
+}
+
+ 
+// InvestigationPlanState persists the previous plan and feedback between runs.
+type InvestigationPlanState struct {
+	PreviousPlan *InvestigationPlan `json:"previous_plan,omitempty"`
+	Feedback []InvestigationFeedback `json:"feedback"`
 }
