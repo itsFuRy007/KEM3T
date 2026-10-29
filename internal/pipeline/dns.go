@@ -104,6 +104,7 @@ func runDNSWithCollector(
 	eventCount := 0
 	normalizedEvents := make([]events.Event, 0)
 	observedAddresses := make(map[string]struct{})
+	runObservations := make([]evidence.Observation, 0)
 
 	defer func() {
 		run.FinishedAt = time.Now().UTC()
@@ -126,7 +127,7 @@ func runDNSWithCollector(
 			}
 		}
 			if retErr == nil && run.Status == evidence.CollectionRunCompleted {
-			if err := history.PersistRunSnapshot(snapshotDir, run, registry); err != nil {
+			if err := history.PersistRunSnapshot(snapshotDir, run, registry, runObservations); err != nil {
 				retErr = fmt.Errorf("persist history snapshot: %w", err)
 			}
 		}
@@ -185,6 +186,7 @@ func runDNSWithCollector(
 			cancel()
 			break
 		}
+		runObservations = append(runObservations, observation)
 	}
 
 	collectorErr := <-collectorDone
