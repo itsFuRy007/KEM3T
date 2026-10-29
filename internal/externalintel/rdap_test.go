@@ -69,8 +69,8 @@ func TestRegisterRDAPReportPersistsProvenanceAndGraph(t *testing.T) {
  added,err=RegisterRDAPReport(registry,report);if err!=nil{t.Fatal(err)};if !added{t.Fatal("new retrieval time should be recorded as another observation")}
 }
 
-func TestRegisterRDAPReportRejectsOutOfScopeNameserver(t *testing.T){
+func TestRegisterRDAPReportRejectsInvalidNameserver(t *testing.T){
  registry:=evidence.NewRegistry()
- report:=RDAPReport{Target:"example.com",Source:"rdap.example.test",RetrievedAt:time.Now().UTC(),NameServers:[]string{"ns.attacker.test"}}
- if _,err:=RegisterRDAPReport(registry,report);err==nil{t.Fatal("expected out-of-scope nameserver rejection")}
+ report:=RDAPReport{Target:"example.com",Source:"rdap.example.test",RetrievedAt:time.Now().UTC(),NameServers:[]string{"bad..name"}}
+ if _,err:=RegisterRDAPReport(registry,report);err==nil{t.Fatal("expected invalid nameserver rejection")}
 }
