@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -22,6 +23,7 @@ const (
 	NodeHTTPService    NodeType = "HTTP_SERVICE"
 	NodeNetworkService NodeType = "NETWORK_SERVICE"
 	NodeCTCertificate  NodeType = "CT_CERTIFICATE_RECORD"
+	NodeRegistrar      NodeType = "REGISTRAR"
 )
 
 type EdgeType string
@@ -34,6 +36,8 @@ const (
 	EdgeHostsService        EdgeType = "HOSTS_SERVICE"
 	EdgeCTSearchResult      EdgeType = "CT_SEARCH_RESULT"
 	EdgeCTIncludesName      EdgeType = "CT_INCLUDES_DNS_NAME"
+	EdgeRDAPNameServer      EdgeType = "RDAP_NAMESERVER"
+	EdgeRDAPRegistrar       EdgeType = "RDAP_REGISTRAR"
 )
 
 type Node struct {
@@ -281,6 +285,38 @@ func Build(records []evidence.Evidence, observations []evidence.Observation) (Gr
 				nameEdge.ObservationIDs = appendUnique(nameEdge.ObservationIDs, observationID)
 			}
 
+		case evidence.TypeRDAPRegistration:
+			var details evidence.RDAPRegistrationDetails
+			if err := json.Unmarshal([]byte(record.Value), &details); err != nil {
+				return Graph{}, fmt.Errorf("decode RDAP evidence %q: %w", record.ID, err)
+			}
+			target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(details.Target)), ".")
+			if !evidence.IsValidDomain(target) { return Graph{}, fmt.Errorf("RDAP evidence %q has invalid target", record.ID) }
+			domainNode := Node{ID:"domain:"+target,Type:NodeDomain,Value:target}
+			nodesByID[domainNode.ID]=domainNode
+			for _, rawNS := range details.NameServers {
+				ns:=strings.TrimSuffix(strings.ToLower(strings.TrimSpace(rawNS)),".")
+				if !evidence.IsValidDomain(ns){return Graph{},fmt.Errorf("RDAP evidence %q has invalid nameserver",record.ID)}
+				nsNode:=Node{ID:"domain:"+ns,Type:NodeDomain,Value:ns}
+				nodesByID[nsNode.ID]=nsNode
+				edgeID:="rdap-nameserver:"+target+":"+ns
+				edge,exists:=edgesByID[edgeID]
+				if !exists { edge=&Edge{ID:edgeID,Type:EdgeRDAPNameServer,Source:domainNode.ID,Target:nsNode.ID};edgesByID[edgeID]=edge }
+				edge.EvidenceIDs=appendUnique(edge.EvidenceIDs,record.ID)
+				for _, observationID:=range observationByEvidence[record.ID]{edge.ObservationIDs=appendUnique(edge.ObservationIDs,observationID)}
+			}
+			if registrar:=strings.TrimSpace(details.Registrar);registrar!="" {
+				sum:=sha256.Sum256([]byte(strings.ToLower(registrar)))
+				registrarID:="registrar:"+hex.EncodeToString(sum[:])
+				registrarNode:=Node{ID:registrarID,Type:NodeRegistrar,Value:registrar}
+				nodesByID[registrarID]=registrarNode
+				edgeID:="rdap-registrar:"+target+":"+registrarID
+				edge:=&Edge{ID:edgeID,Type:EdgeRDAPRegistrar,Source:domainNode.ID,Target:registrarID}
+				edge.EvidenceIDs=appendUnique(edge.EvidenceIDs,record.ID)
+				for _, observationID:=range observationByEvidence[record.ID]{edge.ObservationIDs=appendUnique(edge.ObservationIDs,observationID)}
+				edgesByID[edgeID]=edge
+			}
+
 		}
 	}
 
@@ -350,6 +386,8 @@ func (g Graph) Validate() error {
 			if !strings.HasPrefix(node.ID, "tcp-port:") {
 				return fmt.Errorf("TCP port node %q has an invalid identity", node.ID)
 			}
+		case NodeRegistrar:
+			if !strings.HasPrefix(node.ID, "registrar:") || strings.TrimSpace(node.Value) == "" { return fmt.Errorf("registrar node %q has an invalid identity", node.ID) }
 		case NodeCTCertificate:
 			if !strings.HasPrefix(node.ID, "ct-cert:") || !strings.Contains(node.Value, "#") {
 				return fmt.Errorf("CT certificate node %q has an invalid identity", node.ID)
@@ -444,6 +482,10 @@ func (g Graph) Validate() error {
 			if application == "" || edge.ID != fmt.Sprintf("hosts-service:%s:%d:%s", source.Value, edge.Port, application) {
 				return fmt.Errorf("edge %q has an invalid service identity", edge.ID)
 			}
+		case EdgeRDAPNameServer:
+			if source.Type!=NodeDomain || target.Type!=NodeDomain || edge.Port!=0 || edge.ID!="rdap-nameserver:"+source.Value+":"+target.Value { return fmt.Errorf("edge %q has invalid RDAP nameserver identity or endpoints",edge.ID) }
+		case EdgeRDAPRegistrar:
+			if source.Type!=NodeDomain || target.Type!=NodeRegistrar || edge.Port!=0 || edge.ID!="rdap-registrar:"+source.Value+":"+target.ID { return fmt.Errorf("edge %q has invalid RDAP registrar identity or endpoints",edge.ID) }
 		case EdgeCTSearchResult:
 			if source.Type != NodeDomain || target.Type != NodeCTCertificate || edge.Port != 0 {
 				return fmt.Errorf("edge %q has invalid CT search-result endpoints", edge.ID)
