@@ -306,3 +306,44 @@ func TestHypothesisEngineRejectsDuplicateCorrelationIDs(t *testing.T) {
 		t.Fatal("expected duplicate correlation IDs to be rejected")
 	}
 }
+
+
+func TestHypothesisValidateRejectsUntraceableOrNonActionableDetails(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Hypothesis)
+	}{
+		{
+			name: "blank supporting evidence ID",
+			mutate: func(h *Hypothesis) { h.SupportingIDs = []string{"  "} },
+		},
+		{
+			name: "duplicate supporting evidence ID",
+			mutate: func(h *Hypothesis) { h.SupportingIDs = []string{"ev-a", " ev-a "} },
+		},
+		{
+			name: "blank supporting fact",
+			mutate: func(h *Hypothesis) { h.SupportingFacts = []string{"  "} },
+		},
+		{
+			name: "blank verification step",
+			mutate: func(h *Hypothesis) { h.Verification = []string{"  "} },
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := Hypothesis{
+				ID: "hypothesis:test", Title: "Test hypothesis",
+				Statement: "A testable statement.", Confidence: HypothesisConfidenceLow,
+				SupportingIDs: []string{"ev-a"}, SupportingFacts: []string{"A recorded fact."},
+				Alternative: "A plausible alternative.", Limitations: "A stated limitation.",
+				Verification: []string{"Check an independent source."},
+			}
+			tc.mutate(&h)
+			if err := h.Validate(); err == nil {
+				t.Fatal("expected invalid hypothesis details to be rejected")
+			}
+		})
+	}
+}
