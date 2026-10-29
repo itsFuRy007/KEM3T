@@ -17,18 +17,18 @@ const (
 // Discovery represents a cross-signal lead surfaced by combining distinct
 // correlation dimensions. It is deliberately not a verdict or probability.
 type Discovery struct {
-	ID                  string        `json:"id"`
-	Type                DiscoveryType `json:"type"`
-	Entities            []string      `json:"entities"`
-	SignalTypes         []CorrelationType `json:"signal_types"`
-	CorrelationIDs      []string      `json:"correlation_ids"`
-	SharedValues        []string      `json:"shared_values"`
-	SignalDiversity     int           `json:"signal_diversity"`
-	Confidence          string        `json:"confidence"`
-	Statement           string        `json:"statement"`
-	WhyItMatters        string        `json:"why_it_matters"`
-	AlternativeExplanations string     `json:"alternative_explanations"`
-	Verification        []string      `json:"verification_steps"`
+	ID                     string           `json:"id"`
+	Type                   DiscoveryType    `json:"type"`
+	Entities               []string         `json:"entities"`
+	SignalTypes            []CorrelationType `json:"signal_types"`
+	CorrelationIDs         []string         `json:"correlation_ids"`
+	SharedValues           []string         `json:"shared_values"`
+	SignalDiversity        int              `json:"signal_diversity"`
+	Confidence             string           `json:"confidence"`
+	Statement              string           `json:"statement"`
+	WhyItMatters           string           `json:"why_it_matters"`
+	AlternativeExplanations string          `json:"alternative_explanations"`
+	Verification            []string         `json:"verification_steps"`
 }
 
 // Validate checks that a discovery is complete and traceable to correlations.
@@ -122,7 +122,9 @@ func (e *DiscoveryEngine) Discover(correlations []Correlation, target string) ([
 			continue
 		}
 		allTypes = uniqueCorrelationTypes(allTypes)
+		sort.Strings(correlationIDs)
 		correlationIDs = uniqueStrings(correlationIDs)
+		sort.Strings(sharedValues)
 		sharedValues = uniqueStrings(sharedValues)
 		entities := []string{target}
 		for entity := range pair.entities {
