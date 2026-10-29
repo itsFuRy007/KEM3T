@@ -24,6 +24,8 @@ const (
 	NodeNetworkService NodeType = "NETWORK_SERVICE"
 	NodeCTCertificate  NodeType = "CT_CERTIFICATE_RECORD"
 	NodeRegistrar      NodeType = "REGISTRAR"
+	NodeASN            NodeType = "AUTONOMOUS_SYSTEM"
+	NodeNetworkPrefix  NodeType = "NETWORK_PREFIX"
 )
 
 type EdgeType string
@@ -38,6 +40,8 @@ const (
 	EdgeCTIncludesName      EdgeType = "CT_INCLUDES_DNS_NAME"
 	EdgeRDAPNameServer      EdgeType = "RDAP_NAMESERVER"
 	EdgeRDAPRegistrar       EdgeType = "RDAP_REGISTRAR"
+	EdgeOriginatesFrom      EdgeType = "ORIGINATES_FROM_ASN"
+	EdgeASNAnnouncesPrefix  EdgeType = "ASN_ANNOUNCES_PREFIX"
 )
 
 type Node struct {
@@ -317,6 +321,29 @@ func Build(records []evidence.Evidence, observations []evidence.Observation) (Gr
 				edgesByID[edgeID]=edge
 			}
 
+		case evidence.TypeASNOrigin:
+			var details evidence.ASNOriginDetails
+			if err:=json.Unmarshal([]byte(record.Value),&details);err!=nil{return Graph{},fmt.Errorf("decode ASN evidence %q: %w",record.ID,err)}
+			ip:=net.ParseIP(details.Target);if ip==nil{return Graph{},fmt.Errorf("ASN evidence %q has invalid IP target",record.ID)}
+			ipNode:=Node{ID:"ip:"+ip.String(),Type:NodeIP,Value:ip.String()};nodesByID[ipNode.ID]=ipNode
+			for _,asnRecord:=range details.Records{
+				if asnRecord.ASN==0{return Graph{},fmt.Errorf("ASN evidence %q has invalid ASN",record.ID)}
+				_,prefix,err:=net.ParseCIDR(asnRecord.Prefix);if err!=nil||!prefix.Contains(ip){return Graph{},fmt.Errorf("ASN evidence %q has invalid prefix",record.ID)}
+				asnID:=fmt.Sprintf("asn:%d",asnRecord.ASN)
+				asnNode:=Node{ID:asnID,Type:NodeASN,Value:fmt.Sprintf("AS%d",asnRecord.ASN)}
+				prefixValue:=prefix.String();prefixID:="network-prefix:"+prefixValue
+				prefixNode:=Node{ID:prefixID,Type:NodeNetworkPrefix,Value:prefixValue}
+				nodesByID[asnID]=asnNode;nodesByID[prefixID]=prefixNode
+				originID:=fmt.Sprintf("origin-asn:%s:%d",ip.String(),asnRecord.ASN)
+				originEdge,exists:=edgesByID[originID];if !exists{originEdge=&Edge{ID:originID,Type:EdgeOriginatesFrom,Source:ipNode.ID,Target:asnID};edgesByID[originID]=originEdge}
+				originEdge.EvidenceIDs=appendUnique(originEdge.EvidenceIDs,record.ID)
+				for _,observationID:=range observationByEvidence[record.ID]{originEdge.ObservationIDs=appendUnique(originEdge.ObservationIDs,observationID)}
+				announceID:=fmt.Sprintf("asn-announces-prefix:%d:%s",asnRecord.ASN,prefixValue)
+				announceEdge,exists:=edgesByID[announceID];if !exists{announceEdge=&Edge{ID:announceID,Type:EdgeASNAnnouncesPrefix,Source:asnID,Target:prefixID};edgesByID[announceID]=announceEdge}
+				announceEdge.EvidenceIDs=appendUnique(announceEdge.EvidenceIDs,record.ID)
+				for _,observationID:=range observationByEvidence[record.ID]{announceEdge.ObservationIDs=appendUnique(announceEdge.ObservationIDs,observationID)}
+			}
+
 		}
 	}
 
@@ -386,6 +413,10 @@ func (g Graph) Validate() error {
 			if !strings.HasPrefix(node.ID, "tcp-port:") {
 				return fmt.Errorf("TCP port node %q has an invalid identity", node.ID)
 			}
+		case NodeASN:
+			if !strings.HasPrefix(node.ID,"asn:") || !strings.HasPrefix(node.Value,"AS") { return fmt.Errorf("ASN node %q has an invalid identity",node.ID) }
+		case NodeNetworkPrefix:
+			_,prefix,err:=net.ParseCIDR(node.Value);if err!=nil||node.ID!="network-prefix:"+prefix.String(){return fmt.Errorf("network-prefix node %q has an invalid identity",node.ID)}
 		case NodeRegistrar:
 			if !strings.HasPrefix(node.ID, "registrar:") || strings.TrimSpace(node.Value) == "" { return fmt.Errorf("registrar node %q has an invalid identity", node.ID) }
 		case NodeCTCertificate:
@@ -482,6 +513,10 @@ func (g Graph) Validate() error {
 			if application == "" || edge.ID != fmt.Sprintf("hosts-service:%s:%d:%s", source.Value, edge.Port, application) {
 				return fmt.Errorf("edge %q has an invalid service identity", edge.ID)
 			}
+		case EdgeOriginatesFrom:
+			if source.Type!=NodeIP||target.Type!=NodeASN||edge.Port!=0||edge.ID!="origin-asn:"+source.Value+":"+strings.TrimPrefix(target.ID,"asn:"){return fmt.Errorf("edge %q has invalid origin-ASN identity or endpoints",edge.ID)}
+		case EdgeASNAnnouncesPrefix:
+			if source.Type!=NodeASN||target.Type!=NodeNetworkPrefix||edge.Port!=0||edge.ID!="asn-announces-prefix:"+strings.TrimPrefix(source.ID,"asn:")+":"+target.Value{return fmt.Errorf("edge %q has invalid ASN-prefix identity or endpoints",edge.ID)}
 		case EdgeRDAPNameServer:
 			if source.Type!=NodeDomain || target.Type!=NodeDomain || edge.Port!=0 || edge.ID!="rdap-nameserver:"+source.Value+":"+target.Value { return fmt.Errorf("edge %q has invalid RDAP nameserver identity or endpoints",edge.ID) }
 		case EdgeRDAPRegistrar:

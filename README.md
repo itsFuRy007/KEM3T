@@ -196,7 +196,9 @@ The project is under active development. Checkboxes below distinguish implemente
 - [x] Persist CT evidence and timestamped observations; expose CT search-result and certificate-name relationships in the provenance graph
 - [x] Domain RDAP via IANA bootstrap with minimized metadata, registration lifecycle events, and privacy-conscious contact-data exclusion
 - [x] Persist RDAP facts and timestamped observations; connect registrar and nameserver relationships to the evidence-backed graph
-- [ ] IP RDAP and origin-ASN enrichment
+- [x] Origin-ASN lookup through Team Cymru origin DNS via DNS-over-HTTPS, enriched with IANA-bootstrapped ASN RDAP
+- [x] Persist ASN findings with mapping/RDAP source attribution and connect IP → ASN → prefix relationships in the evidence graph
+- [ ] IP RDAP network-range registration enrichment
 - [ ] ASN and network ownership context
 - [ ] Passive DNS
 - [ ] Threat-intelligence integrations
