@@ -90,10 +90,14 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 // NewDNSStage wires the existing DNS collector into a shared investigation.
 // DNS resolution is passive with respect to the target and does not authorize
 // active TCP/TLS/HTTP checks against addresses discovered by DNS.
-func NewDNSStage(target string) *CollectorStage {
+func NewDNSStage(target string) *CollectorStage { return NewDNSStageWithResolver(target, nil) }
+
+// NewDNSStageWithResolver allows deterministic resolver injection in tests and
+// controlled deployments while retaining the production DNS collector.
+func NewDNSStageWithResolver(target string, resolver collectors.DNSResolver) *CollectorStage {
 	return &CollectorStage{
 		StageName: "dns",
-		Collector: &collectors.DNS{Target: target},
+		Collector: &collectors.DNS{Target: target, Resolver: resolver},
 		Accept: func(event events.Event) bool { return event.Type == events.EventDNSRecordFound },
 		Convert: evidence.FromDNSEvent,
 	}
