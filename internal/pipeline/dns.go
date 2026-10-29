@@ -224,6 +224,7 @@ func runDNSWithCollector(
 	}
 
 	normalized := observations.NormalizeEvents(normalizedEvents)
+	observations.AttachEvidence(&normalized, registry.AllObservations())
 	if len(normalized.Rejected) > 0 {
 		return DNSResult{}, fmt.Errorf("normalize DNS events: %s", normalized.Rejected[0].Reason)
 	}
