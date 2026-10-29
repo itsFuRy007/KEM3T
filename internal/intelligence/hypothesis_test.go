@@ -237,6 +237,7 @@ func TestHypothesisEngineGeneratesSharedTLSCertificateHypothesis(t *testing.T) {
 		Type: CorrelationSharedTLSCertificateFingerprint,
 		Entities: []string{"a.example.com", "b.example.com"},
 		SharedValue: fingerprint,
+		ConfidenceScope: "OBSERVED_SHARED_CERTIFICATE_FINGERPRINT",
 		EvidenceIDs: []string{"tls-a", "tls-b"},
 	}})
 	if err != nil {
