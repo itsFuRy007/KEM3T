@@ -271,7 +271,9 @@ func runDNSWithPlanState(target, snapshotDir, exportJSON, planStatePath string) 
 	if strings.TrimSpace(planStatePath) != "" {
 		state.PreviousPlan = &result.Report.InvestigationPlan
 		state.Feedback = []intelligence.InvestigationFeedback{}
-		if err := writeJSONAtomic(planStatePath, state); err != nil { return fmt.Errorf("write investigation plan state: %w", err) }
+		stateData, err := json.MarshalIndent(state, "", "  ")
+		if err != nil { return fmt.Errorf("encode investigation plan state: %w", err) }
+		if err := writeJSONAtomic(planStatePath, stateData); err != nil { return fmt.Errorf("write investigation plan state: %w", err) }
 		fmt.Printf("[ADAPTIVE PLAN STATE] %s\n", planStatePath)
 	}
 	printInfrastructureGraph(result.Graph)
