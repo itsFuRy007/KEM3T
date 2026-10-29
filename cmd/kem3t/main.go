@@ -271,6 +271,9 @@ func printIntelligenceReport(report intelligence.IntelligenceReport) {
 			fmt.Printf("  Shared value: %s\n", item.SharedValue)
 			fmt.Printf("  Entities: %s\n", strings.Join(item.Entities, ", "))
 			fmt.Printf("  Evidence records: %d\n", len(item.EvidenceIDs))
+			fmt.Printf("  Confidence: %s (scope: %s)\n", item.Confidence, item.ConfidenceScope)
+			fmt.Printf("  Evidence refs: %s\n", strings.Join(item.EvidenceIDs, ", "))
+			fmt.Printf("  Observation refs: %s\n", strings.Join(item.ObservationIDs, ", "))
 			fmt.Printf("  Limitations: %s\n", item.Limitations)
 		}
 	}
@@ -280,6 +283,8 @@ func printIntelligenceReport(report intelligence.IntelligenceReport) {
 		for _, item := range report.Hypotheses {
 			fmt.Printf("[%s] %s\n", item.Confidence, item.Title)
 			fmt.Printf("  Statement: %s\n", item.Statement)
+			fmt.Printf("  Supporting evidence refs: %s\n", strings.Join(item.SupportingIDs, ", "))
+			fmt.Printf("  Supporting facts: %s\n", strings.Join(item.SupportingFacts, " | "))
 			fmt.Printf("  Alternative explanations: %s\n", item.Alternative)
 			fmt.Printf("  Limitations: %s\n", item.Limitations)
 			if len(item.Verification) > 0 {
