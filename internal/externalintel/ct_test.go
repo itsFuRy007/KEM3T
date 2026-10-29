@@ -32,15 +32,6 @@ func TestCTLookupNormalizesDeduplicatesAndScopesNames(t *testing.T) {
 		HTTPClient: server.Client(),
 		Now: func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) },
 	}
-	// Test servers use HTTP locally; production endpoints are required to use HTTPS.
-	client.Endpoint = "https://ct.test/"
-	client.HTTPClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		req.URL.Scheme = "https"
-		req.URL.Host = strings.TrimPrefix(server.URL, "https://")
-		req.Host = req.URL.Host
-		return server.Client().Transport.RoundTrip(req)
-	})}
-
 	report, err := client.LookupDomain(context.Background(), "Example.COM.")
 	if err != nil { t.Fatal(err) }
 	if report.Target != "example.com" { t.Fatalf("target = %q", report.Target) }
@@ -90,6 +81,3 @@ func TestCTPropagatesContextCancellation(t *testing.T) {
 		t.Fatal("expected cancellation error")
 	}
 }
-
-type roundTripFunc func(*http.Request) (*http.Response, error)
-func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
