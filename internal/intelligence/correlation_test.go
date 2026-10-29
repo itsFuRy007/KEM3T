@@ -301,7 +301,7 @@ func TestCorrelateEvidenceFindsSharedTLSCertificateFingerprint(t *testing.T) {
 	if got.ConfidenceScope != "OBSERVED_SHARED_CERTIFICATE_FINGERPRINT" {
 		t.Fatalf("unexpected confidence scope: %q", got.ConfidenceScope)
 	}
-	if !strings.Contains(got.Limitations, "does not prove") {
+	if !strings.Contains(got.Limitations, "not common ownership") {
 		t.Fatalf("expected explicit correlation limitations, got %q", got.Limitations)
 	}
 }
