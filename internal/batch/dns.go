@@ -6,12 +6,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/itsFuRy007/kem3t/internal/pipeline"
 	"github.com/itsFuRy007/kem3t/internal/scale"
@@ -20,14 +23,41 @@ import (
 const MaxTargets = 10000
 
 type DNSOutcome struct {
-	Target string
-	AddressCount int
-	ChangeCount int
-	BaselineCreated bool
-	Err error
+	Target          string    `json:"target"`
+	AddressCount    int       `json:"address_count"`
+	ChangeCount     int       `json:"change_count"`
+	BaselineCreated bool      `json:"baseline_created"`
+	Addresses       []string  `json:"addresses,omitempty"`
+	CollectedAt     time.Time `json:"collected_at,omitempty"`
+	EvidenceStore   string    `json:"evidence_store,omitempty"`
+	Error           string    `json:"error,omitempty"`
+	Err             error     `json:"-"`
 }
 
-type dnsInvestigator func(context.Context, string, string) (int, int, bool, error)
+type DNSObservationRef struct {
+	Target        string    `json:"target"`
+	CollectedAt   time.Time `json:"collected_at"`
+	EvidenceStore string    `json:"evidence_store"`
+}
+
+type SharedAddressCorrelation struct {
+	Address      string             `json:"address"`
+	TargetCount  int                `json:"target_count"`
+	Observations []DNSObservationRef `json:"observations"`
+	Interpretation string           `json:"interpretation"`
+}
+
+type DNSBatchReport struct {
+	GeneratedAt    time.Time                 `json:"generated_at"`
+	TargetCount    int                       `json:"target_count"`
+	CompletedCount int                       `json:"completed_count"`
+	FailedCount    int                       `json:"failed_count"`
+	Outcomes       []DNSOutcome              `json:"outcomes"`
+	SharedAddresses []SharedAddressCorrelation `json:"shared_addresses"`
+	Limitations    []string                  `json:"limitations"`
+}
+
+type dnsInvestigator func(context.Context, string, string) (DNSOutcome, error)
 
 func ReadTargetsFile(path string) ([]string, error) {
 	path = strings.TrimSpace(path)
@@ -90,14 +120,27 @@ func NormalizeTarget(raw string) (string, error) {
 }
 
 // RunDNS executes independent DNS investigations with bounded concurrency. Each
-// target receives its own evidence database/history directory, preventing shared
-// SQLite write contention. Results remain in input order; item failures are isolated.
+// target has an isolated evidence database/history directory. A JSON report is
+// persisted with per-target outcomes and evidence-backed references to shared IPs.
 func RunDNS(ctx context.Context, targets []string, workers int, snapshotDir string) ([]DNSOutcome, error) {
-	return runDNS(ctx, targets, workers, snapshotDir, func(ctx context.Context, target, dir string) (int, int, bool, error) {
+	outcomes, err := runDNS(ctx, targets, workers, snapshotDir, func(ctx context.Context, target, dir string) (DNSOutcome, error) {
 		result, err := pipeline.RunDNS(ctx, target, dir)
-		if err != nil { return 0, 0, false, err }
-		return len(result.CurrentSnapshot.Addresses), len(result.Changes), result.BaselineCreated, nil
+		if err != nil { return DNSOutcome{}, err }
+		return DNSOutcome{
+			Target: target,
+			AddressCount: len(result.CurrentSnapshot.Addresses),
+			ChangeCount: len(result.Changes),
+			BaselineCreated: result.BaselineCreated,
+			Addresses: append([]string(nil), result.CurrentSnapshot.Addresses...),
+			CollectedAt: result.CurrentSnapshot.Collected,
+			EvidenceStore: filepath.Join(dir, "evidence.db"),
+		}, nil
 	})
+	if err != nil { return outcomes, err }
+	if err := PersistDNSBatchReport(snapshotDir, outcomes); err != nil {
+		return outcomes, fmt.Errorf("persist batch DNS report: %w", err)
+	}
+	return outcomes, nil
 }
 
 func runDNS(ctx context.Context, targets []string, workers int, snapshotDir string, investigate dnsInvestigator) ([]DNSOutcome, error) {
@@ -123,14 +166,87 @@ func runDNS(ctx context.Context, targets []string, workers int, snapshotDir stri
 	results, err := scale.Run(ctx, canonical, workers, func(ctx context.Context, target string) (DNSOutcome, error) {
 		sum := sha256.Sum256([]byte(target))
 		targetDir := filepath.Join(snapshotDir, "batch-dns", hex.EncodeToString(sum[:12]))
-		addresses, changes, baseline, itemErr := investigate(ctx, target, targetDir)
-		return DNSOutcome{Target:target, AddressCount:addresses, ChangeCount:changes, BaselineCreated:baseline, Err:itemErr}, nil
+		outcome, itemErr := investigate(ctx, target, targetDir)
+		outcome.Target = target
+		if itemErr != nil {
+			outcome.Err = itemErr
+			outcome.Error = itemErr.Error()
+		}
+		return outcome, nil
 	})
 	if err != nil { return nil, err }
 	outcomes := make([]DNSOutcome, len(results))
 	for i, result := range results {
 		outcomes[i] = result.Value
-		if result.Err != nil { outcomes[i] = DNSOutcome{Target:result.Input, Err:result.Err} }
+		if result.Err != nil {
+			outcomes[i] = DNSOutcome{Target: result.Input, Err: result.Err, Error: result.Err.Error()}
+		}
 	}
 	return outcomes, nil
+}
+
+// BuildDNSBatchReport correlates addresses observed for multiple target scopes.
+// It intentionally records references and limitations rather than inferring
+// common ownership or treating shared hosting as proof of a relationship.
+func BuildDNSBatchReport(outcomes []DNSOutcome, generatedAt time.Time) DNSBatchReport {
+	if generatedAt.IsZero() { generatedAt = time.Now().UTC() } else { generatedAt = generatedAt.UTC() }
+	report := DNSBatchReport{
+		GeneratedAt: generatedAt,
+		TargetCount: len(outcomes),
+		Outcomes: append([]DNSOutcome(nil), outcomes...),
+		SharedAddresses: make([]SharedAddressCorrelation, 0),
+		Limitations: []string{
+			"DNS addresses are observations collected at the per-target timestamps, not guarantees of current resolution.",
+			"Shared IP addresses can result from CDNs, shared hosting, reverse proxies, cloud platforms, or unrelated tenants; they do not prove common ownership or control.",
+			"Each target's evidence database is isolated. EvidenceStore paths identify where the underlying observations can be reviewed.",
+			"Only successful target outcomes participate in shared-address correlations; failed targets are not treated as negative evidence.",
+		},
+	}
+	byAddress := make(map[string][]DNSObservationRef)
+	for _, outcome := range outcomes {
+		if outcome.Err != nil || outcome.Error != "" { report.FailedCount++; continue }
+		report.CompletedCount++
+		seenForTarget := make(map[string]struct{})
+		for _, raw := range outcome.Addresses {
+			ip := net.ParseIP(strings.TrimSpace(raw))
+			if ip == nil { continue }
+			address := ip.String()
+			if _, duplicate := seenForTarget[address]; duplicate { continue }
+			seenForTarget[address] = struct{}{}
+			byAddress[address] = append(byAddress[address], DNSObservationRef{
+				Target: outcome.Target, CollectedAt: outcome.CollectedAt, EvidenceStore: outcome.EvidenceStore,
+			})
+		}
+	}
+	for address, observations := range byAddress {
+		if len(observations) < 2 { continue }
+		report.SharedAddresses = append(report.SharedAddresses, SharedAddressCorrelation{
+			Address: address, TargetCount: len(observations), Observations: observations,
+			Interpretation: "Same address observed for multiple target scopes; investigate as a lead, not proof of shared ownership.",
+		})
+	}
+	sort.Slice(report.SharedAddresses, func(i, j int) bool { return report.SharedAddresses[i].Address < report.SharedAddresses[j].Address })
+	return report
+}
+
+// PersistDNSBatchReport atomically writes the latest batch summary beside the
+// per-target evidence stores so users can review outcomes and pivots after a run.
+func PersistDNSBatchReport(snapshotDir string, outcomes []DNSOutcome) error {
+	snapshotDir = strings.TrimSpace(snapshotDir)
+	if snapshotDir == "" { return fmt.Errorf("snapshot directory is required") }
+	dir := filepath.Join(snapshotDir, "batch-dns")
+	if err := os.MkdirAll(dir, 0750); err != nil { return fmt.Errorf("create batch report directory: %w", err) }
+	report := BuildDNSBatchReport(outcomes, time.Now().UTC())
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil { return fmt.Errorf("encode batch DNS report: %w", err) }
+	data = append(data, '\n')
+	temp, err := os.CreateTemp(dir, ".report-*.tmp")
+	if err != nil { return fmt.Errorf("create temporary batch report: %w", err) }
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	if _, err := temp.Write(data); err != nil { _ = temp.Close(); return fmt.Errorf("write batch DNS report: %w", err) }
+	if err := temp.Sync(); err != nil { _ = temp.Close(); return fmt.Errorf("sync batch DNS report: %w", err) }
+	if err := temp.Close(); err != nil { return fmt.Errorf("close batch DNS report: %w", err) }
+	if err := os.Rename(tempPath, filepath.Join(dir, "report.json")); err != nil { return fmt.Errorf("replace batch DNS report: %w", err) }
+	return nil
 }
