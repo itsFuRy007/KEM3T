@@ -1,6 +1,7 @@
 package intelligence
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -283,5 +284,42 @@ func TestReportEngineRejectsMixedScopeAggregateFinding(t *testing.T) {
 	_, err := (&ReportEngine{}).Build("example.com", []Finding{finding}, registry)
 	if err == nil {
 		t.Fatal("expected mixed-scope aggregate finding to be rejected")
+	}
+}
+
+
+func TestReportEngineIncludesSharedTLSCertificateIntelligence(t *testing.T) {
+	registry := evidence.NewRegistry()
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close evidence registry: %v", err)
+		}
+	})
+
+	fingerprint := "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+	for _, record := range []evidence.Evidence{
+		tlsEvidenceForTest(t, "tls-a", "a.example.com", fingerprint),
+		tlsEvidenceForTest(t, "tls-b", "b.example.com", fingerprint),
+	} {
+		if err := registry.AddEvidence(record); err != nil {
+			t.Fatalf("AddEvidence(%q): %v", record.ID, err)
+		}
+	}
+
+	report, err := (&ReportEngine{}).Build("a.example.com", nil, registry)
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if len(report.Correlations) != 1 {
+		t.Fatalf("expected one target-related certificate correlation, got %d", len(report.Correlations))
+	}
+	if report.Correlations[0].Type != CorrelationSharedTLSCertificateFingerprint {
+		t.Fatalf("unexpected correlation type: %q", report.Correlations[0].Type)
+	}
+	if len(report.Hypotheses) != 1 || !strings.Contains(report.Hypotheses[0].Title, "TLS certificate") {
+		t.Fatalf("expected certificate-specific hypothesis in report, got %#v", report.Hypotheses)
+	}
+	if report.Hypotheses[0].Confidence != HypothesisConfidenceLow {
+		t.Fatalf("expected conservative LOW confidence, got %q", report.Hypotheses[0].Confidence)
 	}
 }
