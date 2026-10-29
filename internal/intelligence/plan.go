@@ -136,7 +136,7 @@ func BuildAdaptiveInvestigationPlan(
 			}
 			// Preserve completed work as audit history. Other obsolete tasks remain
 			// visible but are explicitly marked as no longer suggested.
-			if old.Status != TaskCompleted && old.Status != TaskInconclusive && old.Status != TaskBlocked && old.Status != TaskNotApplicable {
+			if old.Status != TaskCompleted {
 				old.Status = TaskStale
 			}
 			items[old.ID] = old
