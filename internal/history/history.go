@@ -121,7 +121,7 @@ func BuildSnapshot(run evidence.CollectionRun, records []evidence.Evidence, obse
 }
 
 func (s Snapshot) Validate() error {
-	if strings.TrimSpace(s.RunID)=="" || normalizeTarget(s.Target)=="" { return fmt.Errorf("snapshot run ID and target are required") }
+	if strings.TrimSpace(s.RunID)=="" || NormalizeTarget(s.Target)=="" { return fmt.Errorf("snapshot run ID and target are required") }
 	if s.Collector!="dns" && s.Collector!="tcp" && s.Collector!="tls" && s.Collector!="http" { return fmt.Errorf("unsupported snapshot collector %q",s.Collector) }
 	if s.CollectedAt.IsZero() { return fmt.Errorf("snapshot collection time is required") }
 	seen:=make(map[string]struct{},len(s.Records))
@@ -197,9 +197,9 @@ func recordKey(item evidence.Evidence)(string,error){
 	case evidence.TypeTCPPort:
 		var d evidence.TCPPortDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("%s|%s|%05d",item.Type,NormalizeTarget(item.EntityID),d.Port),nil
 	case evidence.TypeTLSCertificate:
-		var d evidence.TLSCertificateDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("%s|%s|%05d",item.Type,normalizeTarget(item.EntityID),d.Port),nil
+		var d evidence.TLSCertificateDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("%s|%s|%05d",item.Type,NormalizeTarget(item.EntityID),d.Port),nil
 	case evidence.TypeHTTPService:
-		var d evidence.HTTPServiceDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("%s|%s|%05d|%s",item.Type,normalizeTarget(item.EntityID),d.Port,d.Scheme),nil
+		var d evidence.HTTPServiceDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("%s|%s|%05d|%s",item.Type,NormalizeTarget(item.EntityID),d.Port,d.Scheme),nil
 	default:return "",fmt.Errorf("unsupported evidence type %q",item.Type)
 	}
 }
