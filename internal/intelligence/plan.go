@@ -128,6 +128,7 @@ func BuildAdaptiveInvestigationPlan(
 		for _, old := range previous.Items {
 			if current, exists := items[old.ID]; exists {
 				current.Status = old.Status
+				if current.Status == TaskStale { current.Status = TaskRecommended }
 				current.OutcomeNote = old.OutcomeNote
 				current.EvidenceIDs = append([]string(nil), old.EvidenceIDs...)
 				items[old.ID] = current
