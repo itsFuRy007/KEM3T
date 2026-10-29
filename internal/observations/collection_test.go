@@ -53,3 +53,69 @@ func TestBuildServicesDoesNotInferApplicationFromPort(t *testing.T) {
 		t.Fatalf("TCP port alone must not imply HTTPS: %#v", got[0])
 	}
 }
+
+func TestNormalizeEventsMergesTCPHTTPAndTLS(t *testing.T) {
+	at := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+	fingerprint := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	input := []events.Event{
+		{
+			ID: "tcp-1", Type: events.EventPortDiscovered,
+			Timestamp: at, Target: "Example.COM.", Source: "tcp",
+			Data: map[string]string{
+				"protocol": "tcp", "port": "443", "state": "open",
+			},
+		},
+		{
+			ID: "tls-1", Type: events.EventTLSCertificateFound,
+			Timestamp: at.Add(time.Second), Target: "example.com", Source: "tls",
+			Data: map[string]string{
+				"port": "443", "sha256_fingerprint": fingerprint,
+			},
+		},
+		{
+			ID: "http-1", Type: events.EventHTTPObserved,
+			Timestamp: at.Add(2 * time.Second), Target: "example.com", Source: "http",
+			Data: map[string]string{
+				"scheme": "https", "port": "443", "status_code": "200",
+			},
+		},
+	}
+	got := NormalizeEvents(input)
+	if len(got.Rejected) != 0 {
+		t.Fatalf("unexpected rejected events: %#v", got.Rejected)
+	}
+	if len(got.Observations) != 3 {
+		t.Fatalf("normalized observations = %d, want 3", len(got.Observations))
+	}
+	if len(got.Services) != 1 {
+		t.Fatalf("merged services = %d, want 1: %#v", len(got.Services), got.Services)
+	}
+	service := got.Services[0]
+	if service.ID != "service:example.com:443:https" {
+		t.Fatalf("unexpected service ID: %q", service.ID)
+	}
+	if service.Application != "https" {
+		t.Fatalf("application = %q, want https", service.Application)
+	}
+	if service.State != "open" {
+		t.Fatalf("service state = %q, want open", service.State)
+	}
+	if service.Indicators["tls_observed"] != "true" {
+		t.Fatalf("TLS observation missing from service: %#v", service.Indicators)
+	}
+	if service.Indicators["tls_certificate_sha256"] != fingerprint {
+		t.Fatalf("TLS fingerprint not preserved: %#v", service.Indicators)
+	}
+	if service.Indicators["http_status_code"] != "200" {
+		t.Fatalf("HTTP status not preserved: %#v", service.Indicators)
+	}
+	if len(service.Sources) != 3 ||
+		service.Sources[0] != "http" ||
+		service.Sources[1] != "tcp" ||
+		service.Sources[2] != "tls" {
+		t.Fatalf("unexpected service sources: %#v", service.Sources)
+	}
+	if !service.ObservedAt.Equal(at.Add(2 * time.Second)) {
+		t.Fatalf("unexpected latest observation time: %s", service.ObservedAt)
+	}
+}

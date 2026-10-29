@@ -161,7 +161,7 @@ The project is under active development. Checkboxes below distinguish implemente
 - [x] **Step 3:** Integrate normalized service identification into DNS, TCP, TLS, and HTTP collection pipelines using observed behavior and evidence, not port numbers alone
 - [x] **Step 4:** Connect evidence-backed unified service records to the Infrastructure Graph
 - [x] **Step 5:** Add integration coverage for Collector → normalized observation → Evidence → Graph
-- [ ] Expand DNS/TLS edge-case coverage and cross-collector normalization beyond the initial shared model
+- [x] Expand DNS/TLS edge-case coverage and cross-collector normalization beyond the initial shared model
 
 ### Phase 3 — Infrastructure Graph
 - [x] Initial entities, relationships, and provenance links
