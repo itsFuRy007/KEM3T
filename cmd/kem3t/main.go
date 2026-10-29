@@ -13,6 +13,7 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/collectors"
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/externalintel"
 	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/history"
@@ -33,7 +34,7 @@ func run() error {
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 
-	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, or history")
+	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, or ct")
 	target := flags.String("target", "", "Target hostname or IP address")
 	port := flags.Int("port", 443, "TCP port for TLS mode")
 	httpScheme := flags.String("http-scheme", "auto", "HTTP scheme: auto, http, or https")
@@ -53,6 +54,11 @@ func run() error {
 	switch strings.ToLower(strings.TrimSpace(*mode)) {
 	case "history":
 		return runHistory(*target, *snapshotDir)
+	case "ct":
+		if strings.TrimSpace(*target) == "" {
+			return fmt.Errorf("-target is required in CT mode")
+		}
+		return runCT(strings.TrimSpace(*target))
 	case "demo":
 		return runDemo()
 	case "dns":
@@ -514,4 +520,30 @@ func printInfrastructureGraph(g graph.Graph) {
 			nodeValues[edge.Target],
 		)
 	}
+}
+
+func runCT(target string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	report, err := (&externalintel.CTClient{}).LookupDomain(ctx, target)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("[CERTIFICATE TRANSPARENCY INTELLIGENCE]")
+	fmt.Printf("Target: %s\n", report.Target)
+	fmt.Printf("Source: %s\n", report.Source)
+	fmt.Printf("Retrieved: %s\n", report.RetrievedAt.Format(time.RFC3339))
+	fmt.Printf("Certificate records: %d\n", report.CertificateRecords)
+	fmt.Printf("Unique in-scope DNS names: %d\n", report.UniqueDNSNames)
+	fmt.Printf("Distinct issuer labels: %d\n", report.UniqueIssuers)
+	for _, name := range report.DNSNames {
+		fmt.Printf("[CT NAME] %s\n", name)
+	}
+	fmt.Println("\n[INTERPRETATION LIMITS]")
+	for _, limitation := range report.Limitations {
+		fmt.Printf("- %s\n", limitation)
+	}
+	return nil
 }
