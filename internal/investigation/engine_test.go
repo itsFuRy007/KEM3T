@@ -52,3 +52,14 @@ func TestEngineRejectsCanceledContextBeforeStartingRun(t *testing.T) {
 	runs,_:=registry.CollectionRuns("example.com")
 	if len(runs)!=0 { t.Fatalf("canceled run should not be persisted: %+v",runs) }
 }
+
+func TestEngineAcceptsSuccessfulEmptyLookup(t *testing.T) {
+	registry:=evidence.NewRegistry()
+	stage:=FuncStage{StageName:"empty-source",Lookup:func(context.Context,string,*evidence.Registry)(StageResult,error){return StageResult{Limitations:[]string{"source returned no records"}},nil}}
+	result,err:=(&Engine{Registry:registry,Stages:[]Stage{stage}}).Run(context.Background(),"example.com")
+	if err!=nil {t.Fatal(err)}
+	if result.Partial {t.Fatal("successful empty lookup must not be marked partial")}
+	if result.Report.Target!="example.com" {t.Fatalf("missing target-scoped report: %+v",result.Report)}
+	runs,err:=registry.CollectionRuns("example.com")
+	if err!=nil||len(runs)!=1||runs[0].Status!=evidence.CollectionRunCompleted {t.Fatalf("empty successful run should be completed: %+v, %v",runs,err)}
+}
