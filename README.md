@@ -47,6 +47,22 @@ KEM3T supports TCP connection checks over a configurable port range. Open-port o
 
 This is connection-based port discovery, not comprehensive service fingerprinting or vulnerability detection.
 
+### HTTP/HTTPS Service Observation
+
+KEM3T supports bounded HTTP(S) response collection for an explicitly supplied hostname, IP address, or absolute HTTP(S) URL. In `auto` mode, an unschemed host is tried over HTTPS first and falls back to HTTP if the HTTPS request fails.
+
+The collector records status code, final URL, redirect count, selected response headers, page title, bounded-body truncation, and TLS verification metadata when available. It stores normalized evidence and provenance and adds a host-to-service relationship to the infrastructure graph. Response bodies are not persisted; only a bounded in-memory prefix is inspected for a page title. Redirects to a different hostname are rejected to avoid silently expanding the investigation scope.
+
+A `Server` header, page title, or `X-Powered-By` value is an observation, not proof of software identity or a vulnerability.
+
+Examples:
+
+```bash
+go run ./cmd/kem3t -mode http -target https://example.com
+go run ./cmd/kem3t -mode http -target example.com -http-scheme auto
+go run ./cmd/kem3t -mode http -target 127.0.0.1 -http-scheme http -http-port 8080
+```
+
 ### TLS Certificate Inspection
 
 KEM3T includes a TLS pipeline and CLI mode that can collect certificate subject, issuer, negotiated TLS version, verification status, and SHA-256 fingerprint.
@@ -176,7 +192,7 @@ The repository is organized around the following responsibilities:
 
 - `cmd/kem3t/` — CLI entry point
 - `internal/changes/` — Change detection
-- `internal/collectors/` — Demo, DNS, TCP, and TLS collection
+- `internal/collectors/` — Demo, DNS, TCP, TLS, and HTTP collection
 - `internal/events/` — Collection events
 - `internal/evidence/` — Evidence registry and persistence
 - `internal/graph/` — Infrastructure relationship graph
@@ -337,6 +353,8 @@ The roadmap below separates implemented capabilities from planned work.
 - [x] Collection run and observation tracking
 - [x] TCP port discovery over configurable ranges
 - [x] TLS certificate inspection
+- [x] Bounded HTTP/HTTPS response collection and redirect metadata
+- [x] HTTP evidence and host-to-service graph relationships
 - [x] Initial infrastructure graph construction
 - [x] TCP pipeline integration with evidence and graph generation
 - [x] TLS pipeline integration with graph output

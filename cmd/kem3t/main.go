@@ -31,9 +31,11 @@ func run() error {
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 
-	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, or history")
+	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, or history")
 	target := flags.String("target", "", "Target hostname or IP address")
 	port := flags.Int("port", 443, "TCP port for TLS mode")
+	httpScheme := flags.String("http-scheme", "auto", "HTTP scheme: auto, http, or https")
+	httpPort := flags.Int("http-port", 0, "HTTP port override (0 uses scheme defaults)")
 	startPort := flags.Int("start-port", 1, "First TCP port to scan")
 	endPort := flags.Int("end-port", 1024, "Last TCP port to scan")
 	snapshotDir := flags.String(
@@ -61,6 +63,11 @@ func run() error {
 			return fmt.Errorf("-target is required in TLS mode")
 		}
 		return runTLS(strings.TrimSpace(*target), *port, *snapshotDir)
+	case "http":
+		if strings.TrimSpace(*target) == "" {
+			return fmt.Errorf("-target is required in HTTP mode")
+		}
+		return runHTTP(strings.TrimSpace(*target), *httpScheme, *httpPort, *snapshotDir)
 	case "tcp":
 		if strings.TrimSpace(*target) == "" {
 			return fmt.Errorf("-target is required in TCP mode")
@@ -111,7 +118,7 @@ func runTCP(target string, startPort, endPort int) error {
 		target,
 		startPort,
 		endPort,
-		"snapshots",
+		snapshotDir,
 	)
 	if err != nil {
 		return err
@@ -149,6 +156,28 @@ func runTLS(target string, port int, snapshotDir string) error {
 		fmt.Printf("SHA-256: %s\n", result.Event.Data["sha256_fingerprint"])
 	}
 
+	printInfrastructureGraph(result.Graph)
+	return nil
+}
+
+func runHTTP(target, scheme string, port int, snapshotDir string) error {
+	result, err := pipeline.RunHTTP(context.Background(), target, scheme, port, snapshotDir)
+	if err != nil {
+		return err
+	}
+	if result.Event != nil {
+		fmt.Println("[HTTP SERVICE]")
+		fmt.Printf("Target: %s\n", result.Event.Target)
+		fmt.Printf("URL: %s\n", result.Event.Data["url"])
+		fmt.Printf("Final URL: %s\n", result.Event.Data["final_url"])
+		fmt.Printf("Status: %s\n", result.Event.Data["status_code"])
+		fmt.Printf("Title: %s\n", result.Event.Data["title"])
+		fmt.Printf("Server: %s\n", result.Event.Data["server"])
+		fmt.Printf("Content-Type: %s\n", result.Event.Data["content_type"])
+		fmt.Printf("Redirects: %s\n", result.Event.Data["redirect_count"])
+		fmt.Printf("TLS verified: %s\n", result.Event.Data["tls_verified"])
+		fmt.Printf("Body truncated: %s\n", result.Event.Data["body_truncated"])
+	}
 	printInfrastructureGraph(result.Graph)
 	return nil
 }
