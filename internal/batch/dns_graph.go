@@ -286,7 +286,7 @@ func BuildDNSInvestigationGraph(outcomes []DNSOutcome, generatedAt time.Time) DN
 		}
 		for _, ref := range refs {
 			targetID := "target:" + ref.Target
-			edgeID := "member-of-shared-address-correlation:" + address + ":" + target
+			edgeID := "member-of-shared-address-correlation:" + address + ":" + ref.Target
 			edges[edgeID] = DNSGraphEdge{
 				ID: edgeID, Type: "MEMBER_OF_SHARED_ADDRESS_CORRELATION", Source: targetID, Target: clusterID,
 				ObservedAt: ref.CollectedAt, EvidenceStore: ref.EvidenceStore,
