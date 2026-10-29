@@ -34,7 +34,7 @@ func run() error {
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 
-	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, ct, or rdap")
+	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, history, ct, rdap, or asn")
 	target := flags.String("target", "", "Target hostname or IP address")
 	port := flags.Int("port", 443, "TCP port for TLS mode")
 	httpScheme := flags.String("http-scheme", "auto", "HTTP scheme: auto, http, or https")
@@ -64,6 +64,9 @@ func run() error {
 			return fmt.Errorf("-target is required in RDAP mode")
 		}
 		return runRDAP(strings.TrimSpace(*target), *snapshotDir)
+	case "asn":
+		if strings.TrimSpace(*target) == "" { return fmt.Errorf("-target is required in ASN mode") }
+		return runASN(strings.TrimSpace(*target), *snapshotDir)
 	case "demo":
 		return runDemo()
 	case "dns":
@@ -600,4 +603,25 @@ func runRDAP(target, snapshotDir string) error {
 	fmt.Printf("New observation: %t\n",added)
 	printInfrastructureGraph(infrastructureGraph)
 	return nil
+}
+
+func runASN(target,snapshotDir string)error{
+ ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second);defer cancel()
+ report,err:=(&externalintel.ASNClient{}).LookupIP(ctx,target);if err!=nil{return err}
+ if strings.TrimSpace(snapshotDir)==""{return fmt.Errorf("snapshot directory is required")}
+ if err:=os.MkdirAll(snapshotDir,0750);err!=nil{return fmt.Errorf("create snapshot directory: %w",err)}
+ registry,err:=evidence.OpenRegistry(filepath.Join(snapshotDir,"evidence.db"));if err!=nil{return fmt.Errorf("open evidence registry: %w",err)};defer registry.Close()
+ added,err:=externalintel.RegisterASNReport(registry,report);if err!=nil{return err}
+ infrastructureGraph,err:=graph.BuildFromRegistry(registry);if err!=nil{return fmt.Errorf("build ASN infrastructure graph: %w",err)}
+ fmt.Println("[ORIGIN ASN INTELLIGENCE]")
+ fmt.Printf("Target IP: %s\nRetrieved: %s\n",report.Target,report.RetrievedAt.Format(time.RFC3339))
+ for _,record:=range report.Records{
+  fmt.Printf("[ORIGIN] AS%d | Prefix: %s | Network label: %s | Country: %s | Registry: %s | Allocated: %s\n",record.ASN,record.Prefix,record.NetworkName,record.Country,record.Registry,record.Allocated)
+  fmt.Printf("  Mapping source: %s\n  RDAP source: %s\n",record.MappingSource,record.RDAPSource)
+ }
+ fmt.Println("\n[INTERPRETATION LIMITS]")
+ for _,limitation:=range report.Limitations{fmt.Printf("- %s\n",limitation)}
+ fmt.Printf("New observation: %t\n",added)
+ printInfrastructureGraph(infrastructureGraph)
+ return nil
 }
