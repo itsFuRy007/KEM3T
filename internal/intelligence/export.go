@@ -115,7 +115,7 @@ func (c ExportCollection) Validate(target string) error {
 		if c.History == nil {
 			return fmt.Errorf("comparison collection requires DNS history")
 		}
-		if c.History.Target != target {
+		if normalizeFindingTarget(c.History.Target) != target {
 			return fmt.Errorf("DNS history target does not match investigation scope %q", target)
 		}
 		if c.History.PreviousObservedCount != len(c.PreviousSnapshot.Addresses) ||
