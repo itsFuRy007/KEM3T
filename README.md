@@ -198,7 +198,7 @@ The project is under active development. Checkboxes below distinguish implemente
 - [x] Persist RDAP facts and timestamped observations; connect registrar and nameserver relationships to the evidence-backed graph
 - [x] Origin-ASN lookup through Team Cymru origin DNS via DNS-over-HTTPS, enriched with IANA-bootstrapped ASN RDAP
 - [x] Persist ASN findings with mapping/RDAP source attribution and connect IP → ASN → prefix relationships in the evidence graph
-- [ ] IP RDAP network-range registration enrichment
+- [x] IP RDAP network-range enrichment via IANA IPv4/IPv6 bootstrap, validated allocation bounds, and evidence-backed IP → registered-range graph edges
 - [ ] ASN and network ownership context
 - [x] OTX passive-DNS collection with target-scope filtering, A/AAAA validation, historical timestamps, optional API-key support, and truncation signaling
 - [x] Persist passive-DNS facts and time-aware observations; distinguish historical DNS relationships from live DNS edges in the graph
