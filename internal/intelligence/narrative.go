@@ -283,7 +283,7 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 		})
 	}
 
-	n.Summary = fmt.Sprintf("Investigation of %s contains %d direct correlations, %d convergent discoveries, %d multi-hop paths, %d recurring pivots, %d hypotheses, %d findings, and %d verification assessments, and %d explicit intelligence gaps. These are evidence-linked leads and observations, not automatic conclusions.",
+	n.Summary = fmt.Sprintf("Investigation of %s contains %d direct correlations, %d convergent discoveries, %d multi-hop paths, %d recurring pivots, %d hypotheses, %d findings, %d verification assessments, and %d explicit intelligence gaps. These are evidence-linked leads and observations, not automatic conclusions.",
 		target, len(report.Correlations), len(report.Discoveries), len(report.DiscoveryPaths),
 		len(report.DiscoveryPivots), len(report.Hypotheses), len(report.Findings), len(report.VerificationAssessments), len(report.IntelligenceGaps))
 	if len(n.Signals) == 0 {
