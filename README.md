@@ -154,8 +154,12 @@ The project is under active development. Checkboxes below distinguish implemente
 - [x] TCP port discovery
 - [x] TLS certificate inspection
 - [x] Initial bounded HTTP/HTTPS service observation
-- [ ] Broader service fingerprinting
-- [ ] Expand DNS/TLS coverage and cross-collector normalization
+- [ ] **Step 1:** Normalize the result shapes from DNS, TCP, TLS, and HTTP/HTTPS
+- [ ] **Step 2:** Define a unified discovered-service model covering target, port, protocol, evidence, and information source
+- [ ] **Step 3:** Build service identification from observed behavior and evidence, not port numbers alone
+- [ ] **Step 4:** Connect identified service results to the Infrastructure Graph
+- [ ] **Step 5:** Add integration tests validating the Collector → Evidence → Graph flow
+- [ ] Expand DNS/TLS coverage and cross-collector normalization beyond the initial shared model
 
 ### Phase 3 — Infrastructure Graph
 - [x] Initial entities, relationships, and provenance links
