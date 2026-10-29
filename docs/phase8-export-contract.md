@@ -1,34 +1,40 @@
 # Phase 8 — Structured Investigation Export Contract
 
-The Phase 8 export contract is designed around one principle: exported data must preserve enough structure to continue an investigation outside the CLI without turning analytical interpretation into a verdict.
+The first export format is a versioned JSON envelope around KEM3T's existing target-scoped intelligence report.
 
-## Contract shape
+## JSON envelope
 
-A future structured export should contain these top-level sections:
+- `schema_version` — mandatory export contract version (`1`).
+- `investigation.target` — normalized target scope for this export.
+- `report` — the existing `IntelligenceReport`, including its findings, correlations, discoveries, hypotheses, verification assessments, and prioritized findings.
 
-- `schema_version` — explicit contract version.
-- `investigation` — target scope and investigation metadata.
-- `entities` — deduplicated entities participating in the investigation.
-- `relationships` — evidence-backed graph relationships.
-- `observations` — timestamped observations with provenance references.
-- `discoveries` — higher-order discoveries such as convergences, paths, and recurring pivots.
-- `hypotheses` — hypotheses with confidence, alternatives, and verification requirements.
-- `changes` — historical changes tied to observed snapshots.
+The report remains authoritative. The envelope does not duplicate evidence, invent a second analytical model, or upgrade hypotheses into conclusions.
 
 ## Required properties
 
-- IDs are stable within an export and are used for references instead of duplicating large objects.
-- Collections use deterministic ordering.
-- Empty collections are represented explicitly when the schema requires them.
+- The export target and report target must both be present and resolve to the same normalized scope.
+- Unsupported schema versions, missing reports, and mismatched scopes are rejected before serialization.
+- Existing evidence and observation references remain attached to their report records.
+- Confidence, alternatives, limitations, and verification steps remain part of the report.
 - Timestamps retain their source precision and are not silently converted to local time.
-- Scope is represented explicitly.
-- Evidence references are preserved rather than flattened into presentation strings.
-- Confidence is represented as analytical confidence, never as a claim of ownership, compromise, or maliciousness.
+- A missing observation is not represented as proof of global disappearance.
+- JSON is written to a temporary file in the destination directory and atomically renamed only after the complete payload has been written and synced.
+- Export files are created with owner-only permissions where supported.
+
+## CLI
+
+Use DNS mode with `-export-json` to write the report:
+
+```sh
+kem3t -mode dns -target example.com -export-json ./reports/example.com.json
+```
+
+The destination directory is created when needed. The option is DNS-mode-only in this first increment.
 
 ## Compatibility
 
-The schema version is mandatory so consumers can reject or migrate incompatible exports deliberately. New optional fields may be added without changing the meaning of existing fields; semantic changes require a new schema version.
+Consumers must inspect `schema_version`. Additive optional fields may be introduced without changing existing semantics; changes to meaning or required structure require a new schema version.
 
 ## Non-goals
 
-This contract does not define a web UI, PDF layout, terminal colors, or provider-specific raw response formats. Those are presentation concerns and must not become the canonical investigation model.
+This increment does not define PDF layout, terminal colors, a web UI, or provider-specific raw response formats. Those presentation concerns must not become the canonical investigation model.
