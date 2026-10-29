@@ -85,6 +85,7 @@ func (n ResearchNarrative) Validate() error {
 type narrativeStepGroup struct {
 	action string
 	kind string
+	reasons map[string]struct{}
 	refs map[string]struct{}
 }
 
@@ -117,8 +118,11 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 			key := kind + "\x00" + action
 			group := steps[key]
 			if group == nil {
-				group = &narrativeStepGroup{action: action, kind: kind, refs: make(map[string]struct{})}
+				group = &narrativeStepGroup{action: action, kind: kind, reasons: make(map[string]struct{}), refs: make(map[string]struct{})}
 				steps[key] = group
+			}
+			if strings.TrimSpace(reason) != "" {
+				group.reasons[strings.TrimSpace(reason)] = struct{}{}
 			}
 			group.refs[kind+":"+sourceID] = struct{}{}
 		}
@@ -209,7 +213,7 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 			summary += " " + strings.TrimSpace(finding.Observation)
 		}
 		n.Signals = append(n.Signals, NarrativeSignal{
-			ID: "finding:" + finding.Title, Kind: "FINDING", Summary: summary,
+			ID: "finding:" + strings.Join(stableUnique(append([]string(nil), refs...)), ";"), Kind: "FINDING", Summary: summary,
 			Confidence: "SOURCE_PRIORITY:" + string(finding.Priority),
 			AlternativeExplanations: finding.PossibleSignificance, References: stableUnique(refs),
 		})
@@ -252,10 +256,18 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 			refs = append(refs, ref)
 		}
 		sort.Strings(refs)
+		reasons := make([]string, 0, len(group.reasons))
+		for reason := range group.reasons {
+			reasons = append(reasons, reason)
+		}
+		sort.Strings(reasons)
+		reason := "Derived from " + group.kind + " results."
+		if len(reasons) > 0 {
+			reason += " " + strings.Join(reasons, " ")
+		}
 		n.NextSteps = append(n.NextSteps, NarrativeNextStep{
 			ID: fmt.Sprintf("next-step:%03d", i+1), Action: group.action,
-			Reason: "Derived from " + group.kind + " results: " + strings.TrimSpace(group.action),
-			References: refs,
+			Reason: reason, References: refs,
 		})
 	}
 
