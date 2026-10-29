@@ -48,8 +48,8 @@ func TestRelationshipProvenanceReturnsDeterministicReferences(t *testing.T) {
 				Type:           EdgeResolvesTo,
 				Source:         "domain:example.com",
 				Target:         "ip:192.0.2.10",
-				EvidenceIDs:    []string{"dns-9", "dns-2"},
-				ObservationIDs: []string{"obs-3", "obs-1"},
+				EvidenceIDs:    []string{"dns-2", "dns-9"},
+				ObservationIDs: []string{"obs-1", "obs-3"},
 			},
 		},
 	}
@@ -64,6 +64,12 @@ func TestRelationshipProvenanceReturnsDeterministicReferences(t *testing.T) {
 	}
 	if got, want := provenance.ObservationIDs, []string{"obs-1", "obs-3"}; !equalStrings(got, want) {
 		t.Fatalf("observation provenance = %v, want %v", got, want)
+	}
+
+	provenance.EvidenceIDs[0] = "mutated"
+	provenance.ObservationIDs[0] = "mutated"
+	if edge := graph.Edges[0]; edge.EvidenceIDs[0] != "dns-2" || edge.ObservationIDs[0] != "obs-1" {
+		t.Fatal("provenance result aliases graph-owned slices")
 	}
 }
 
