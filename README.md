@@ -184,10 +184,11 @@ The project is under active development. Checkboxes below distinguish implemente
 - [x] Hypothesis generation and alternative explanations
 - [x] Verification steps and rule-based prioritization
 - [x] Initial intelligence reports
-- [x] Scope reports to target-related correlations while retaining related entities as context
-- [x] Make confidence scope explicit and keep shared-IP hypotheses conservatively low-confidence
+- [x] Scope both findings and correlations to the requested target; reject mixed-scope aggregate findings
+- [x] Correlate shared DNS addresses and shared TLS certificate fingerprints with evidence/observation provenance
+- [x] Make confidence scope explicit and keep shared-infrastructure hypotheses conservatively low-confidence
 - [x] Validate provenance links and expose supporting evidence/observation references in reports
-- [x] Add actionable verification criteria, alternatives, and contradiction handling
+- [x] Add actionable verification criteria, alternatives, and structured independent support/contradiction assessment
 
 ### Phase 6 — External Intelligence
 - [ ] Certificate Transparency (CT)
