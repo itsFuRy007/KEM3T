@@ -119,6 +119,7 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 
 	result.Normalized = observations.NormalizeEvents(result.Events)
 	observations.AttachEvidence(&result.Normalized, result.Observations)
+	observations.AttachEvidence(&result.Normalized, result.Observations)
 	if len(result.Normalized.Rejected) > 0 {
 		return TCPResult{}, fmt.Errorf("normalize TCP events: %s", result.Normalized.Rejected[0].Reason)
 	}
