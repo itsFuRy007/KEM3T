@@ -24,6 +24,7 @@ const (
 	TypeRDAPRegistration Type = "RDAP_REGISTRATION"
 	TypeASNOrigin Type = "ASN_ORIGIN"
 	TypePassiveDNS Type = "PASSIVE_DNS"
+	TypeThreatIntel Type = "THREAT_INTEL"
 )
 
 // TLSCertificateDetails contains the certificate metadata stored in evidence.
@@ -70,6 +71,22 @@ type RDAPRegistrationDetails struct {
  Status []string `json:"status"`
  NameServers []string `json:"name_servers"`
  Events []RDAPRegistrationEvent `json:"events"`
+}
+
+type ThreatPulseDetails struct {
+ ID string `json:"id"`
+ Name string `json:"name"`
+ Tags []string `json:"tags"`
+ Created string `json:"created,omitempty"`
+ Modified string `json:"modified,omitempty"`
+}
+type ThreatIntelDetails struct {
+ Target string `json:"target"`
+ IndicatorType string `json:"indicator_type"`
+ Source string `json:"source"`
+ PulseCount int `json:"pulse_count"`
+ Pulses []ThreatPulseDetails `json:"pulses"`
+ Truncated bool `json:"truncated"`
 }
 
 type PassiveDNSDetails struct {
@@ -177,6 +194,9 @@ func (e Evidence) Validate() error {
 
 	case TypePassiveDNS:
 		return validatePassiveDNSEvidence(e)
+
+	case TypeThreatIntel:
+		return validateThreatIntelEvidence(e)
 
 	default:
 		return errors.New("evidence type is invalid")
@@ -328,5 +348,19 @@ func validatePassiveDNSEvidence(e Evidence)error{
  ip:=net.ParseIP(d.Address);if ip==nil||ip.String()!=d.Address{return errors.New("passive-DNS address must be a normalized IP")}
  if d.RecordType=="A"&&ip.To4()==nil||d.RecordType=="AAAA"&&ip.To4()!=nil||(d.RecordType!="A"&&d.RecordType!="AAAA"){return errors.New("passive-DNS record type must match address family")}
  if strings.TrimSpace(d.Source)==""{return errors.New("passive-DNS source is required")}
+ return nil
+}
+
+func validateThreatIntelEvidence(e Evidence)error{
+ target:=strings.TrimSpace(e.EntityID)
+ ip:=net.ParseIP(target)
+ if ip!=nil{if ip.String()!=target{return errors.New("threat-intelligence IP target must be normalized")}}else{target=strings.TrimSuffix(strings.ToLower(target),".");if !IsValidDomain(target){return errors.New("threat-intelligence entity ID must be a domain or IP")}}
+ var d ThreatIntelDetails
+ if err:=json.Unmarshal([]byte(e.Value),&d);err!=nil{return fmt.Errorf("threat-intelligence evidence value must be valid JSON: %w",err)}
+ if d.Target!=target{return errors.New("threat-intelligence target must match evidence entity ID")}
+ if strings.TrimSpace(d.Source)==""||strings.TrimSpace(d.IndicatorType)==""{return errors.New("threat-intelligence source and indicator type are required")}
+ if d.PulseCount<0{return errors.New("threat pulse count cannot be negative")}
+ seen:=map[string]struct{}{}
+ for _,pulse:=range d.Pulses{if strings.TrimSpace(pulse.ID)==""||strings.TrimSpace(pulse.Name)==""{return errors.New("threat pulse ID and name are required")};if _,ok:=seen[pulse.ID];ok{return errors.New("duplicate threat pulse ID")};seen[pulse.ID]=struct{}{}}
  return nil
 }
