@@ -50,6 +50,15 @@ func TestReportEngineBuildsEmptyReport(t *testing.T) {
 	if report.Correlations == nil {
 		t.Fatal("expected correlations to be an empty array, not nil")
 	}
+	if report.Discoveries == nil {
+		t.Fatal("expected discoveries to be an empty array, not nil")
+	}
+	if report.DiscoveryPaths == nil {
+		t.Fatal("expected discovery paths to be an empty array, not nil")
+	}
+	if report.DiscoveryPivots == nil {
+		t.Fatal("expected discovery pivots to be an empty array, not nil")
+	}
 	if report.Hypotheses == nil {
 		t.Fatal("expected hypotheses to be an empty array, not nil")
 	}
@@ -418,5 +427,50 @@ func TestReportEngineRejectsVerificationForUnknownHypothesis(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("expected unknown hypothesis verification to be rejected")
+	}
+}
+
+
+func TestReportEngineBuildsMultiHopPathsAndRecurringPivots(t *testing.T) {
+	registry := evidence.NewRegistry()
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close evidence registry: %v", err)
+		}
+	})
+
+	fingerprint := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	records := []evidence.Evidence{
+		{ID: "dns-target", EntityID: "target.example", Type: evidence.TypeDNSAddress, Value: "192.0.2.80"},
+		{ID: "dns-pivot", EntityID: "pivot.example", Type: evidence.TypeDNSAddress, Value: "192.0.2.80"},
+		tlsEvidenceForTest(t, "tls-pivot", "pivot.example", fingerprint),
+		tlsEvidenceForTest(t, "tls-neighbor-a", "neighbor-a.example", fingerprint),
+		tlsEvidenceForTest(t, "tls-neighbor-b", "neighbor-b.example", fingerprint),
+	}
+	for _, record := range records {
+		if err := registry.AddEvidence(record); err != nil {
+			t.Fatalf("AddEvidence(%q): %v", record.ID, err)
+		}
+	}
+
+	report, err := (&ReportEngine{}).Build("target.example", nil, registry)
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if len(report.Correlations) != 1 || report.Correlations[0].Type != CorrelationSharedIPAddress {
+		t.Fatalf("direct report correlations should remain target-scoped; got %#v", report.Correlations)
+	}
+	if len(report.DiscoveryPaths) != 2 {
+		t.Fatalf("expected two target-to-neighbor paths through the pivot, got %d", len(report.DiscoveryPaths))
+	}
+	if len(report.DiscoveryPivots) != 1 {
+		t.Fatalf("expected one recurring pivot, got %d", len(report.DiscoveryPivots))
+	}
+	pivot := report.DiscoveryPivots[0]
+	if pivot.Pivot != "pivot.example" {
+		t.Fatalf("unexpected pivot: %q", pivot.Pivot)
+	}
+	if len(pivot.PathIDs) != 2 || len(pivot.ConnectedEntities) != 2 {
+		t.Fatalf("pivot must retain both supporting paths and neighbors: %#v", pivot)
 	}
 }

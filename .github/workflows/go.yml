@@ -7,6 +7,7 @@ on:
       - feat/unified-service-model
       - phase8-usability-foundation
       - phase8-temporal-investigation-export
+      - phase8-unified-discovery-report
   pull_request:
     branches:
       - main
