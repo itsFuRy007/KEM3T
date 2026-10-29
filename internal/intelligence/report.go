@@ -9,14 +9,15 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 )
 
-// IntelligenceReport combines findings, correlations, hypotheses,
-// and transparent investigation priorities.
+// IntelligenceReport combines findings, correlations, hypotheses, verification
+// assessments, and transparent investigation priorities.
 type IntelligenceReport struct {
 	Target              string               `json:"target"`
 	Findings            []Finding            `json:"findings"`
 	Correlations        []Correlation        `json:"correlations"`
-	Hypotheses          []Hypothesis         `json:"hypotheses"`
-	PrioritizedFindings []PrioritizedFinding `json:"prioritized_findings"`
+	Hypotheses              []Hypothesis              `json:"hypotheses"`
+	VerificationAssessments []VerificationAssessment `json:"verification_assessments"`
+	PrioritizedFindings     []PrioritizedFinding      `json:"prioritized_findings"`
 }
 
 // ReportEngine coordinates the intelligence analysis engines.
@@ -26,13 +27,25 @@ type ReportEngine struct {
 	Prioritization *PrioritizationEngine
 }
 
-// Build creates a target-scoped intelligence report from validated findings
-// and the evidence registry. Related entities may appear as context, but
-// unrelated correlations from other targets are excluded.
+// Build creates a target-scoped report without externally supplied verification
+// evidence. Generated hypotheses remain explicitly UNVERIFIED.
 func (e *ReportEngine) Build(
 	target string,
 	findings []Finding,
 	registry *evidence.Registry,
+) (IntelligenceReport, error) {
+	return e.BuildWithVerification(target, findings, registry, nil)
+}
+
+// BuildWithVerification builds the report and assesses each generated hypothesis
+// using investigator-classified verification evidence keyed by hypothesis ID.
+// Evidence not supplied for a hypothesis leaves it UNVERIFIED. Unknown keys are
+// rejected to prevent misspelled IDs from silently dropping verification data.
+func (e *ReportEngine) BuildWithVerification(
+	target string,
+	findings []Finding,
+	registry *evidence.Registry,
+	verification map[string][]VerificationEvidence,
 ) (IntelligenceReport, error) {
 	target = normalizeFindingTarget(target)
 	if target == "" {
@@ -86,18 +99,41 @@ func (e *ReportEngine) Build(
 		return IntelligenceReport{}, fmt.Errorf("prioritize findings: %w", err)
 	}
 
+	// Reject verification entries that cannot be attached to a hypothesis in
+	// this target-scoped report; silently ignoring them would hide caller errors.
+	hypothesisIDs := make(map[string]struct{}, len(hypotheses))
+	for _, hypothesis := range hypotheses {
+		hypothesisIDs[hypothesis.ID] = struct{}{}
+	}
+	for hypothesisID := range verification {
+		if _, exists := hypothesisIDs[hypothesisID]; !exists {
+			return IntelligenceReport{}, fmt.Errorf("verification supplied for unknown or out-of-scope hypothesis %q", hypothesisID)
+		}
+	}
+
+	assessments := make([]VerificationAssessment, 0, len(hypotheses))
+	for _, hypothesis := range hypotheses {
+		assessment, err := hypothesisEngine.Assess(hypothesis, verification[hypothesis.ID])
+		if err != nil {
+			return IntelligenceReport{}, fmt.Errorf("assess hypothesis %q: %w", hypothesis.ID, err)
+		}
+		assessments = append(assessments, assessment)
+	}
+
 	// Normalize empty collections to JSON arrays rather than null.
 	reportFindings := append([]Finding{}, scopedFindings...)
 	reportCorrelations := append([]Correlation{}, correlations...)
 	reportHypotheses := append([]Hypothesis{}, hypotheses...)
+	reportAssessments := append([]VerificationAssessment{}, assessments...)
 	reportPrioritized := append([]PrioritizedFinding{}, prioritized...)
 
 	return IntelligenceReport{
-		Target:              strings.TrimSpace(target),
-		Findings:            reportFindings,
-		Correlations:        reportCorrelations,
-		Hypotheses:          reportHypotheses,
-		PrioritizedFindings: reportPrioritized,
+		Target:                  strings.TrimSpace(target),
+		Findings:                reportFindings,
+		Correlations:            reportCorrelations,
+		Hypotheses:              reportHypotheses,
+		VerificationAssessments: reportAssessments,
+		PrioritizedFindings:     reportPrioritized,
 	}, nil
 }
 

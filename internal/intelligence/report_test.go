@@ -53,6 +53,9 @@ func TestReportEngineBuildsEmptyReport(t *testing.T) {
 	if report.Hypotheses == nil {
 		t.Fatal("expected hypotheses to be an empty array, not nil")
 	}
+	if report.VerificationAssessments == nil {
+		t.Fatal("expected verification assessments to be an empty array, not nil")
+	}
 	if report.PrioritizedFindings == nil {
 		t.Fatal("expected prioritized findings to be an empty array, not nil")
 	}
@@ -321,5 +324,99 @@ func TestReportEngineIncludesSharedTLSCertificateIntelligence(t *testing.T) {
 	}
 	if report.Hypotheses[0].Confidence != HypothesisConfidenceLow {
 		t.Fatalf("expected conservative LOW confidence, got %q", report.Hypotheses[0].Confidence)
+	}
+}
+
+
+// TestReportEngineIntegratesEvidenceCorrelationHypothesisAndVerification exercises
+// the complete Phase 5 path and ensures original evidence cannot corroborate itself.
+func TestReportEngineIntegratesEvidenceCorrelationHypothesisAndVerification(t *testing.T) {
+	registry := evidence.NewRegistry()
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close evidence registry: %v", err)
+		}
+	})
+
+	records := []evidence.Evidence{
+		{ID: "dns-a", EntityID: "a.example.com", Type: evidence.TypeDNSAddress, Value: "192.0.2.50"},
+		{ID: "dns-b", EntityID: "b.example.com", Type: evidence.TypeDNSAddress, Value: "192.0.2.50"},
+	}
+	for _, record := range records {
+		if err := registry.AddEvidence(record); err != nil {
+			t.Fatalf("AddEvidence(%q): %v", record.ID, err)
+		}
+	}
+	observedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i, record := range records {
+		observation := evidence.Observation{
+			ID: "observation-" + record.ID, EvidenceID: record.ID,
+			Source: "dns-collector", ObservedAt: observedAt.Add(time.Duration(i) * time.Second),
+			EventIDs: []string{"event-" + record.ID},
+		}
+		if err := registry.AddObservation(observation); err != nil {
+			t.Fatalf("AddObservation(%q): %v", observation.ID, err)
+		}
+	}
+
+	const hypothesisID = "hypothesis:shared-ip:192.0.2.50"
+	report, err := (&ReportEngine{}).BuildWithVerification(
+		"a.example.com", nil, registry,
+		map[string][]VerificationEvidence{
+			hypothesisID: {
+				{ID: "dns-a", Fact: "Original DNS evidence repeated.", Relation: VerificationSupports, Independent: true},
+				{ID: "independent-support", Fact: "An independently collected certificate signal links both hosts.", Relation: VerificationSupports, Independent: true},
+				{ID: "independent-conflict", Fact: "Independent ownership records identify separate operators.", Relation: VerificationContradicts, Independent: true},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("BuildWithVerification returned error: %v", err)
+	}
+	if len(report.Correlations) != 1 || len(report.Hypotheses) != 1 {
+		t.Fatalf("expected one correlation and one hypothesis, got %d and %d", len(report.Correlations), len(report.Hypotheses))
+	}
+	if len(report.VerificationAssessments) != 1 {
+		t.Fatalf("expected one verification assessment, got %d", len(report.VerificationAssessments))
+	}
+	assessment := report.VerificationAssessments[0]
+	if assessment.HypothesisID != hypothesisID {
+		t.Fatalf("assessment attached to wrong hypothesis: %q", assessment.HypothesisID)
+	}
+	if assessment.Status != VerificationMixed {
+		t.Fatalf("expected conflicting independent evidence to yield MIXED, got %q", assessment.Status)
+	}
+	if len(assessment.ExcludedEvidenceIDs) != 1 || assessment.ExcludedEvidenceIDs[0] != "dns-a" {
+		t.Fatalf("original evidence must be disclosed as excluded: %#v", assessment.ExcludedEvidenceIDs)
+	}
+	if len(assessment.SupportingEvidenceIDs) != 1 || assessment.SupportingEvidenceIDs[0] != "independent-support" {
+		t.Fatalf("unexpected independent supporting evidence: %#v", assessment.SupportingEvidenceIDs)
+	}
+	if len(assessment.ContradictingEvidenceIDs) != 1 || assessment.ContradictingEvidenceIDs[0] != "independent-conflict" {
+		t.Fatalf("unexpected independent contradicting evidence: %#v", assessment.ContradictingEvidenceIDs)
+	}
+	if report.Hypotheses[0].Confidence != HypothesisConfidenceLow {
+		t.Fatalf("verification must not silently raise hypothesis confidence, got %q", report.Hypotheses[0].Confidence)
+	}
+}
+
+// TestReportEngineRejectsVerificationForUnknownHypothesis prevents silent loss
+// of verification records due to a typo or a hypothesis outside report scope.
+func TestReportEngineRejectsVerificationForUnknownHypothesis(t *testing.T) {
+	registry := evidence.NewRegistry()
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close evidence registry: %v", err)
+		}
+	})
+
+	_, err := (&ReportEngine{}).BuildWithVerification(
+		"example.com", nil, registry,
+		map[string][]VerificationEvidence{
+			"hypothesis:typo": {{ID: "e1", Fact: "Fact.", Relation: VerificationSupports, Independent: true}},
+		},
+	)
+	if err == nil {
+		t.Fatal("expected unknown hypothesis verification to be rejected")
 	}
 }
