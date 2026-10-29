@@ -2,6 +2,9 @@ package externalintel
 
 import (
  "context"
+ "crypto/sha256"
+ "encoding/hex"
+ "errors"
  "encoding/json"
  "fmt"
  "io"
@@ -139,3 +142,27 @@ func rdapRegistrarLabel(vcard []any)string{
 }
 
 func uniqueSorted(values []string)[]string{set:=map[string]struct{}{};for _,value:=range values{if value=strings.TrimSpace(value);value!=""{set[value]=struct{}{}}};result:=make([]string,0,len(set));for value:=range set{result=append(result,value)};sort.Strings(result);return result}
+
+ 
+// RegisterRDAPReport stores a stable registration fact and a separate timestamped
+// observation so later changes become history instead of overwriting prior evidence.
+func RegisterRDAPReport(registry *evidence.Registry, report RDAPReport) (bool,error) {
+ if registry==nil{return false,fmt.Errorf("evidence registry is required")}
+ target:=normalizeDomain(report.Target)
+ if !evidence.IsValidDomain(target){return false,fmt.Errorf("RDAP report target is invalid")}
+ source:=strings.TrimSpace(report.Source)
+ if source==""{return false,fmt.Errorf("RDAP report source is required")}
+ if report.RetrievedAt.IsZero(){return false,fmt.Errorf("RDAP retrieval timestamp is required")}
+ details:=evidence.RDAPRegistrationDetails{Target:target,Handle:strings.TrimSpace(report.Handle),Registrar:strings.TrimSpace(report.Registrar),Status:uniqueSorted(report.Status),NameServers:uniqueSorted(report.NameServers)}
+ for i,ns:=range details.NameServers{details.NameServers[i]=normalizeDomain(ns);if !evidence.IsValidDomain(details.NameServers[i]){return false,fmt.Errorf("invalid RDAP nameserver %q",ns)}}
+ for _,event:=range report.Events{action,date:=strings.TrimSpace(event.Action),strings.TrimSpace(event.Date);if action!=""&&date!=""{details.Events=append(details.Events,evidence.RDAPRegistrationEvent{Action:action,Date:date})}}
+ sort.Slice(details.Events,func(i,j int)bool{if details.Events[i].Action!=details.Events[j].Action{return details.Events[i].Action<details.Events[j].Action};return details.Events[i].Date<details.Events[j].Date})
+ value,err:=json.Marshal(details);if err!=nil{return false,fmt.Errorf("encode RDAP evidence: %w",err)}
+ sum:=sha256.Sum256(value);key:=hex.EncodeToString(sum[:])
+ item:=evidence.Evidence{ID:"rdap-registration:"+key,EntityID:target,Type:evidence.TypeRDAPRegistration,Value:string(value)}
+ if err:=registry.AddEvidence(item);err!=nil&&!errors.Is(err,evidence.ErrEvidenceExists){return false,fmt.Errorf("register RDAP evidence: %w",err)}
+ eventID:="rdap:"+key+":"+fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
+ observation:=evidence.Observation{ID:"observation:"+eventID,EvidenceID:item.ID,Source:source,ObservedAt:report.RetrievedAt.UTC(),EventIDs:[]string{eventID}}
+ if err:=registry.AddObservation(observation);err!=nil{if errors.Is(err,evidence.ErrObservationExists){return false,nil};return false,fmt.Errorf("register RDAP observation: %w",err)}
+ return true,nil
+}
