@@ -45,13 +45,29 @@ type Result struct {
 	Partial bool                         `json:"partial"`
 }
 
-// Engine coordinates stages against one evidence registry. It deliberately
+// PlanningState is a read-only snapshot supplied after each completed stage.
+type PlanningState struct {
+	Target       string
+	Evidence     []evidence.Evidence
+	Observations []evidence.Observation
+	Completed    []StageOutcome
+}
+
+// Planner schedules additional bounded stages from newly collected evidence.
+// Returned stages must still respect the caller's explicit authorization scope.
+type Planner interface {
+	Next(context.Context, PlanningState) ([]Stage, error)
+}
+
+// Engine coordinates stages against one shared evidence registry. It deliberately
 // does not decide which active network actions are authorized: callers provide
 // only stages configured for their explicit scope and policy.
 type Engine struct {
-	Registry *evidence.Registry
-	Stages   []Stage
-	Now      func() time.Time
+	Registry  *evidence.Registry
+	Stages    []Stage
+	Planner   Planner
+	MaxStages int
+	Now       func() time.Time
 }
 
 func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr error) {
