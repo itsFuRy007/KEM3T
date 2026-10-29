@@ -23,6 +23,7 @@ type IntelligenceReport struct {
 	VerificationAssessments []VerificationAssessment `json:"verification_assessments"`
 	PrioritizedFindings     []PrioritizedFinding     `json:"prioritized_findings"`
 	Narrative               ResearchNarrative         `json:"narrative"`
+	InvestigationPlan       InvestigationPlan         `json:"investigation_plan"`
 }
 
 // ReportEngine coordinates target-scoped correlation, discovery, hypothesis,
@@ -45,6 +46,17 @@ func (e *ReportEngine) BuildWithVerification(
 	findings []Finding,
 	registry *evidence.Registry,
 	verification map[string][]VerificationEvidence,
+) (IntelligenceReport, error) {
+	return e.BuildWithInvestigationFeedback(target, findings, registry, verification, nil, nil)
+}
+
+func (e *ReportEngine) BuildWithInvestigationFeedback(
+	target string,
+	findings []Finding,
+	registry *evidence.Registry,
+	verification map[string][]VerificationEvidence,
+	previousPlan *InvestigationPlan,
+	feedback []InvestigationFeedback,
 ) (IntelligenceReport, error) {
 	target = normalizeFindingTarget(target)
 	if target == "" {
@@ -125,6 +137,11 @@ func (e *ReportEngine) BuildWithVerification(
 		return IntelligenceReport{}, fmt.Errorf("build researcher narrative: %w", err)
 	}
 	report.Narrative = narrative
+	plan, err := BuildAdaptiveInvestigationPlan(report, previousPlan, feedback)
+	if err != nil {
+		return IntelligenceReport{}, fmt.Errorf("build adaptive investigation plan: %w", err)
+	}
+	report.InvestigationPlan = plan
 	return report, nil
 }
 
