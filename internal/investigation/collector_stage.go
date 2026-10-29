@@ -64,19 +64,21 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 			cancel()
 			break
 		}
-		if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
-			registrationErr = fmt.Errorf("register %s evidence: %w", s.Name(), err)
+		evidenceErr := registry.AddEvidence(item)
+		if evidenceErr != nil && !errors.Is(evidenceErr, evidence.ErrEvidenceExists) {
+			registrationErr = fmt.Errorf("register %s evidence: %w", s.Name(), evidenceErr)
 			cancel()
 			break
 		}
-		if err := registry.AddObservation(observation); err != nil && !errors.Is(err, evidence.ErrObservationExists) {
-			registrationErr = fmt.Errorf("register %s observation: %w", s.Name(), err)
+		observationErr := registry.AddObservation(observation)
+		if observationErr != nil && !errors.Is(observationErr, evidence.ErrObservationExists) {
+			registrationErr = fmt.Errorf("register %s observation: %w", s.Name(), observationErr)
 			cancel()
 			break
 		}
 		result.Events++
-		result.Evidence++
-		result.Observations++
+		if evidenceErr == nil { result.Evidence++ }
+		if observationErr == nil { result.Observations++ }
 	}
 	collectorErr := <-done
 	if registrationErr != nil { return result, registrationErr }
