@@ -194,7 +194,9 @@ The project is under active development. Checkboxes below distinguish implemente
 ### Phase 6 — External Intelligence
 - [x] Certificate Transparency (CT) lookup with scope validation, bounded responses, deduplication, and explicit caveats
 - [x] Persist CT evidence and timestamped observations; expose CT search-result and certificate-name relationships in the provenance graph
-- [ ] RDAP/WHOIS
+- [x] Domain RDAP via IANA bootstrap with minimized metadata, registration lifecycle events, and privacy-conscious contact-data exclusion
+- [x] Persist RDAP facts and timestamped observations; connect registrar and nameserver relationships to the evidence-backed graph
+- [ ] IP RDAP and origin-ASN enrichment
 - [ ] ASN and network ownership context
 - [ ] Passive DNS
 - [ ] Threat-intelligence integrations
