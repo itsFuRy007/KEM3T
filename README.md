@@ -112,6 +112,28 @@ go run ./cmd/kem3t -mode history
 go run ./cmd/kem3t -mode history -target example.com
 ~~~
 
+Persist an adaptive investigation plan between DNS runs:
+
+~~~bash
+go run ./cmd/kem3t -mode dns -target example.com -plan-state .kem3t/plan-state.json -export-json ./reports/example.com.json
+~~~
+
+The plan-state file stores the previous plan and an initially empty `feedback` array. After reviewing the printed plan, add investigator feedback using a task ID from that plan. For example, mark an action complete only when you can attach the evidence IDs that support the work:
+
+~~~json
+{
+  "feedback": [
+    {
+      "item_id": "task:REPLACE_WITH_PRINTED_ID",
+      "outcome": "COMPLETED",
+      "evidence_ids": ["your-existing-evidence-id"]
+    }
+  ]
+}
+~~~
+
+Accepted outcomes are `COMPLETED` (requires evidence IDs), `INCONCLUSIVE`, `BLOCKED`, and `NOT_APPLICABLE` (each requires a note). Run the same command again; KEM3T will apply the feedback, retain task history, and rebuild the plan against the newly collected report. The state file is written atomically with owner-only permissions. Feedback is investigator-supplied and is not independently verified by KEM3T.
+
 Run bounded DNS investigations from a target file (one hostname/IP per line; blank lines and `#` comments are ignored):
 
 ~~~bash
