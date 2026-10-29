@@ -1,14 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/itsFuRy007/kem3t/internal/graph"
+	"github.com/itsFuRy007/kem3t/internal/intelligence"
 )
 
 func TestRunHelpReturnsFlagHelp(t *testing.T) {
@@ -107,5 +110,42 @@ func TestPrintInfrastructureGraph(t *testing.T) {
 		if !strings.Contains(string(output), expected) {
 			t.Errorf("output missing %q; got:\n%s", expected, output)
 		}
+	}
+}
+
+func TestWriteInvestigationExport(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "investigation.json")
+	report := intelligence.IntelligenceReport{Target: "example.com"}
+	if err := writeInvestigationExport(path, report); err != nil {
+		t.Fatalf("writeInvestigationExport() error = %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read export: %v", err)
+	}
+	var decoded intelligence.InvestigationExport
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("decode export: %v", err)
+	}
+	if decoded.SchemaVersion != intelligence.ExportSchemaVersion || decoded.Investigation.Target != "example.com" {
+		t.Fatalf("unexpected export envelope: %#v", decoded)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat export: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("export permissions = %04o, want 0600", info.Mode().Perm())
+	}
+}
+
+func TestWriteInvestigationExportRejectsMismatchedScope(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "investigation.json")
+	err := writeInvestigationExport(path, intelligence.IntelligenceReport{Target: "other.example"})
+	if err == nil {
+		t.Fatal("expected mismatched report scope to fail")
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Fatalf("invalid export was written; stat error = %v", statErr)
 	}
 }
