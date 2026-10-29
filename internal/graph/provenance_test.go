@@ -34,6 +34,13 @@ func TestEntityAndRelationshipLookupExposeExistingGraphModel(t *testing.T) {
 	if edge.Type != EdgeResolvesTo || edge.Target != "ip:192.0.2.10" {
 		t.Fatalf("unexpected relationship: %+v", edge)
 	}
+	if len(edge.EvidenceIDs) != 2 {
+		t.Fatalf("unexpected evidence references: %+v", edge.EvidenceIDs)
+	}
+	edge.EvidenceIDs[0] = "mutated"
+	if graph.Edges[0].EvidenceIDs[0] != "dns-2" {
+		t.Fatal("Relationship() result aliases graph-owned evidence references")
+	}
 }
 
 func TestRelationshipProvenanceReturnsDeterministicReferences(t *testing.T) {
