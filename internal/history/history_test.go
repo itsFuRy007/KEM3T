@@ -87,3 +87,18 @@ func TestBuildSnapshotNormalizesURLAndScopesCollectorType(t *testing.T) {
 	}
 }
 
+
+func TestBuildUnifiedInvestigationSnapshotIncludesMultipleCollectorTypes(t *testing.T) {
+	start:=time.Date(2026,10,29,12,0,0,0,time.UTC)
+	run:=evidence.CollectionRun{ID:"investigation-1",Target:"example.com",StartedAt:start,FinishedAt:start.Add(time.Minute),Status:evidence.CollectionRunCompleted}
+	dns:=evidence.Evidence{ID:"dns-address:example.com:203.0.113.8",EntityID:"example.com",Type:evidence.TypeDNSAddress,Value:"203.0.113.8"}
+	tcp:=evidence.Evidence{ID:"tcp-port:example.com:443",EntityID:"example.com",Type:evidence.TypeTCPPort,Value:`{"target":"example.com","protocol":"tcp","port":443,"state":"open"}`}
+	observations:=[]evidence.Observation{
+		{ID:"obs-dns",EvidenceID:dns.ID,Source:"dns",ObservedAt:start.Add(time.Second),EventIDs:[]string{"event-dns"}},
+		{ID:"obs-tcp",EvidenceID:tcp.ID,Source:"tcp",ObservedAt:start.Add(2*time.Second),EventIDs:[]string{"event-tcp"}},
+	}
+	snapshot,err:=BuildSnapshot(run,[]evidence.Evidence{dns,tcp},observations)
+	if err!=nil {t.Fatal(err)}
+	if snapshot.Collector!="investigation" {t.Fatalf("unexpected collector identity %q",snapshot.Collector)}
+	if len(snapshot.Records)!=2 {t.Fatalf("expected DNS and TCP evidence in one snapshot, got %+v",snapshot.Records)}
+}
