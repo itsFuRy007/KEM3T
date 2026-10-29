@@ -157,9 +157,9 @@ The project is under active development. Checkboxes below distinguish implemente
 - [x] Initial bounded HTTP/HTTPS service observation
 - [x] **Step 1 (foundation):** Add a shared normalized observation shape for DNS, TCP, TLS, and HTTP/HTTPS events
 - [x] **Step 2 (foundation):** Add a unified discovered-service model with target, port, transport, evidence references, source, timestamp, and observed indicators
-- [ ] **Step 3:** Integrate service identification into collection pipelines using observed behavior and evidence, not port numbers alone
-- [ ] **Step 4:** Connect unified service records to the Infrastructure Graph
-- [ ] **Step 5:** Add end-to-end integration tests for Collector → normalized observation → Evidence → Graph
+- [x] **Step 3:** Integrate normalized service identification into DNS, TCP, TLS, and HTTP collection pipelines using observed behavior and evidence, not port numbers alone
+- [x] **Step 4:** Connect evidence-backed unified service records to the Infrastructure Graph
+- [x] **Step 5:** Add integration coverage for Collector → normalized observation → Evidence → Graph
 - [ ] Expand DNS/TLS coverage and cross-collector normalization beyond the initial shared model
 
 ### Phase 3 — Infrastructure Graph
