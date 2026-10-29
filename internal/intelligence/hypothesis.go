@@ -157,9 +157,10 @@ func (e *HypothesisEngine) Generate(
 				Alternative: "The address may belong to a CDN, reverse proxy, shared hosting provider, cloud platform, or other shared service.",
 				Limitations: "A shared IP address alone does not prove common ownership, control, a direct relationship, or a security weakness. Confidence is qualitative and is not a probability.",
 				Verification: []string{
-					"Compare DNS observations over time.",
-					"Review authorized, reliable DNS and certificate data for additional independent links.",
-					"Check whether the address is associated with shared hosting, a CDN, or a reverse proxy before inferring ownership.",
+					"Collect timestamped DNS observations for each entity and compare answer sets across at least two collection times.",
+					"Seek an independent signal, such as certificate names or fingerprints, that links the entities; retain the supporting evidence IDs and collection timestamps.",
+					"Check whether the address belongs to shared hosting, a CDN, or a reverse proxy; if so, do not infer common ownership from the address alone.",
+					"Keep this hypothesis at LOW confidence unless independent evidence supports a more specific relationship, and record contradictory observations.",
 				},
 			}
 

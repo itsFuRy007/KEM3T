@@ -24,15 +24,15 @@ type ReportEngine struct {
 	Prioritization *PrioritizationEngine
 }
 
-// Build creates a complete intelligence report from validated findings
-// and the evidence registry. It does not claim that a correlation alone
-// proves common ownership or a security vulnerability.
+// Build creates a target-scoped intelligence report from validated findings
+// and the evidence registry. Related entities may appear as context, but
+// unrelated correlations from other targets are excluded.
 func (e *ReportEngine) Build(
 	target string,
 	findings []Finding,
 	registry *evidence.Registry,
 ) (IntelligenceReport, error) {
-	target = strings.TrimSpace(target)
+	target = normalizeCorrelationEntity(target)
 	if target == "" {
 		return IntelligenceReport{}, fmt.Errorf("report target is required")
 	}
@@ -55,9 +55,9 @@ func (e *ReportEngine) Build(
 		prioritizationEngine = &PrioritizationEngine{}
 	}
 
-	correlations, err := correlationEngine.Correlate(registry)
+	correlations, err := correlationEngine.CorrelateForTarget(registry, target)
 	if err != nil {
-		return IntelligenceReport{}, fmt.Errorf("correlate evidence: %w", err)
+		return IntelligenceReport{}, fmt.Errorf("correlate evidence for target %q: %w", target, err)
 	}
 
 	hypotheses, err := hypothesisEngine.Generate(correlations)
@@ -77,7 +77,7 @@ func (e *ReportEngine) Build(
 	reportPrioritized := append([]PrioritizedFinding{}, prioritized...)
 
 	return IntelligenceReport{
-		Target:              target,
+		Target:              strings.TrimSpace(target),
 		Findings:            reportFindings,
 		Correlations:        reportCorrelations,
 		Hypotheses:          reportHypotheses,
