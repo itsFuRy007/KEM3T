@@ -75,6 +75,7 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 	if now == nil {
 		now = time.Now
 	}
+	seen := make(map[string]struct{}, len(e.Stages))
 	for _, stage := range e.Stages {
 		if stage == nil || strings.TrimSpace(stage.Name()) == "" {
 			return Result{}, errors.New("investigation stages must be non-nil and named")
@@ -96,7 +97,6 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		return Result{}, fmt.Errorf("start investigation run: %w", err)
 	}
 	result = Result{Target: target, RunID: run.ID, Stages: make([]StageOutcome, 0, len(e.Stages))}
-	seen := make(map[string]struct{}, len(e.Stages))
 	for _, stage := range e.Stages {
 		if err := ctx.Err(); err != nil {
 			retErr = err
