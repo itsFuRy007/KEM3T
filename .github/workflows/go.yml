@@ -10,6 +10,7 @@ on:
       - phase8-unified-discovery-report
       - phase8-researcher-narrative
       - phase8-intelligence-gap-detection
+      - phase8-adaptive-investigation-workflow
   pull_request:
     branches:
       - main
