@@ -202,7 +202,8 @@ The project is under active development. Checkboxes below distinguish implemente
 - [ ] ASN and network ownership context
 - [x] OTX passive-DNS collection with target-scope filtering, A/AAAA validation, historical timestamps, optional API-key support, and truncation signaling
 - [x] Persist passive-DNS facts and time-aware observations; distinguish historical DNS relationships from live DNS edges in the graph
-- [ ] Threat-intelligence integrations
+- [x] OTX community pulse context for domains/public IPs with evidence-backed pulse links and explicit non-verdict interpretation
+- [x] Preserve pulse-count/returned-record differences and note that OTX passive DNS and pulse context are one provider family, not independent corroboration
 
 ### Phase 7 — Scale
 - [x] Bounded HTTP body inspection and redirect handling
