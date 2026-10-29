@@ -212,3 +212,46 @@ func TestCorrelateRejectsNilRegistry(t *testing.T) {
 		t.Fatal("expected error for nil registry")
 	}
 }
+
+func TestCorrelateEvidenceForTargetScopesAndNormalizesAddresses(t *testing.T) {
+	engine := &CorrelationEngine{}
+	records := []evidence.Evidence{
+		{ID: "ev-a", EntityID: "A.EXAMPLE.COM.", Type: evidence.TypeDNSAddress, Value: "2001:0db8:0:0:0:0:0:1"},
+		{ID: "ev-b", EntityID: "b.example.com", Type: evidence.TypeDNSAddress, Value: "2001:db8::1"},
+		{ID: "ev-c", EntityID: "c.example.net", Type: evidence.TypeDNSAddress, Value: "192.0.2.20"},
+		{ID: "ev-d", EntityID: "d.example.net", Type: evidence.TypeDNSAddress, Value: "192.0.2.20"},
+	}
+
+	results, err := engine.CorrelateEvidenceForTarget(records, nil, "a.example.com")
+	if err != nil {
+		t.Fatalf("CorrelateEvidenceForTarget returned error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected one target-related correlation, got %d", len(results))
+	}
+	if results[0].SharedValue != "2001:db8::1" {
+		t.Fatalf("expected normalized IPv6 address, got %q", results[0].SharedValue)
+	}
+	if results[0].ConfidenceScope != "OBSERVED_SHARED_ADDRESS" {
+		t.Fatalf("unexpected confidence scope: %q", results[0].ConfidenceScope)
+	}
+	if results[0].Confidence != "HIGH" {
+		t.Fatalf("unexpected association confidence: %q", results[0].Confidence)
+	}
+}
+
+func TestCorrelateEvidenceRejectsDanglingObservationReference(t *testing.T) {
+	engine := &CorrelationEngine{}
+	_, err := engine.CorrelateEvidence(nil, []evidence.Observation{
+		{
+			ID:         "orphan-observation",
+			EvidenceID: "missing-evidence",
+			Source:     "test",
+			ObservedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+			EventIDs:   []string{"event-1"},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected dangling observation reference to be rejected")
+	}
+}
