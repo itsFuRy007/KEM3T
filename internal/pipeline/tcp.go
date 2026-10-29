@@ -85,7 +85,7 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 			}
 		}
 			if retErr == nil && run.Status == evidence.CollectionRunCompleted {
-			if err := history.PersistRunSnapshot(snapshotDir, run, registry); err != nil {
+			if err := history.PersistRunSnapshot(snapshotDir, run, registry, result.Observations); err != nil {
 				retErr = fmt.Errorf("persist history snapshot: %w", err)
 			}
 		}
