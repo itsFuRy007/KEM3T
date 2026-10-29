@@ -39,7 +39,7 @@ func TestASNLookupCombinesOriginMappingAndRDAP(t *testing.T){
 
 func TestCymruOriginNameIPv4AndIPv6(t *testing.T){
  if got:=cymruOriginName(net.ParseIP("8.8.8.8"));got!="8.8.8.8.origin.asn.cymru.com"{t.Fatalf("IPv4 query=%q",got)}
- if got:=cymruOriginName(net.ParseIP("2001:4860:4860::8888"));got!="8.8.8.8.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.6.8.4.0.1.0.0.2.origin6.asn.cymru.com"{t.Fatalf("IPv6 query=%q",got)}
+ if got:=cymruOriginName(net.ParseIP("2001:4860:4860::8888"));got!="8.8.8.8.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.6.8.4.0.6.8.4.1.0.0.2.origin6.asn.cymru.com"{t.Fatalf("IPv6 query=%q",got)}
 }
 
 func TestASNRejectsPrivateAndInvalidTargets(t *testing.T){
