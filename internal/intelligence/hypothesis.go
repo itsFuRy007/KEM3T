@@ -54,8 +54,24 @@ func (h Hypothesis) Validate() error {
 	if len(h.SupportingIDs) == 0 {
 		return fmt.Errorf("hypothesis must reference supporting evidence")
 	}
+	seenEvidenceIDs := make(map[string]struct{}, len(h.SupportingIDs))
+	for _, rawID := range h.SupportingIDs {
+		id := strings.TrimSpace(rawID)
+		if id == "" {
+			return fmt.Errorf("hypothesis supporting evidence IDs must not be empty")
+		}
+		if _, exists := seenEvidenceIDs[id]; exists {
+			return fmt.Errorf("hypothesis contains duplicate supporting evidence ID %q", id)
+		}
+		seenEvidenceIDs[id] = struct{}{}
+	}
 	if len(h.SupportingFacts) == 0 {
 		return fmt.Errorf("hypothesis must include supporting facts")
+	}
+	for _, fact := range h.SupportingFacts {
+		if strings.TrimSpace(fact) == "" {
+			return fmt.Errorf("hypothesis supporting facts must not be empty")
+		}
 	}
 	if strings.TrimSpace(h.Alternative) == "" {
 		return fmt.Errorf("alternative explanations are required")
@@ -65,6 +81,11 @@ func (h Hypothesis) Validate() error {
 	}
 	if len(h.Verification) == 0 {
 		return fmt.Errorf("verification steps are required")
+	}
+	for _, step := range h.Verification {
+		if strings.TrimSpace(step) == "" {
+			return fmt.Errorf("hypothesis verification steps must not be empty")
+		}
 	}
 
 	return nil
