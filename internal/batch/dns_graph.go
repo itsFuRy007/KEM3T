@@ -198,8 +198,7 @@ func PersistDNSInvestigationGraph(snapshotDir string, outcomes []DNSOutcome, gen
 	if err != nil {
 		return fmt.Errorf("encode DNS investigation graph: %w", err)
 	}
-	data = append(data, '
-')
+	data = append(data, byte(10))
 	return writeAtomicFile(dir, "investigation-graph.json", data, ".graph-*.tmp")
 }
 

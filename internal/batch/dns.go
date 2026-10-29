@@ -125,7 +125,7 @@ func NormalizeTarget(raw string) (string, error) {
 	if target == "" {
 		return "", fmt.Errorf("target is empty")
 	}
-	if strings.Contains(target, "://") || strings.ContainsAny(target, "/\@?#") {
+	if strings.Contains(target, "://") || strings.ContainsAny(target, "/\\@?#") {
 		return "", fmt.Errorf("target must be a hostname or IP address, not a URL or path")
 	}
 	if ip := net.ParseIP(target); ip != nil {
@@ -310,7 +310,7 @@ func PersistDNSBatchReport(snapshotDir string, outcomes []DNSOutcome) error {
 	if err != nil {
 		return fmt.Errorf("encode batch DNS report: %w", err)
 	}
-	data = append(data, '
+	data = append(data, byte(10))
 ')
 	if err := writeAtomicFile(dir, "report.json", data, ".report-*.tmp"); err != nil {
 		return fmt.Errorf("persist batch DNS report: %w", err)
