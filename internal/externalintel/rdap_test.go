@@ -8,6 +8,9 @@ import (
  "strings"
  "testing"
  "time"
+
+ "github.com/itsFuRy007/kem3t/internal/evidence"
+ "github.com/itsFuRy007/kem3t/internal/graph"
 )
 
 func TestRDAPLookupUsesBootstrapAndNormalizesMetadata(t *testing.T) {
@@ -52,4 +55,22 @@ func TestRDAPRejectsMismatchedDomainResponse(t *testing.T){
  defer server.Close()
  client:=&RDAPClient{HTTPClient:server.Client(),BootstrapURL:server.URL+"/bootstrap"}
  if _,err:=client.LookupDomain(context.Background(),"example.com");err==nil{t.Fatal("expected target mismatch rejection")}
+}
+
+func TestRegisterRDAPReportPersistsProvenanceAndGraph(t *testing.T) {
+ registry:=evidence.NewRegistry()
+ report:=RDAPReport{Target:"example.com",Source:"rdap.example.test",RetrievedAt:time.Date(2026,10,29,12,0,0,0,time.UTC),Handle:"EXAMPLE-123",Registrar:"Example Registrar",Status:[]string{"active"},NameServers:[]string{"ns1.example.com","ns2.example.com"},Events:[]RDAPEvent{{Action:"registration",Date:"2020-01-01T00:00:00Z"}}}
+ added,err:=RegisterRDAPReport(registry,report);if err!=nil{t.Fatal(err)};if !added{t.Fatal("expected first observation to be added")}
+ g,err:=graph.BuildFromRegistry(registry);if err!=nil{t.Fatal(err)}
+ if len(g.Nodes)!=4||len(g.Edges)!=3{t.Fatalf("unexpected graph size nodes=%d edges=%d",len(g.Nodes),len(g.Edges))}
+ for _,edge:=range g.Edges{if len(edge.EvidenceIDs)==0||len(edge.ObservationIDs)==0{t.Fatalf("edge lacks provenance: %+v",edge)}}
+ added,err=RegisterRDAPReport(registry,report);if err!=nil{t.Fatal(err)};if added{t.Fatal("duplicate timestamp should not add another observation")}
+ report.RetrievedAt=report.RetrievedAt.Add(time.Hour)
+ added,err=RegisterRDAPReport(registry,report);if err!=nil{t.Fatal(err)};if !added{t.Fatal("new retrieval time should be recorded as another observation")}
+}
+
+func TestRegisterRDAPReportRejectsOutOfScopeNameserver(t *testing.T){
+ registry:=evidence.NewRegistry()
+ report:=RDAPReport{Target:"example.com",Source:"rdap.example.test",RetrievedAt:time.Now().UTC(),NameServers:[]string{"ns.attacker.test"}}
+ if _,err:=RegisterRDAPReport(registry,report);err==nil{t.Fatal("expected out-of-scope nameserver rejection")}
 }
