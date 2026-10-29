@@ -268,7 +268,7 @@ func taskID(kind, sourceID, action string) string {
 }
 
 func planRevision(plan InvestigationPlan) string {
-	var parts []string{plan.Target}
+	parts := []string{plan.Target}
 	for _, item := range plan.Items {
 		parts = append(parts, strings.Join([]string{item.ID, item.Status, item.Action, item.Rationale, fmt.Sprint(item.Priority), item.PriorityLabel, item.OutcomeNote, strings.Join(item.References, ","), strings.Join(item.EvidenceIDs, ",")}, "|"))
 	}
