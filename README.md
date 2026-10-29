@@ -27,7 +27,8 @@ The goal is to move from isolated scan results toward a traceable picture of inf
 - **TLS inspection:** collect certificate and connection metadata, including subject, issuer, TLS version, verification status, and SHA-256 fingerprint.
 - **HTTP/HTTPS observation:** collect response status, final URL, redirect count, selected headers, page title, body-truncation state, and available TLS verification metadata.
 - **Evidence and provenance:** register and validate evidence, track collection runs and observations, and persist records.
-- **Infrastructure graph:** represent observed entities and relationships produced by supported collection pipelines.
+- **Normalized observations and service model:** convert DNS, TCP, TLS, and HTTP/HTTPS collector events into a shared representation while retaining source, event IDs, timestamps, attributes, and evidence references. Service aggregation combines observations for the same target and port without guessing an application from the port number alone.
+- **Infrastructure graph:** represent observed entities and relationships produced by supported collection pipelines, including evidence-backed host-to-network-service relationships when service evidence is available.
 - **Initial intelligence workflow:** correlate observations, generate evidence-linked hypotheses with alternatives and verification steps, prioritize findings, and produce an intelligence report.
 - **CLI:** run demo, DNS, TCP, TLS, HTTP, and history modes.
 
@@ -42,9 +43,9 @@ Headers such as Server or X-Powered-By are observations, not reliable proof of s
 ~~~text
 Target
   → Collection
-  → Normalized observations
+  → Normalized observations and service aggregation
   → Evidence and provenance
-  → Infrastructure graph and relationships
+  → Evidence-backed infrastructure graph relationships
   → Correlation and hypotheses
   → Verification and investigation
   → Historical comparison and reports
@@ -115,6 +116,7 @@ DNS snapshots and the evidence database use .kem3t/snapshots by default. Overrid
 - cmd/kem3t/ — CLI entry point
 - internal/collectors/ — demo, DNS, TCP, TLS, and HTTP collectors
 - internal/events/ — collection events
+- internal/observations/ — normalized collector observations and conservative service model
 - internal/evidence/ — evidence validation and persistence
 - internal/graph/ — infrastructure graph entities and relationships
 - internal/changes/ — change detection
@@ -137,7 +139,7 @@ go mod verify
 git diff --check
 ~~~
 
-The race-detector command uses -p 1 to run package tests serially, which has been more reliable in the current development environment.
+The race-detector command uses -p 1 to run package tests serially, which has been more reliable in the current development environment. The CI workflow currently runs the full test suite, go vet, and build checks; formatting is reviewed separately with gofmt.
 
 ## Development roadmap
 
@@ -154,16 +156,16 @@ The project is under active development. Checkboxes below distinguish implemente
 - [x] TCP port discovery
 - [x] TLS certificate inspection
 - [x] Initial bounded HTTP/HTTPS service observation
-- [ ] **Step 1:** Normalize the result shapes from DNS, TCP, TLS, and HTTP/HTTPS
-- [ ] **Step 2:** Define a unified discovered-service model covering target, port, protocol, evidence, and information source
-- [ ] **Step 3:** Build service identification from observed behavior and evidence, not port numbers alone
-- [ ] **Step 4:** Connect identified service results to the Infrastructure Graph
-- [ ] **Step 5:** Add integration tests validating the Collector → Evidence → Graph flow
-- [ ] Expand DNS/TLS coverage and cross-collector normalization beyond the initial shared model
+- [x] **Step 1 (foundation):** Add a shared normalized observation shape for DNS, TCP, TLS, and HTTP/HTTPS events
+- [x] **Step 2 (foundation):** Add a unified discovered-service model with target, port, transport, evidence references, source, timestamp, and observed indicators
+- [x] **Step 3:** Integrate normalized service identification into DNS, TCP, TLS, and HTTP collection pipelines using observed behavior and evidence, not port numbers alone
+- [x] **Step 4:** Connect evidence-backed unified service records to the Infrastructure Graph
+- [x] **Step 5:** Add integration coverage for Collector → normalized observation → Evidence → Graph
+- [x] Expand DNS/TLS edge-case coverage and cross-collector normalization beyond the initial shared model
 
 ### Phase 3 — Infrastructure Graph
 - [x] Initial entities, relationships, and provenance links
-- [x] Host-to-service relationship for HTTP observations
+- [x] Evidence-backed host-to-network-service relationships for normalized service observations
 - [ ] Expand entity and relationship types
 - [ ] Add investigation pivots between domains, IPs, services, and certificates
 

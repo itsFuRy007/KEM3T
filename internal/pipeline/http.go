@@ -13,6 +13,7 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
+	"github.com/itsFuRy007/kem3t/internal/observations"
 )
 
 type HTTPResult struct {
@@ -21,6 +22,7 @@ type HTTPResult struct {
 	Observation      evidence.Observation
 	EvidenceRegistry *evidence.Registry
 	Graph            graph.Graph
+	Normalized       observations.Collection
 }
 
 // RunHTTP performs one bounded HTTP(S) observation and persists its evidence
@@ -55,7 +57,7 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 		}
 	}()
 	run := evidence.CollectionRun{
-		ID: fmt.Sprintf("http-%d", time.Now().UTC().UnixNano()),
+		ID:     fmt.Sprintf("http-%d", time.Now().UTC().UnixNano()),
 		Target: strings.TrimSpace(target), StartedAt: time.Now().UTC(),
 		Status: evidence.CollectionRunRunning,
 	}
@@ -70,10 +72,16 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 		} else {
 			run.Status = evidence.CollectionRunCompleted
 		}
-		if result.Event != nil { run.EventCount = 1 }
+		if result.Event != nil {
+			run.EventCount = 1
+		}
 		if err := registry.UpdateCollectionRun(run); err != nil {
 			updateErr := fmt.Errorf("finalize collection run: %w", err)
-			if retErr == nil { retErr = updateErr } else { retErr = fmt.Errorf("%w; additionally, %v", retErr, updateErr) }
+			if retErr == nil {
+				retErr = updateErr
+			} else {
+				retErr = fmt.Errorf("%w; additionally, %v", retErr, updateErr)
+			}
 		}
 	}()
 	collector := &collectors.HTTP{Target: target, Scheme: scheme, Port: port}
@@ -84,9 +92,13 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 		close(eventCh)
 	}()
 	for event := range eventCh {
-		if event.Type != events.EventHTTPObserved { continue }
+		if event.Type != events.EventHTTPObserved {
+			continue
+		}
 		item, observation, err := evidence.FromHTTPEvent(event)
-		if err != nil { return HTTPResult{}, fmt.Errorf("convert HTTP event to evidence: %w", err) }
+		if err != nil {
+			return HTTPResult{}, fmt.Errorf("convert HTTP event to evidence: %w", err)
+		}
 		if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
 			return HTTPResult{}, fmt.Errorf("register HTTP evidence: %w", err)
 		}
@@ -97,10 +109,25 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 		result.Evidence = item
 		result.Observation = observation
 	}
-	if err := <-errCh; err != nil { return HTTPResult{}, err }
-	if result.Event == nil { return HTTPResult{}, fmt.Errorf("HTTP collector returned no response event") }
+	if err := <-errCh; err != nil {
+		return HTTPResult{}, err
+	}
+	if result.Event == nil {
+		return HTTPResult{}, fmt.Errorf("HTTP collector returned no response event")
+	}
+	result.Normalized = observations.NormalizeEvents([]events.Event{*result.Event})
+	observations.AttachEvidence(&result.Normalized, []evidence.Observation{result.Observation})
+	if len(result.Normalized.Rejected) > 0 {
+		return HTTPResult{}, fmt.Errorf("normalize HTTP event: %s", result.Normalized.Rejected[0].Reason)
+	}
 	builtGraph, err := graph.BuildFromRegistry(registry)
-	if err != nil { return HTTPResult{}, fmt.Errorf("build infrastructure graph: %w", err) }
+	if err != nil {
+		return HTTPResult{}, fmt.Errorf("build infrastructure graph: %w", err)
+	}
+	builtGraph, err = graph.AttachServices(builtGraph, result.Normalized.Services)
+	if err != nil {
+		return HTTPResult{}, fmt.Errorf("attach normalized services to graph: %w", err)
+	}
 	result.Graph = builtGraph
 	return result, nil
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
+	"github.com/itsFuRy007/kem3t/internal/observations"
 	"github.com/itsFuRy007/kem3t/internal/snapshots"
 )
 
@@ -32,6 +33,7 @@ type DNSResult struct {
 	BaselineCreated  bool
 	EvidenceRegistry *evidence.Registry
 	Graph            graph.Graph
+	Normalized       observations.Collection
 }
 
 func RunDNS(
@@ -99,6 +101,7 @@ func runDNSWithCollector(
 	}
 
 	eventCount := 0
+	normalizedEvents := make([]events.Event, 0)
 	observedAddresses := make(map[string]struct{})
 
 	defer func() {
@@ -138,6 +141,7 @@ func runDNSWithCollector(
 
 	for event := range eventCh {
 		eventCount++
+		normalizedEvents = append(normalizedEvents, event)
 
 		if event.Type == events.EventDNSRecordFound {
 			if item, _, err := evidence.FromDNSEvent(event); err == nil {
@@ -219,7 +223,14 @@ func runDNSWithCollector(
 		return DNSResult{}, fmt.Errorf("create current snapshot: %w", err)
 	}
 
+	normalized := observations.NormalizeEvents(normalizedEvents)
+	observations.AttachEvidence(&normalized, registry.AllObservations())
+	if len(normalized.Rejected) > 0 {
+		return DNSResult{}, fmt.Errorf("normalize DNS events: %s", normalized.Rejected[0].Reason)
+	}
+
 	result = DNSResult{
+		Normalized:       normalized,
 		Findings:         findings,
 		Report:           report,
 		CurrentSnapshot:  currentSnapshot,

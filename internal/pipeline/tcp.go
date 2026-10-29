@@ -13,6 +13,7 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
+	"github.com/itsFuRy007/kem3t/internal/observations"
 )
 
 type TCPResult struct {
@@ -21,6 +22,7 @@ type TCPResult struct {
 	Observations     []evidence.Observation
 	EvidenceRegistry *evidence.Registry
 	Graph            graph.Graph
+	Normalized       observations.Collection
 }
 
 func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshotDir string) (result TCPResult, retErr error) {
@@ -115,9 +117,19 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 		return TCPResult{}, err
 	}
 
+	result.Normalized = observations.NormalizeEvents(result.Events)
+	observations.AttachEvidence(&result.Normalized, result.Observations)
+	if len(result.Normalized.Rejected) > 0 {
+		return TCPResult{}, fmt.Errorf("normalize TCP events: %s", result.Normalized.Rejected[0].Reason)
+	}
+
 	builtGraph, err := graph.Build(result.Evidence, result.Observations)
 	if err != nil {
 		return TCPResult{}, fmt.Errorf("build infrastructure graph: %w", err)
+	}
+	builtGraph, err = graph.AttachServices(builtGraph, result.Normalized.Services)
+	if err != nil {
+		return TCPResult{}, fmt.Errorf("attach normalized services to graph: %w", err)
 	}
 	result.Graph = builtGraph
 	return result, nil

@@ -13,6 +13,7 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
+	"github.com/itsFuRy007/kem3t/internal/observations"
 )
 
 type TLSResult struct {
@@ -21,6 +22,7 @@ type TLSResult struct {
 	Observation      evidence.Observation
 	EvidenceRegistry *evidence.Registry
 	Graph            graph.Graph
+	Normalized       observations.Collection
 }
 
 func RunTLS(
@@ -140,12 +142,24 @@ func RunTLS(
 	if err := <-collectorErrCh; err != nil {
 		return TLSResult{}, err
 	}
+	if result.Event == nil {
+		return TLSResult{}, fmt.Errorf("TLS collector returned no certificate event")
+	}
 
+	result.Normalized = observations.NormalizeEvents([]events.Event{*result.Event})
+	observations.AttachEvidence(&result.Normalized, []evidence.Observation{result.Observation})
+	if len(result.Normalized.Rejected) > 0 {
+		return TLSResult{}, fmt.Errorf("normalize TLS event: %s", result.Normalized.Rejected[0].Reason)
+	}
 	builtGraph, err := graph.Build([]evidence.Evidence{result.Evidence}, []evidence.Observation{result.Observation})
 	if err != nil {
 		return TLSResult{}, fmt.Errorf("build infrastructure graph: %w", err)
 	}
 
+	builtGraph, err = graph.AttachServices(builtGraph, result.Normalized.Services)
+	if err != nil {
+		return TLSResult{}, fmt.Errorf("attach normalized services to graph: %w", err)
+	}
 	result.Graph = builtGraph
 	return result, nil
 }
