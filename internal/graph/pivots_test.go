@@ -13,11 +13,11 @@ func TestPivotTraversesEvidenceBackedInfrastructureRelationships(t *testing.T) {
 		Nodes: []Node{
 			{ID: "domain:api.example.com", Type: NodeDomain, Value: "api.example.com"},
 			{ID: "domain:www.example.com", Type: NodeDomain, Value: "www.example.com"},
+			{ID: "http-service:api.example.com:8080:https", Type: NodeHTTPService, Value: "https://api.example.com:8080"},
 			{ID: "ip:192.0.2.10", Type: NodeIP, Value: "192.0.2.10"},
 			{ID: "service:192.0.2.10:443:https", Type: NodeNetworkService, Value: "192.0.2.10:443 (https)"},
 			{ID: "service:api.example.com:443:https", Type: NodeNetworkService, Value: "api.example.com:443 (https)"},
 			{ID: "tcp-port:api.example.com:8443", Type: NodeTCPPort, Value: "api.example.com:8443"},
-			{ID: "http-service:api.example.com:8080:https", Type: NodeHTTPService, Value: "https://api.example.com:8080"},
 			{ID: certificateID, Type: NodeTLSCertificate, Value: fingerprint},
 		},
 		Edges: []Edge{
