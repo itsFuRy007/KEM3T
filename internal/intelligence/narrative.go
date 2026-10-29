@@ -238,6 +238,18 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 		}
 	}
 
+	for _, gap := range report.IntelligenceGaps {
+		refs := append([]string{"gap:" + gap.ID}, gap.References...)
+		n.Signals = append(n.Signals, NarrativeSignal{
+			ID: "gap:" + gap.ID, Kind: "INTELLIGENCE_GAP",
+			Summary: gap.Unknown + " " + gap.WhyItMatters,
+			Confidence: "UNRESOLVED_QUESTION:" + gap.Priority,
+			AlternativeExplanations: gap.AlternativeExplanations,
+			References: stableUnique(refs),
+		})
+		addSteps("gap", gap.ID, gap.WhyItMatters, []string{gap.SuggestedAction})
+	}
+
 	sort.Slice(n.Signals, func(i, j int) bool {
 		if n.Signals[i].Kind != n.Signals[j].Kind {
 			return n.Signals[i].Kind < n.Signals[j].Kind
@@ -271,9 +283,9 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 		})
 	}
 
-	n.Summary = fmt.Sprintf("Investigation of %s contains %d direct correlations, %d convergent discoveries, %d multi-hop paths, %d recurring pivots, %d hypotheses, %d findings, and %d verification assessments. These are evidence-linked leads and observations, not automatic conclusions.",
+	n.Summary = fmt.Sprintf("Investigation of %s contains %d direct correlations, %d convergent discoveries, %d multi-hop paths, %d recurring pivots, %d hypotheses, %d findings, and %d verification assessments, and %d explicit intelligence gaps. These are evidence-linked leads and observations, not automatic conclusions.",
 		target, len(report.Correlations), len(report.Discoveries), len(report.DiscoveryPaths),
-		len(report.DiscoveryPivots), len(report.Hypotheses), len(report.Findings), len(report.VerificationAssessments))
+		len(report.DiscoveryPivots), len(report.Hypotheses), len(report.Findings), len(report.VerificationAssessments), len(report.IntelligenceGaps))
 	if len(n.Signals) == 0 {
 		n.Summary = "No evidence-backed signals or findings were available for investigation of " + target + "."
 	}
