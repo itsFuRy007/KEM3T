@@ -80,3 +80,35 @@ func TestEngineIntegratesExistingDNSCollectorEndToEnd(t *testing.T) {
 	if result.Report.Target!="example.com" {t.Fatalf("unexpected intelligence report: %+v",result.Report)}
 	if len(result.Stages)!=1||result.Stages[0].Result.Evidence!=1 {t.Fatalf("unexpected stage outcome: %+v",result.Stages)}
 }
+
+type plannerFunc func(context.Context,PlanningState)([]Stage,error)
+func (f plannerFunc) Next(ctx context.Context,state PlanningState)([]Stage,error){return f(ctx,state)}
+
+func TestEnginePlansNextStageFromNewEvidence(t *testing.T) {
+	registry:=evidence.NewRegistry()
+	plannerCalls:=0
+	next:=FuncStage{StageName:"evidence-follow-up",Lookup:func(_ context.Context,_ string,r *evidence.Registry)(StageResult,error){
+		if len(r.AllEvidence())==0 {t.Fatal("planner scheduled follow-up without evidence")}
+		return StageResult{Limitations:[]string{"follow-up is a bounded test stage"}},nil
+	}}
+	planner:=plannerFunc(func(_ context.Context,state PlanningState)([]Stage,error){
+		plannerCalls++
+		if plannerCalls==1 && len(state.Evidence)==1 {return []Stage{next},nil}
+		return nil,nil
+	})
+	engine:=Engine{Registry:registry,Stages:[]Stage{testStage{name:"dns"}},Planner:planner,MaxStages:3}
+	result,err:=engine.Run(context.Background(),"example.com")
+	if err!=nil {t.Fatal(err)}
+	if len(result.Stages)!=2||result.Stages[1].Name!="evidence-follow-up" {t.Fatalf("adaptive stage was not executed: %+v",result.Stages)}
+	if plannerCalls!=2 {t.Fatalf("planner should be consulted after each completed stage; got %d calls",plannerCalls)}
+}
+
+func TestEngineRejectsAdaptivePlanThatExceedsStageLimit(t *testing.T) {
+	registry:=evidence.NewRegistry()
+	planner:=plannerFunc(func(context.Context,PlanningState)([]Stage,error){
+		return []Stage{FuncStage{StageName:"follow-up-a",Lookup:func(context.Context,string,*evidence.Registry)(StageResult,error){return StageResult{},nil}},FuncStage{StageName:"follow-up-b",Lookup:func(context.Context,string,*evidence.Registry)(StageResult,error){return StageResult{},nil}}},nil
+	})
+	result,err:=(&Engine{Registry:registry,Stages:[]Stage{testStage{name:"dns"}},Planner:planner,MaxStages:2}).Run(context.Background(),"example.com")
+	if err==nil {t.Fatal("expected adaptive stage limit error")}
+	if !result.Partial {t.Fatal("stage limit error should be marked partial")}
+}
