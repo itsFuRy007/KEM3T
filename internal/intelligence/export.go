@@ -122,6 +122,51 @@ func (c ExportCollection) Validate(target string) error {
 			c.History.CurrentObservedCount != len(c.CurrentSnapshot.Addresses) {
 			return fmt.Errorf("DNS history counts do not match snapshot address counts")
 		}
+		previousSet := make(map[string]struct{}, len(c.PreviousSnapshot.Addresses))
+		for _, address := range c.PreviousSnapshot.Addresses {
+			previousSet[address] = struct{}{}
+		}
+		currentSet := make(map[string]struct{}, len(c.CurrentSnapshot.Addresses))
+		for _, address := range c.CurrentSnapshot.Addresses {
+			currentSet[address] = struct{}{}
+		}
+		var added, removed, unchanged []string
+		for address := range currentSet {
+			if _, exists := previousSet[address]; exists {
+				unchanged = append(unchanged, address)
+			} else {
+				added = append(added, address)
+			}
+		}
+		for address := range previousSet {
+			if _, exists := currentSet[address]; !exists {
+				removed = append(removed, address)
+			}
+		}
+		sort.Strings(added)
+		sort.Strings(removed)
+		sort.Strings(unchanged)
+		if !equalStrings(c.History.Added, added) ||
+			!equalStrings(c.History.Removed, removed) ||
+			!equalStrings(c.History.Unchanged, unchanged) {
+			return fmt.Errorf("DNS history address sets do not match the supplied snapshots")
+		}
+		expectedChanges := make([]string, 0, len(added)+len(removed))
+		for _, address := range added {
+			expectedChanges = append(expectedChanges, string(changes.AddressAdded)+":"+address)
+		}
+		for _, address := range removed {
+			expectedChanges = append(expectedChanges, string(changes.AddressRemoved)+":"+address)
+		}
+		sort.Strings(expectedChanges)
+		actualChanges := make([]string, 0, len(c.Changes))
+		for _, item := range c.Changes {
+			actualChanges = append(actualChanges, string(item.Type)+":"+item.Address)
+		}
+		sort.Strings(actualChanges)
+		if !equalStrings(actualChanges, expectedChanges) {
+			return fmt.Errorf("detected changes do not match the supplied snapshots")
+		}
 	}
 	for i, change := range c.Changes {
 		if normalizeFindingTarget(change.Target) != target {
@@ -135,6 +180,18 @@ func (c ExportCollection) Validate(target string) error {
 		}
 	}
 	return nil
+}
+
+func equalStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // MarshalJSON validates the scope boundary before serializing the export.
