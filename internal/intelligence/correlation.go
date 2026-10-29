@@ -27,8 +27,10 @@ type Correlation struct {
 	SharedValue      string          `json:"shared_value"`
 	EvidenceIDs      []string        `json:"evidence_ids"`
 	ObservationIDs   []string        `json:"observation_ids"`
-	ObservationCount int             `json:"observation_count"`
-	Confidence       string          `json:"confidence"`
+	ObservationCount    int             `json:"observation_count"`
+	SourceNames         []string        `json:"source_names"`
+	DistinctSourceCount int             `json:"distinct_source_count"`
+	Confidence          string          `json:"confidence"`
 	ConfidenceScope  string          `json:"confidence_scope"`
 	Explanation      string          `json:"explanation"`
 	Limitations      string          `json:"limitations"`
@@ -142,13 +144,13 @@ func (e *CorrelationEngine) correlateEvidence(records []evidence.Evidence, obser
 		byAddress, target, CorrelationSharedIPAddress, "shared-ip:",
 		"OBSERVED_SHARED_ADDRESS",
 		"%d distinct entities were observed resolving to the same normalized IP address.",
-		"A shared IP address does not by itself prove common ownership, a direct relationship, or a vulnerability. Confidence applies only to the observed association, not to any ownership or security conclusion.",
+		"A shared IP address does not by itself prove common ownership, a direct relationship, or a vulnerability. Confidence applies only to the observed association, not to any ownership or security conclusion. Distinct source labels are reported as collection context and do not prove independent corroboration.",
 	)...)
 	results = append(results, buildCorrelations(
 		byFingerprint, target, CorrelationSharedTLSCertificateFingerprint, "shared-tls-cert:",
 		"OBSERVED_SHARED_CERTIFICATE_FINGERPRINT",
 		"%d distinct entities were observed presenting the same TLS certificate SHA-256 fingerprint.",
-		"A matching certificate fingerprint establishes that the same certificate was observed, not common ownership or a vulnerability. Certificates may be centrally managed or reused across unrelated services; verify with independent evidence.",
+		"A matching certificate fingerprint establishes that the same certificate was observed, not common ownership or a vulnerability. Certificates may be centrally managed or reused across unrelated services; verify with independent evidence. Distinct source labels are reported as collection context and do not prove independent corroboration.",
 	)...)
 
 	sort.Slice(results, func(i, j int) bool {
@@ -169,11 +171,16 @@ func buildCorrelations(groups map[string][]correlationEvidenceItem, target strin
 		entitiesSet := make(map[string]struct{})
 		evidenceIDsSet := make(map[string]struct{})
 		observationIDsSet := make(map[string]struct{})
+		sourceNamesSet := make(map[string]struct{})
 		for _, item := range items {
 			entitiesSet[normalizeCorrelationEntity(item.record.EntityID)] = struct{}{}
 			evidenceIDsSet[item.record.ID] = struct{}{}
 			for _, observation := range item.observations {
 				observationIDsSet[observation.ID] = struct{}{}
+				source := strings.TrimSpace(observation.Source)
+				if source != "" {
+					sourceNamesSet[source] = struct{}{}
+				}
 			}
 		}
 		if len(entitiesSet) < 2 {
@@ -188,7 +195,8 @@ func buildCorrelations(groups map[string][]correlationEvidenceItem, target strin
 		results = append(results, Correlation{
 			ID: idPrefix + sharedValue, Type: correlationType, Entities: entities, SharedValue: sharedValue,
 			EvidenceIDs: sortedSet(evidenceIDsSet), ObservationIDs: sortedSet(observationIDsSet),
-			ObservationCount: len(observationIDsSet), Confidence: "HIGH", ConfidenceScope: confidenceScope,
+			ObservationCount: len(observationIDsSet), SourceNames: sortedSet(sourceNamesSet),
+			DistinctSourceCount: len(sourceNamesSet), Confidence: "HIGH", ConfidenceScope: confidenceScope,
 			Explanation: fmt.Sprintf(explanationTemplate, len(entities)), Limitations: limitations,
 		})
 	}

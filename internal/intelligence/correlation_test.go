@@ -344,3 +344,35 @@ func TestCorrelateEvidenceRejectsMalformedTLSFingerprints(t *testing.T) {
 		})
 	}
 }
+
+
+func TestCorrelationReportsDistinctSourcesWithoutClaimingIndependence(t *testing.T) {
+	records := []evidence.Evidence{
+		{ID: "ev-a", EntityID: "a.example.com", Type: evidence.TypeDNSAddress, Value: "192.0.2.44"},
+		{ID: "ev-b", EntityID: "b.example.com", Type: evidence.TypeDNSAddress, Value: "192.0.2.44"},
+	}
+	observations := []evidence.Observation{
+		{ID: "obs-a", EvidenceID: "ev-a", Source: "resolver-a", ObservedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), EventIDs: []string{"event-a"}},
+		{ID: "obs-b", EvidenceID: "ev-b", Source: "resolver-b", ObservedAt: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC), EventIDs: []string{"event-b"}},
+	}
+	results, err := (&CorrelationEngine{}).CorrelateEvidence(records, observations)
+	if err != nil {
+		t.Fatalf("CorrelateEvidence returned error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected one correlation, got %d", len(results))
+	}
+	got := results[0]
+	if got.DistinctSourceCount != 2 {
+		t.Fatalf("distinct source count = %d, want 2", got.DistinctSourceCount)
+	}
+	if len(got.SourceNames) != 2 || got.SourceNames[0] != "resolver-a" || got.SourceNames[1] != "resolver-b" {
+		t.Fatalf("source names should be unique and sorted: %#v", got.SourceNames)
+	}
+	if !strings.Contains(got.Limitations, "do not prove independent corroboration") {
+		t.Fatalf("source diversity must not be presented as proof of independence: %q", got.Limitations)
+	}
+	if got.Confidence != "HIGH" {
+		t.Fatalf("observed association confidence contract unexpectedly changed: %q", got.Confidence)
+	}
+}
