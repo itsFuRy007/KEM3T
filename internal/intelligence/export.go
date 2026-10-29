@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"sort"
-	"strings"
 
 	"github.com/itsFuRy007/kem3t/internal/changes"
 	"github.com/itsFuRy007/kem3t/internal/snapshots"
