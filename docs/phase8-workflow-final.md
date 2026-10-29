@@ -22,6 +22,16 @@ Existing evidence and observation records remain authoritative; the workflow doe
 - Confidence, alternatives, and verification requirements remain attached to results.
 - Equivalent inputs should produce stable ordering for diffable, testable output.
 
-## Implementation boundary
+## Implemented foundation
 
-The first increment establishes a structured investigation result boundary that reuses the existing `IntelligenceReport`. Presentation-specific formats and CLI orchestration should build on that boundary rather than creating parallel analytical models.
+- Versioned JSON export envelope with explicit investigation scope.
+- DNS exports include the current snapshot, optional previous snapshot, baseline state, detected changes, and history comparison.
+- Export validation cross-checks target scope, snapshot chronology, observed address sets, and detected changes before serialization.
+- Snapshot-relative removals are named explicitly; they are not claims of global infrastructure disappearance.
+- CLI writes complete exports atomically with owner-only file permissions.
+
+## Remaining Phase 8 direction
+
+The current export work establishes a reliable boundary for one DNS investigation. The next increments should make the workflow consistent across collection modes, represent multi-target investigations without collapsing target scope, and provide a researcher-oriented summary that links every suggested next step to its supporting evidence.
+
+Presentation-specific formats must build on this boundary rather than creating parallel analytical models.
