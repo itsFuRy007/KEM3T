@@ -239,7 +239,7 @@ func runDNS(target, snapshotDir, exportJSON string) error {
 		if err := writeInvestigationExport(exportJSON, result.Report); err != nil {
 			return fmt.Errorf("write investigation export: %w", err)
 		}
-		fmt.Printf("[INVESTIGATION EXPORT] %s\\n", exportJSON)
+		fmt.Printf("[INVESTIGATION EXPORT] %s\n", exportJSON)
 	}
 	printInfrastructureGraph(result.Graph)
 
