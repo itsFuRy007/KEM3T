@@ -109,7 +109,7 @@ func BuildIntelligenceGaps(report IntelligenceReport) ([]IntelligenceGap, error)
 		refs := []string{"pivot:" + pivot.ID}
 		refs = appendPrefixed(refs, "path", pivot.PathIDs)
 		for _, path := range report.DiscoveryPaths {
-			if containsString(pivot.PathIDs, path.ID) { refs = appendPrefixed(refs, "correlation", path.CorrelationIDs) }
+			if gapContainsString(pivot.PathIDs, path.ID) { refs = appendPrefixed(refs, "correlation", path.CorrelationIDs) }
 		}
 		if err := add(IntelligenceGap{
 			ID: "gap:pivot-role:" + pivot.ID, Kind: "PIVOT_ROLE_AMBIGUITY",
@@ -144,7 +144,7 @@ func BuildIntelligenceGaps(report IntelligenceReport) ([]IntelligenceGap, error)
 	return gaps, nil
 }
 
-func containsString(values []string, wanted string) bool {
+func gapContainsString(values []string, wanted string) bool {
 	for _, value := range values { if value == wanted { return true } }
 	return false
 }
