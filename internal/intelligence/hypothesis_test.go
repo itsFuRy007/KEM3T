@@ -276,8 +276,8 @@ func TestHypothesisEngineRejectsMalformedCorrelationClaims(t *testing.T) {
 			correlation: Correlation{ID: "scope", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.10", EvidenceIDs: []string{"ev-a"}, ConfidenceScope: "OWNERSHIP_CONFIRMED"},
 		},
 		{
-			name: "duplicate evidence IDs",
-			correlation: Correlation{ID: "dup", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.10", EvidenceIDs: []string{"ev-a", " ev-a "}, ConfidenceScope: "OBSERVED_SHARED_ADDRESS"},
+			name: "blank evidence ID",
+			correlation: Correlation{ID: "blank-evidence", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.10", EvidenceIDs: []string{"ev-a", " "}, ConfidenceScope: "OBSERVED_SHARED_ADDRESS"},
 		},
 		{
 			name: "malformed TLS fingerprint",
