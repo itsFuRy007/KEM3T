@@ -4,6 +4,7 @@ import (
  "context"
  "encoding/json"
  "fmt"
+ "io"
  "net"
  "net/http"
  "net/url"
@@ -76,7 +77,8 @@ func (c *ASNClient) LookupIP(ctx context.Context, rawIP string) (ASNReport,error
  req,err:=http.NewRequestWithContext(ctx,http.MethodGet,query.String(),nil);if err!=nil{return ASNReport{},err}
  req.Header.Set("Accept","application/dns-json");req.Header.Set("User-Agent","KEM3T-External-Intelligence/1.0 (research)")
  resp,err:=client.Do(req);if err!=nil{return ASNReport{},fmt.Errorf("query origin ASN mapping: %w",err)}
- body,readErr:=readBoundedResponse(resp,1<<20);resp.Body.Close();if readErr!=nil{return ASNReport{},readErr}
+ if resp.StatusCode<200||resp.StatusCode>=300{resp.Body.Close();return ASNReport{},fmt.Errorf("origin ASN DNS returned HTTP %d",resp.StatusCode)}
+ body,readErr:=io.ReadAll(io.LimitReader(resp.Body,(1<<20)+1));resp.Body.Close();if readErr!=nil{return ASNReport{},readErr};if len(body)>1<<20{return ASNReport{},fmt.Errorf("origin ASN DNS response exceeds 1048576 bytes")}
  var dns dohResponse;if err:=json.Unmarshal(body,&dns);err!=nil{return ASNReport{},fmt.Errorf("decode ASN DNS response: %w",err)}
  if dns.Status!=0{return ASNReport{},fmt.Errorf("origin ASN DNS returned status %d",dns.Status)}
  mappings:=map[uint32]ASNRecord{}
@@ -122,7 +124,7 @@ func (c *ASNClient) LookupIP(ctx context.Context, rawIP string) (ASNReport,error
 
 func cymruOriginName(ip net.IP)string{
  if v4:=ip.To4();v4!=nil{return fmt.Sprintf("%d.%d.%d.%d.origin.asn.cymru.com",v4[3],v4[2],v4[1],v4[0])}
- hexIP:=fmt.Sprintf("%032x",ip.To16());parts:=make([]string,0,32);for i:=len(hexIP)-1;i>=0;i--{parts=append(parts,string(hexIP[i]))};return strings.Join(parts,".")+".origin6.asn.cymru.com"
+ hexIP:=fmt.Sprintf("%x",ip.To16());parts:=make([]string,0,32);for i:=len(hexIP)-1;i>=0;i--{parts=append(parts,string(hexIP[i]))};return strings.Join(parts,".")+".origin6.asn.cymru.com"
 }
 
 func selectASNService(bootstrap asnBootstrap,asn uint32)(string,error){
