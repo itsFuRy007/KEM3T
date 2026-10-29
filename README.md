@@ -260,9 +260,10 @@ The project is under active development. Checkboxes below distinguish implemente
 - [x] Bounded HTTP body inspection and redirect handling
 - [x] Configurable TCP port range
 - [x] Bounded worker-pool primitive with cancellation-aware scheduling, per-target error isolation, and deterministic result ordering
-- [ ] Shared provider-aware rate limits and backoff
-- [ ] Target lists and large-scope scheduling
-- [ ] Performance benchmarks and storage optimization
+- [x] Shared provider-aware rate limits and backoff
+- [x] Target lists and large-scope scheduling
+- [x] Performance benchmarks and measured graph-allocation optimization
+- [ ] Further storage optimization (retain only changes with demonstrated benefit)
 
 ### Phase 8 — Usability
 - [x] CLI modes for demo, DNS, TCP, TLS, HTTP, history, CT, domain RDAP, IP RDAP, ASN, passive DNS, and threat intelligence
