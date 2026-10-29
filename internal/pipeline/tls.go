@@ -83,6 +83,9 @@ func RunTLS(
 	defer func() {
 		run.FinishedAt = time.Now().UTC()
 		run.EventCount = 0
+		if result.Event != nil {
+			run.EventCount = 1
+		}
 		run.AddressCount = 0
 
 		if retErr != nil {
@@ -101,7 +104,7 @@ func RunTLS(
 			}
 		}
 			if retErr == nil && run.Status == evidence.CollectionRunCompleted {
-			if err := history.PersistRunSnapshot(snapshotDir, run, registry); err != nil {
+			if err := history.PersistRunSnapshot(snapshotDir, run, registry, []evidence.Observation{result.Observation}); err != nil {
 				retErr = fmt.Errorf("persist history snapshot: %w", err)
 			}
 		}
