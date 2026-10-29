@@ -2,6 +2,7 @@ package intelligence
 
 import (
 	"fmt"
+	"net"
 	"sort"
 	"strings"
 
@@ -25,6 +26,7 @@ type Correlation struct {
 	ObservationIDs   []string        `json:"observation_ids"`
 	ObservationCount int             `json:"observation_count"`
 	Confidence       string          `json:"confidence"`
+	ConfidenceScope  string          `json:"confidence_scope"`
 	Explanation      string          `json:"explanation"`
 	Limitations      string          `json:"limitations"`
 }
@@ -33,9 +35,7 @@ type Correlation struct {
 type CorrelationEngine struct{}
 
 // Correlate discovers IP addresses associated with multiple entities.
-//
-// Evidence and observations are read from the registry. The engine does not
-// modify the registry and returns deterministic results.
+// Results cover the entire registry and are deterministic.
 func (e *CorrelationEngine) Correlate(
 	registry *evidence.Registry,
 ) ([]Correlation, error) {
@@ -49,10 +49,53 @@ func (e *CorrelationEngine) Correlate(
 	)
 }
 
+// CorrelateForTarget discovers shared-IP relationships that include target.
+// Related entities remain visible so the report can provide investigation context,
+// but correlations unrelated to the requested target are excluded.
+func (e *CorrelationEngine) CorrelateForTarget(
+	registry *evidence.Registry,
+	target string,
+) ([]Correlation, error) {
+	if registry == nil {
+		return nil, fmt.Errorf("evidence registry is required")
+	}
+	target = normalizeCorrelationEntity(target)
+	if target == "" {
+		return nil, fmt.Errorf("correlation target is required")
+	}
+
+	return e.correlateEvidence(
+		registry.AllEvidence(),
+		registry.AllObservations(),
+		target,
+	)
+}
+
 // CorrelateEvidence discovers shared-IP relationships from supplied records.
 func (e *CorrelationEngine) CorrelateEvidence(
 	records []evidence.Evidence,
 	observations []evidence.Observation,
+) ([]Correlation, error) {
+	return e.correlateEvidence(records, observations, "")
+}
+
+// CorrelateEvidenceForTarget discovers shared-IP relationships that include target.
+func (e *CorrelationEngine) CorrelateEvidenceForTarget(
+	records []evidence.Evidence,
+	observations []evidence.Observation,
+	target string,
+) ([]Correlation, error) {
+	target = normalizeCorrelationEntity(target)
+	if target == "" {
+		return nil, fmt.Errorf("correlation target is required")
+	}
+	return e.correlateEvidence(records, observations, target)
+}
+
+func (e *CorrelationEngine) correlateEvidence(
+	records []evidence.Evidence,
+	observations []evidence.Observation,
+	target string,
 ) ([]Correlation, error) {
 	type evidenceItem struct {
 		record       evidence.Evidence
@@ -60,10 +103,15 @@ func (e *CorrelationEngine) CorrelateEvidence(
 	}
 
 	observationByEvidence := make(map[string][]evidence.Observation)
+	seenObservations := make(map[string]struct{}, len(observations))
 	for _, observation := range observations {
 		if err := observation.Validate(); err != nil {
 			return nil, fmt.Errorf("invalid observation %q: %w", observation.ID, err)
 		}
+		if _, exists := seenObservations[observation.ID]; exists {
+			return nil, fmt.Errorf("duplicate observation ID %q", observation.ID)
+		}
+		seenObservations[observation.ID] = struct{}{}
 		observationByEvidence[observation.EvidenceID] = append(
 			observationByEvidence[observation.EvidenceID],
 			observation,
@@ -71,66 +119,58 @@ func (e *CorrelationEngine) CorrelateEvidence(
 	}
 
 	byAddress := make(map[string][]evidenceItem)
-
+	seenEvidence := make(map[string]struct{}, len(records))
 	for _, record := range records {
 		if err := record.Validate(); err != nil {
 			return nil, fmt.Errorf("invalid evidence %q: %w", record.ID, err)
 		}
+		if _, exists := seenEvidence[record.ID]; exists {
+			return nil, fmt.Errorf("duplicate evidence ID %q", record.ID)
+		}
+		seenEvidence[record.ID] = struct{}{}
 
 		if record.Type != evidence.TypeDNSAddress {
 			continue
 		}
 
-		entity := strings.ToLower(strings.TrimSpace(record.EntityID))
-		address := strings.TrimSpace(record.Value)
-		if entity == "" || address == "" {
-			return nil, fmt.Errorf("evidence %q has an empty entity or value", record.ID)
+		entity := normalizeCorrelationEntity(record.EntityID)
+		ip := net.ParseIP(strings.TrimSpace(record.Value))
+		if entity == "" || ip == nil {
+			return nil, fmt.Errorf("evidence %q has an empty entity or invalid IP address", record.ID)
 		}
 
-		byAddress[address] = append(byAddress[address], evidenceItem{
+		byAddress[ip.String()] = append(byAddress[ip.String()], evidenceItem{
 			record:       record,
 			observations: observationByEvidence[record.ID],
 		})
 	}
 
 	results := make([]Correlation, 0)
-
 	for address, items := range byAddress {
 		entitiesSet := make(map[string]struct{})
 		evidenceIDsSet := make(map[string]struct{})
 		observationIDsSet := make(map[string]struct{})
-		observationCount := 0
 
 		for _, item := range items {
-			entitiesSet[strings.ToLower(strings.TrimSpace(item.record.EntityID))] = struct{}{}
+			entitiesSet[normalizeCorrelationEntity(item.record.EntityID)] = struct{}{}
 			evidenceIDsSet[item.record.ID] = struct{}{}
 			for _, observation := range item.observations {
 				observationIDsSet[observation.ID] = struct{}{}
-				observationCount++
 			}
 		}
 
 		if len(entitiesSet) < 2 {
 			continue
 		}
-
-		entities := make([]string, 0, len(entitiesSet))
-		for entity := range entitiesSet {
-			entities = append(entities, entity)
+		if target != "" {
+			if _, includesTarget := entitiesSet[target]; !includesTarget {
+				continue
+			}
 		}
-		sort.Strings(entities)
 
-		evidenceIDs := make([]string, 0, len(evidenceIDsSet))
-		for id := range evidenceIDsSet {
-			evidenceIDs = append(evidenceIDs, id)
-		}
-		sort.Strings(evidenceIDs)
-
-		observationIDs := make([]string, 0, len(observationIDsSet))
-		for id := range observationIDsSet {
-			observationIDs = append(observationIDs, id)
-		}
-		sort.Strings(observationIDs)
+		entities := sortedSet(entitiesSet)
+		evidenceIDs := sortedSet(evidenceIDsSet)
+		observationIDs := sortedSet(observationIDsSet)
 
 		results = append(results, Correlation{
 			ID:               "shared-ip:" + address,
@@ -139,10 +179,13 @@ func (e *CorrelationEngine) CorrelateEvidence(
 			SharedValue:      address,
 			EvidenceIDs:      evidenceIDs,
 			ObservationIDs:   observationIDs,
-			ObservationCount: observationCount,
-			Confidence:       "HIGH",
-			Explanation:      fmt.Sprintf("%d distinct entities were observed resolving to the same IP address.", len(entities)),
-			Limitations:      "A shared IP address does not by itself prove common ownership, a direct relationship, or a vulnerability.",
+			ObservationCount: len(observationIDs),
+			// HIGH refers only to confidence that the stored records show the
+			// association. It does not indicate common ownership or risk.
+			Confidence:      "HIGH",
+			ConfidenceScope: "OBSERVED_SHARED_ADDRESS",
+			Explanation:     fmt.Sprintf("%d distinct entities were observed resolving to the same normalized IP address.", len(entities)),
+			Limitations:     "A shared IP address does not by itself prove common ownership, a direct relationship, or a vulnerability. Confidence applies only to the observed association, not to any ownership or security conclusion.",
 		})
 	}
 
@@ -152,6 +195,22 @@ func (e *CorrelationEngine) CorrelateEvidence(
 		}
 		return results[i].SharedValue < results[j].SharedValue
 	})
-
 	return results, nil
+}
+
+func normalizeCorrelationEntity(value string) string {
+	value = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(value)), ".")
+	if ip := net.ParseIP(value); ip != nil {
+		return ip.String()
+	}
+	return value
+}
+
+func sortedSet(values map[string]struct{}) []string {
+	result := make([]string, 0, len(values))
+	for value := range values {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
 }
