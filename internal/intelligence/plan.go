@@ -112,10 +112,9 @@ func BuildAdaptiveInvestigationPlan(
 			}
 		}
 		priority, label := 50, "MEDIUM"
-		for title, value := range findingPriority {
-			if strings.Contains(step.Reason, title) {
+		if sourceKind == "finding" {
+			if value, exists := findingPriority[sourceID]; exists {
 				priority, label = findingPriorityScore(value)
-				break
 			}
 		}
 		add(sourceID, sourceKind, step.Action, step.Reason, label, priority, step.References)
@@ -169,8 +168,8 @@ func BuildAdaptiveInvestigationPlan(
 		ordered = append(ordered, item)
 	}
 	sort.Slice(ordered, func(i, j int) bool {
-		leftActive, rightActive := ordered[i].Status == TaskRecommended || ordered[i].Status == TaskInconclusive || ordered[i].Status == TaskBlocked,
-			ordered[j].Status == TaskRecommended || ordered[j].Status == TaskInconclusive || ordered[j].Status == TaskBlocked
+		leftActive, rightActive := ordered[i].Status == TaskRecommended || ordered[i].Status == TaskInconclusive,
+			ordered[j].Status == TaskRecommended || ordered[j].Status == TaskInconclusive
 		if leftActive != rightActive { return leftActive }
 		if ordered[i].Priority != ordered[j].Priority { return ordered[i].Priority > ordered[j].Priority }
 		return ordered[i].ID < ordered[j].ID
@@ -258,7 +257,7 @@ func taskID(kind, sourceID, action string) string {
 func planRevision(plan InvestigationPlan) string {
 	var parts []string{plan.Target}
 	for _, item := range plan.Items {
-		parts = append(parts, strings.Join([]string{item.ID, item.Status, fmt.Sprint(item.Priority), strings.Join(item.EvidenceIDs, ",")}, "|"))
+		parts = append(parts, strings.Join([]string{item.ID, item.Status, item.Action, item.Rationale, fmt.Sprint(item.Priority), item.PriorityLabel, item.OutcomeNote, strings.Join(item.References, ","), strings.Join(item.EvidenceIDs, ",")}, "|"))
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
 	return hex.EncodeToString(sum[:12])
