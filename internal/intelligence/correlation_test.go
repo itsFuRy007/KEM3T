@@ -1,8 +1,10 @@
 package intelligence
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
+	"strings"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 )
@@ -253,5 +255,69 @@ func TestCorrelateEvidenceRejectsDanglingObservationReference(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected dangling observation reference to be rejected")
+	}
+}
+
+
+func tlsEvidenceForTest(t *testing.T, id, target, fingerprint string) evidence.Evidence {
+	t.Helper()
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	details := evidence.TLSCertificateDetails{
+		Target: target, Port: 443, SHA256Fingerprint: fingerprint,
+		NotBefore: now.Add(-24 * time.Hour), NotAfter: now.Add(365 * 24 * time.Hour),
+		TLSVersion: "TLS 1.3",
+	}
+	value, err := json.Marshal(details)
+	if err != nil {
+		t.Fatalf("marshal TLS details: %v", err)
+	}
+	return evidence.Evidence{ID: id, EntityID: target, Type: evidence.TypeTLSCertificate, Value: string(value)}
+}
+
+func TestCorrelateEvidenceFindsSharedTLSCertificateFingerprint(t *testing.T) {
+	fingerprint := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	records := []evidence.Evidence{
+		tlsEvidenceForTest(t, "tls-a", "a.example.com", fingerprint),
+		tlsEvidenceForTest(t, "tls-b", "b.example.com", strings.ToUpper(fingerprint)),
+		tlsEvidenceForTest(t, "tls-c", "c.example.com", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+	}
+	results, err := (&CorrelationEngine{}).CorrelateEvidence(records, nil)
+	if err != nil {
+		t.Fatalf("CorrelateEvidence returned error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected one shared-certificate correlation, got %d", len(results))
+	}
+	got := results[0]
+	if got.Type != CorrelationSharedTLSCertificateFingerprint {
+		t.Fatalf("unexpected correlation type: %q", got.Type)
+	}
+	if got.ID != "shared-tls-cert:"+fingerprint || got.SharedValue != fingerprint {
+		t.Fatalf("unexpected normalized certificate correlation: %#v", got)
+	}
+	if len(got.Entities) != 2 || got.Entities[0] != "a.example.com" || got.Entities[1] != "b.example.com" {
+		t.Fatalf("unexpected related entities: %#v", got.Entities)
+	}
+	if got.ConfidenceScope != "OBSERVED_SHARED_CERTIFICATE_FINGERPRINT" {
+		t.Fatalf("unexpected confidence scope: %q", got.ConfidenceScope)
+	}
+	if !strings.Contains(got.Limitations, "does not prove") {
+		t.Fatalf("expected explicit correlation limitations, got %q", got.Limitations)
+	}
+}
+
+func TestCorrelateEvidenceScopesSharedTLSCertificateToTarget(t *testing.T) {
+	fingerprint := "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	records := []evidence.Evidence{
+		tlsEvidenceForTest(t, "tls-a", "a.example.com", fingerprint),
+		tlsEvidenceForTest(t, "tls-b", "b.example.com", fingerprint),
+		tlsEvidenceForTest(t, "tls-c", "c.example.net", fingerprint),
+	}
+	results, err := (&CorrelationEngine{}).CorrelateEvidenceForTarget(records, nil, "a.example.com")
+	if err != nil {
+		t.Fatalf("CorrelateEvidenceForTarget returned error: %v", err)
+	}
+	if len(results) != 1 || len(results[0].Entities) != 3 {
+		t.Fatalf("expected target correlation to retain all related entities, got %#v", results)
 	}
 }
