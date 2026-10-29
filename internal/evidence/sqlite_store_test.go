@@ -119,3 +119,48 @@ func TestSQLiteRegistryRejectsDuplicateRecords(t *testing.T) {
 		t.Fatalf("expected ErrObservationExists, got %v", err)
 	}
 }
+
+func TestSQLiteStoreSaveBatchPersistsEvidenceAndObservationsAtomically(t *testing.T) {
+	store, err := OpenSQLiteStore(filepath.Join(t.TempDir(), "batch.db"))
+	if err != nil { t.Fatal(err) }
+	defer store.Close()
+	ctx := context.Background()
+	evidenceRecords := []Evidence{
+		{ID:"batch-e1", EntityID:"example.com", Type:TypeDNSAddress, Value:"192.0.2.1"},
+		{ID:"batch-e2", EntityID:"example.com", Type:TypeDNSAddress, Value:"192.0.2.2"},
+	}
+	observations := []Observation{
+		{ID:"batch-o1", EvidenceID:"batch-e1", Source:"dns", ObservedAt:time.Date(2026,10,29,12,0,0,0,time.UTC), EventIDs:[]string{"event-1"}},
+		{ID:"batch-o2", EvidenceID:"batch-e2", Source:"dns", ObservedAt:time.Date(2026,10,29,12,1,0,0,time.UTC), EventIDs:[]string{"event-2"}},
+	}
+	if err := store.SaveBatch(ctx, evidenceRecords, observations); err != nil { t.Fatalf("save batch: %v", err) }
+	for _, record := range evidenceRecords {
+		if _, err := store.LoadEvidence(ctx, record.ID); err != nil { t.Errorf("load evidence %s: %v", record.ID, err) }
+	}
+	for _, record := range observations {
+		if _, err := store.LoadObservation(ctx, record.ID); err != nil { t.Errorf("load observation %s: %v", record.ID, err) }
+	}
+}
+
+func TestSQLiteStoreSaveBatchRollsBackOnFailure(t *testing.T) {
+	store, err := OpenSQLiteStore(filepath.Join(t.TempDir(), "rollback.db"))
+	if err != nil { t.Fatal(err) }
+	defer store.Close()
+	ctx := context.Background()
+	err = store.SaveBatch(ctx,
+		[]Evidence{
+			{ID:"rollback-e1", EntityID:"example.com", Type:TypeDNSAddress, Value:"192.0.2.1"},
+			{ID:"rollback-e1", EntityID:"example.com", Type:TypeDNSAddress, Value:"192.0.2.2"},
+		}, nil)
+	if !errors.Is(err, ErrEvidenceExists) { t.Fatalf("expected duplicate evidence error, got %v", err) }
+	if _, err := store.LoadEvidence(ctx, "rollback-e1"); !errors.Is(err, ErrEvidenceNotFound) {
+		t.Fatalf("failed batch left partial evidence behind: %v", err)
+	}
+	err = store.SaveBatch(ctx,
+		[]Evidence{{ID:"rollback-e2", EntityID:"example.com", Type:TypeDNSAddress, Value:"192.0.2.3"}},
+		[]Observation{{ID:"rollback-o1", EvidenceID:"missing-evidence", Source:"dns", ObservedAt:time.Now().UTC(), EventIDs:[]string{"event-x"}}})
+	if !errors.Is(err, ErrEvidenceNotFound) { t.Fatalf("expected missing evidence error, got %v", err) }
+	if _, err := store.LoadEvidence(ctx, "rollback-e2"); !errors.Is(err, ErrEvidenceNotFound) {
+		t.Fatalf("observation failure did not roll back evidence: %v", err)
+	}
+}
