@@ -74,3 +74,40 @@ func TestRegisterRDAPReportRejectsInvalidNameserver(t *testing.T){
  report:=RDAPReport{Target:"example.com",Source:"rdap.example.test",RetrievedAt:time.Now().UTC(),NameServers:[]string{"bad..name"}}
  if _,err:=RegisterRDAPReport(registry,report);err==nil{t.Fatal("expected invalid nameserver rejection")}
 }
+
+func TestIPRDAPLookupUsesMostSpecificIANAServiceAndValidatesRange(t *testing.T){
+ var server *httptest.Server
+ server=httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  w.Header().Set("Content-Type","application/rdap+json")
+  switch r.URL.Path{
+  case "/ipv4-bootstrap":
+   fmt.Fprintf(w,"{\"services\":[[[\"8.0.0.0/8\"],[%q]],[[\"8.8.8.0/24\"],[%q]]]}",server.URL+"/broad",server.URL+"/specific")
+  case "/specific/ip/8.8.8.8":
+   fmt.Fprint(w,"{\"handle\":\"NET-8-8-8-0-1\",\"name\":\"Google LLC\",\"startAddress\":\"8.8.8.0\",\"endAddress\":\"8.8.8.255\",\"country\":\"US\",\"type\":\"DIRECT ALLOCATION\",\"status\":[\"active\"]}")
+  default:http.NotFound(w,r)
+  }
+ }))
+ defer server.Close()
+ client:=&RDAPClient{HTTPClient:server.Client(),IPBootstrapURL:server.URL+"/ipv4-bootstrap",Now:func()time.Time{return time.Date(2026,10,29,0,0,0,0,time.UTC)}}
+ report,err:=client.LookupIP(context.Background(),"8.8.8.8");if err!=nil{t.Fatal(err)}
+ if report.Target!="8.8.8.8"||report.Source!=strings.TrimPrefix(server.URL,"https://")||report.Name!="Google LLC"||report.StartAddress!="8.8.8.0"||report.EndAddress!="8.8.8.255"{t.Fatalf("unexpected IP RDAP report: %+v",report)}
+}
+
+func TestIPRDAPRejectsRangeThatDoesNotContainTarget(t *testing.T){
+ var server *httptest.Server
+ server=httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if r.URL.Path=="/bootstrap"{fmt.Fprintf(w,"{\"services\":[[[\"8.0.0.0/8\"],[%q]]]}",server.URL+"/rdap");return}
+  fmt.Fprint(w,"{\"startAddress\":\"1.1.1.0\",\"endAddress\":\"1.1.1.255\"}")
+ }))
+ defer server.Close()
+ client:=&RDAPClient{HTTPClient:server.Client(),IPBootstrapURL:server.URL+"/bootstrap"}
+ if _,err:=client.LookupIP(context.Background(),"8.8.8.8");err==nil{t.Fatal("expected range mismatch rejection")}
+}
+
+func TestRegisterIPRDAPReportPersistsGraphProvenance(t *testing.T){
+ registry:=evidence.NewRegistry()
+ report:=IPRDAPReport{Target:"8.8.8.8",Source:"rdap.example.test",RetrievedAt:time.Date(2026,10,29,12,0,0,0,time.UTC),Handle:"NET-8-8-8-0-1",Name:"Google LLC",StartAddress:"8.8.8.0",EndAddress:"8.8.8.255",Country:"US"}
+ added,err:=RegisterIPRDAPReport(registry,report);if err!=nil{t.Fatal(err)};if !added{t.Fatal("expected observation")}
+ g,err:=graph.BuildFromRegistry(registry);if err!=nil{t.Fatal(err)}
+ if len(g.Nodes)!=2||len(g.Edges)!=1||g.Edges[0].Type!=graph.EdgeIPInNetworkRange||len(g.Edges[0].EvidenceIDs)!=1||len(g.Edges[0].ObservationIDs)!=1{t.Fatalf("unexpected graph/provenance: %+v",g)}
+}

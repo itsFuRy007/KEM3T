@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+ "net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ const (
 	TypeASNOrigin Type = "ASN_ORIGIN"
 	TypePassiveDNS Type = "PASSIVE_DNS"
 	TypeThreatIntel Type = "THREAT_INTEL"
+	TypeIPRDAPNetwork Type = "IP_RDAP_NETWORK"
 )
 
 // TLSCertificateDetails contains the certificate metadata stored in evidence.
@@ -73,6 +75,16 @@ type RDAPRegistrationDetails struct {
  Events []RDAPRegistrationEvent `json:"events"`
 }
 
+type IPRDAPNetworkDetails struct {
+ Target string `json:"target"`
+ Handle string `json:"handle,omitempty"`
+ Name string `json:"name,omitempty"`
+ StartAddress string `json:"start_address"`
+ EndAddress string `json:"end_address"`
+ Country string `json:"country,omitempty"`
+ NetworkType string `json:"network_type,omitempty"`
+ Status []string `json:"status"`
+}
 type ThreatPulseDetails struct {
  ID string `json:"id"`
  Name string `json:"name"`
@@ -197,6 +209,9 @@ func (e Evidence) Validate() error {
 
 	case TypeThreatIntel:
 		return validateThreatIntelEvidence(e)
+
+	case TypeIPRDAPNetwork:
+		return validateIPRDAPNetworkEvidence(e)
 
 	default:
 		return errors.New("evidence type is invalid")
@@ -362,5 +377,16 @@ func validateThreatIntelEvidence(e Evidence)error{
  if d.PulseCount<0{return errors.New("threat pulse count cannot be negative")}
  seen:=map[string]struct{}{}
  for _,pulse:=range d.Pulses{if strings.TrimSpace(pulse.ID)==""||strings.TrimSpace(pulse.Name)==""{return errors.New("threat pulse ID and name are required")};if _,ok:=seen[pulse.ID];ok{return errors.New("duplicate threat pulse ID")};seen[pulse.ID]=struct{}{}}
+ return nil
+}
+
+func validateIPRDAPNetworkEvidence(e Evidence)error{
+ target,err:=netip.ParseAddr(strings.TrimSpace(e.EntityID));if err!=nil{return errors.New("IP RDAP evidence entity ID must be an IP address")}
+ var d IPRDAPNetworkDetails
+ if err:=json.Unmarshal([]byte(e.Value),&d);err!=nil{return fmt.Errorf("IP RDAP evidence value must be valid JSON: %w",err)}
+ reportTarget,err:=netip.ParseAddr(d.Target);if err!=nil||reportTarget!=target{return errors.New("IP RDAP target must match evidence entity ID")}
+ start,err:=netip.ParseAddr(d.StartAddress);if err!=nil{return errors.New("IP RDAP start address is invalid")}
+ end,err:=netip.ParseAddr(d.EndAddress);if err!=nil{return errors.New("IP RDAP end address is invalid")}
+ if start.Is4()!=target.Is4()||end.Is4()!=target.Is4()||start.Compare(end)>0||target.Compare(start)<0||target.Compare(end)>0{return errors.New("IP RDAP range must contain target and use a consistent address family")}
  return nil
 }
