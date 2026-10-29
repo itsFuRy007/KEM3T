@@ -102,6 +102,7 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 	if err := <-errCh; err != nil { return HTTPResult{}, err }
 	if result.Event == nil { return HTTPResult{}, fmt.Errorf("HTTP collector returned no response event") }
 	result.Normalized = observations.NormalizeEvents([]events.Event{*result.Event})
+	observations.AttachEvidence(&result.Normalized, []evidence.Observation{result.Observation})
 	if len(result.Normalized.Rejected) > 0 {
 		return HTTPResult{}, fmt.Errorf("normalize HTTP event: %s", result.Normalized.Rejected[0].Reason)
 	}
