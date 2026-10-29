@@ -149,3 +149,13 @@ func TestWriteInvestigationExportRejectsMismatchedScope(t *testing.T) {
 		t.Fatalf("invalid export was written; stat error = %v", statErr)
 	}
 }
+
+func TestRunRejectsExportOutsideDNSMode(t *testing.T) {
+	oldArgs := os.Args
+	os.Args = []string{"kem3t", "-mode", "tls", "-target", "example.com", "-export-json", "report.json"}
+	defer func() { os.Args = oldArgs }()
+	err := run()
+	if err == nil || !strings.Contains(err.Error(), "-export-json is supported only in DNS mode") {
+		t.Fatalf("run() error = %v, want DNS-only export error", err)
+	}
+}
