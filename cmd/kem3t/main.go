@@ -231,6 +231,9 @@ func runDNS(target, snapshotDir, exportJSON string) error {
 }
 
 func runDNSWithPlanState(target, snapshotDir, exportJSON, planStatePath string) error {
+	if strings.TrimSpace(planStatePath) != "" && filepath.Clean(planStatePath) == filepath.Clean(exportJSON) && strings.TrimSpace(exportJSON) != "" {
+		return fmt.Errorf("-plan-state and -export-json must use different paths")
+	}
 	state := intelligence.InvestigationPlanState{Feedback: []intelligence.InvestigationFeedback{}}
 	if strings.TrimSpace(planStatePath) != "" {
 		data, err := os.ReadFile(planStatePath)
