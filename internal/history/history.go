@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -85,7 +86,7 @@ func BuildSnapshot(run evidence.CollectionRun, records []evidence.Evidence, obse
 	collector := CollectorForRun(run.ID)
 	if collector == "unknown" { return Snapshot{}, fmt.Errorf("unsupported collection run type %q", run.ID) }
 
-	target := normalizeTarget(run.Target)
+	target := NormalizeTarget(run.Target)
 	evidenceByID := make(map[string]evidence.Evidence, len(records))
 	for _, item := range records { evidenceByID[item.ID] = item }
 
@@ -93,7 +94,7 @@ func BuildSnapshot(run evidence.CollectionRun, records []evidence.Evidence, obse
 	for _, observation := range observations {
 		if observation.ObservedAt.Before(run.StartedAt) || observation.ObservedAt.After(run.FinishedAt) { continue }
 		item, ok := evidenceByID[observation.EvidenceID]
-		if !ok || normalizeTarget(item.EntityID) != target { continue }
+		if !ok || NormalizeTarget(item.EntityID) != target { continue }
 		key, err := recordKey(item)
 		if err != nil { return Snapshot{}, fmt.Errorf("build history key for evidence %q: %w", item.ID, err) }
 		record, exists := byKey[key]
@@ -136,7 +137,7 @@ func (s Snapshot) Validate() error {
 func Compare(previous,current Snapshot) ([]Change,error) {
 	if err:=previous.Validate();err!=nil{return nil,fmt.Errorf("validate previous snapshot: %w",err)}
 	if err:=current.Validate();err!=nil{return nil,fmt.Errorf("validate current snapshot: %w",err)}
-	if normalizeTarget(previous.Target)!=normalizeTarget(current.Target)||previous.Collector!=current.Collector{return nil,fmt.Errorf("snapshots must have the same target and collector")}
+	if NormalizeTarget(previous.Target)!=NormalizeTarget(current.Target)||previous.Collector!=current.Collector{return nil,fmt.Errorf("snapshots must have the same target and collector")}
 	old:=make(map[string]Record,len(previous.Records));for _,r:=range previous.Records{old[r.Key]=r}
 	now:=make(map[string]Record,len(current.Records));for _,r:=range current.Records{now[r.Key]=r}
 	result:=make([]Change,0)
@@ -192,9 +193,9 @@ func DetectAnomalies(timeline Timeline) []Anomaly {
 func recordKey(item evidence.Evidence)(string,error){
 	switch item.Type {
 	case evidence.TypeDNSAddress:
-		ip:=net.ParseIP(strings.TrimSpace(item.Value));if ip==nil{return "",fmt.Errorf("invalid DNS address")};return string(item.Type)+"|"+normalizeTarget(item.EntityID)+"|"+ip.String(),nil
+		ip:=net.ParseIP(strings.TrimSpace(item.Value));if ip==nil{return "",fmt.Errorf("invalid DNS address")};return string(item.Type)+"|"+NormalizeTarget(item.EntityID)+"|"+ip.String(),nil
 	case evidence.TypeTCPPort:
-		var d evidence.TCPPortDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("%s|%s|%05d",item.Type,normalizeTarget(item.EntityID),d.Port),nil
+		var d evidence.TCPPortDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("%s|%s|%05d",item.Type,NormalizeTarget(item.EntityID),d.Port),nil
 	case evidence.TypeTLSCertificate:
 		var d evidence.TLSCertificateDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("%s|%s|%05d",item.Type,normalizeTarget(item.EntityID),d.Port),nil
 	case evidence.TypeHTTPService:
@@ -202,5 +203,19 @@ func recordKey(item evidence.Evidence)(string,error){
 	default:return "",fmt.Errorf("unsupported evidence type %q",item.Type)
 	}
 }
-func normalizeTarget(target string)string{return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(target)),".")}
+// NormalizeTarget canonicalizes a hostname/IP or an absolute HTTP(S) URL to its host.
+func NormalizeTarget(target string) string {
+	target = strings.ToLower(strings.TrimSpace(target))
+	if strings.Contains(target, "://") {
+		parsed, err := url.Parse(target)
+		if err != nil || parsed.Hostname() == "" {
+			return ""
+		}
+		target = parsed.Hostname()
+	}
+	if ip := net.ParseIP(target); ip != nil {
+		return ip.String()
+	}
+	return strings.TrimSuffix(target, ".")
+}
 func appendUnique(values []string,value string)[]string{for _,v:=range values{if v==value{return values}};return append(values,value)}
