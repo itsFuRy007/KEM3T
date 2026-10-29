@@ -32,8 +32,7 @@ func Pivot(g Graph, nodeID string, kind PivotKind) ([]Node, error) {
 	if err := g.Validate(); err != nil {
 		return nil, fmt.Errorf("validate graph before pivot: %w", err)
 	}
-	sourceNode, ok := findNode(g.Nodes, nodeID)
-	if !ok {
+	if _, ok := findNode(g.Nodes, nodeID); !ok {
 		return nil, fmt.Errorf("pivot source node %q does not exist", nodeID)
 	}
 
