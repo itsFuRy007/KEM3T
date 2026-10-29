@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/events"
 )
 
 func TestReportEngineRejectsMissingTarget(t *testing.T) {
@@ -214,5 +215,73 @@ func TestReportEngineExcludesCorrelationsUnrelatedToTarget(t *testing.T) {
 	}
 	if report.Target != "a.example.com" {
 		t.Fatalf("expected normalized report target, got %q", report.Target)
+	}
+}
+
+
+func reportScopeFinding(id, target string) Finding {
+	return Finding{
+		Title:    "Observed asset " + target,
+		Priority: PriorityInfo,
+		Fact:     "Observed target " + target,
+		Evidence: []events.Event{{
+			ID: id, Type: events.EventSubdomainDiscovered,
+			Timestamp: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+			Target: target, Source: "test",
+		}},
+	}
+}
+
+func TestReportEngineScopesFindingsToTargetAndSubdomains(t *testing.T) {
+	registry := evidence.NewRegistry()
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close evidence registry: %v", err)
+		}
+	})
+
+	findings := []Finding{
+		reportScopeFinding("root", "example.com"),
+		reportScopeFinding("subdomain", "api.example.com"),
+		reportScopeFinding("unrelated", "example.net"),
+		reportScopeFinding("lookalike", "example.com.attacker.test"),
+	}
+	report, err := (&ReportEngine{}).Build("https://EXAMPLE.COM:443/path", findings, registry)
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if report.Target != "example.com" {
+		t.Fatalf("expected normalized host target, got %q", report.Target)
+	}
+	if len(report.Findings) != 2 {
+		t.Fatalf("expected root and true subdomain findings only, got %d", len(report.Findings))
+	}
+	if len(report.PrioritizedFindings) != 2 {
+		t.Fatalf("expected only scoped findings to be prioritized, got %d", len(report.PrioritizedFindings))
+	}
+	for _, finding := range report.Findings {
+		if finding.Title == "Observed asset example.net" || finding.Title == "Observed asset example.com.attacker.test" {
+			t.Errorf("unrelated finding leaked into report: %q", finding.Title)
+		}
+	}
+}
+
+func TestReportEngineRejectsMixedScopeAggregateFinding(t *testing.T) {
+	registry := evidence.NewRegistry()
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close evidence registry: %v", err)
+		}
+	})
+
+	finding := reportScopeFinding("in-scope", "example.com")
+	finding.Evidence = append(finding.Evidence, events.Event{
+		ID: "out-of-scope", Type: events.EventSubdomainDiscovered,
+		Timestamp: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Target: "other.example.net", Source: "test",
+	})
+	_, err := (&ReportEngine{}).Build("example.com", []Finding{finding}, registry)
+	if err == nil {
+		t.Fatal("expected mixed-scope aggregate finding to be rejected")
 	}
 }
