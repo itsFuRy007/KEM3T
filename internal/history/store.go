@@ -64,13 +64,24 @@ func sha256Bytes(value []byte)string{
 
  // PersistRunSnapshot builds and atomically stores the generalized snapshot for
  // a successfully completed run while its evidence registry is still open.
- func PersistRunSnapshot(snapshotDir string, run evidence.CollectionRun, registry *evidence.Registry) error {
-  if registry == nil { return fmt.Errorf("evidence registry is required") }
-  if strings.TrimSpace(snapshotDir) == "" { return fmt.Errorf("snapshot directory is required") }
-  snapshot, err := BuildSnapshot(run, registry.AllEvidence(), registry.AllObservations())
-  if err != nil { return err }
-  store, err := NewStore(filepath.Join(snapshotDir, "history"))
-  if err != nil { return err }
-  if err := store.Save(snapshot); err != nil { return err }
-  return nil
- }
+ func PersistRunSnapshot(snapshotDir string, run evidence.CollectionRun, registry *evidence.Registry, runObservations ...[]evidence.Observation) error {
+	if registry == nil {
+		return fmt.Errorf("evidence registry is required")
+	}
+	if strings.TrimSpace(snapshotDir) == "" {
+		return fmt.Errorf("snapshot directory is required")
+	}
+	observations := registry.AllObservations()
+	if len(runObservations) > 0 {
+		observations = runObservations[0]
+	}
+	snapshot, err := BuildSnapshot(run, registry.AllEvidence(), observations)
+	if err != nil {
+		return err
+	}
+	store, err := NewStore(filepath.Join(snapshotDir, "history"))
+	if err != nil {
+		return err
+	}
+	return store.Save(snapshot)
+}
