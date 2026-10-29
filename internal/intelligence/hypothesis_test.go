@@ -228,3 +228,34 @@ func TestHypothesisAssessmentRejectsDuplicateEvidenceIDs(t *testing.T) {
 		t.Fatal("expected duplicate verification evidence IDs to be rejected")
 	}
 }
+
+
+func TestHypothesisEngineGeneratesSharedTLSCertificateHypothesis(t *testing.T) {
+	fingerprint := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	results, err := (&HypothesisEngine{}).Generate([]Correlation{{
+		ID: "shared-tls-cert:" + fingerprint,
+		Type: CorrelationSharedTLSCertificateFingerprint,
+		Entities: []string{"a.example.com", "b.example.com"},
+		SharedValue: fingerprint,
+		EvidenceIDs: []string{"tls-a", "tls-b"},
+	}})
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected one hypothesis, got %d", len(results))
+	}
+	got := results[0]
+	if got.Confidence != HypothesisConfidenceLow {
+		t.Fatalf("shared certificate hypothesis should remain LOW confidence, got %q", got.Confidence)
+	}
+	if !strings.Contains(got.Title, "TLS certificate") || !strings.Contains(got.Statement, fingerprint) {
+		t.Fatalf("unexpected TLS hypothesis: %#v", got)
+	}
+	if !strings.Contains(got.Alternative, "wildcard") {
+		t.Fatalf("expected alternative explanation for shared/wildcard certificates, got %q", got.Alternative)
+	}
+	if len(got.Verification) == 0 || !strings.Contains(got.Verification[1], "independent") {
+		t.Fatalf("expected independent verification guidance, got %#v", got.Verification)
+	}
+}
