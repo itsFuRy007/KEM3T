@@ -77,6 +77,16 @@ func CollectorForEvidence(kind evidence.Type) string {
 		return "tls"
 	case evidence.TypeHTTPService:
 		return "http"
+	case evidence.TypeCTDNSName:
+		return "ct"
+	case evidence.TypeRDAPRegistration, evidence.TypeIPRDAPNetwork:
+		return "rdap"
+	case evidence.TypeASNOrigin:
+		return "asn"
+	case evidence.TypePassiveDNS:
+		return "pdns"
+	case evidence.TypeThreatIntel:
+		return "threat"
 	default:
 		return "unknown"
 	}
@@ -86,8 +96,10 @@ func CollectorForRun(runID string) string {
 	prefix, _, ok := strings.Cut(strings.ToLower(strings.TrimSpace(runID)), "-")
 	if !ok { return "unknown" }
 	switch prefix {
-	case "dns", "tcp", "tls", "http":
+	case "dns", "tcp", "tls", "http", "ct", "rdap", "asn", "pdns", "threat":
 		return prefix
+	case "investigation":
+		return "investigation"
 	default:
 		return "unknown"
 	}
@@ -109,7 +121,9 @@ func BuildSnapshot(run evidence.CollectionRun, records []evidence.Evidence, obse
 	for _, observation := range observations {
 		if observation.ObservedAt.Before(run.StartedAt) || observation.ObservedAt.After(run.FinishedAt) { continue }
 		item, ok := evidenceByID[observation.EvidenceID]
-		if !ok || NormalizeTarget(item.EntityID) != target || CollectorForEvidence(item.Type) != collector { continue }
+		if !ok || NormalizeTarget(item.EntityID) != target { continue }
+		if collector != "investigation" && CollectorForEvidence(item.Type) != collector { continue }
+		if collector == "investigation" && CollectorForEvidence(item.Type) == "unknown" { continue }
 		key, err := recordKey(item)
 		if err != nil { return Snapshot{}, fmt.Errorf("build history key for evidence %q: %w", item.ID, err) }
 		record, exists := byKey[key]
@@ -137,7 +151,7 @@ func BuildSnapshot(run evidence.CollectionRun, records []evidence.Evidence, obse
 
 func (s Snapshot) Validate() error {
 	if strings.TrimSpace(s.RunID)=="" || NormalizeTarget(s.Target)=="" { return fmt.Errorf("snapshot run ID and target are required") }
-	if s.Collector!="dns" && s.Collector!="tcp" && s.Collector!="tls" && s.Collector!="http" { return fmt.Errorf("unsupported snapshot collector %q",s.Collector) }
+	if s.Collector!="dns" && s.Collector!="tcp" && s.Collector!="tls" && s.Collector!="http" && s.Collector!="ct" && s.Collector!="rdap" && s.Collector!="asn" && s.Collector!="pdns" && s.Collector!="threat" && s.Collector!="investigation" { return fmt.Errorf("unsupported snapshot collector %q",s.Collector) }
 	if s.CollectedAt.IsZero() { return fmt.Errorf("snapshot collection time is required") }
 	seen:=make(map[string]struct{},len(s.Records))
 	for i,r:=range s.Records {
