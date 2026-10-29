@@ -18,10 +18,10 @@ func TestPivotTraversesEvidenceBackedInfrastructureRelationships(t *testing.T) {
 			{ID: certificateID, Type: NodeTLSCertificate, Value: fingerprint},
 		},
 		Edges: []Edge{
-			{ID: "resolves-to:api.example.com:192.0.2.10", Type: EdgeResolvesTo, Source: "domain:api.example.com", Target: "ip:192.0.2.10", EvidenceIDs: []string{"dns-1"}},
-			{ID: "resolves-to:www.example.com:192.0.2.10", Type: EdgeResolvesTo, Source: "domain:www.example.com", Target: "ip:192.0.2.10", EvidenceIDs: []string{"dns-2"}},
 			{ID: "hosts-service:192.0.2.10:443:https", Type: EdgeHostsService, Source: "ip:192.0.2.10", Target: "service:192.0.2.10:443:https", Port: 443, EvidenceIDs: []string{"service-1"}},
 			{ID: "presents-certificate:api.example.com:443:" + fingerprint, Type: EdgePresentsCertificate, Source: "domain:api.example.com", Target: certificateID, Port: 443, EvidenceIDs: []string{"tls-1"}},
+			{ID: "resolves-to:api.example.com:192.0.2.10", Type: EdgeResolvesTo, Source: "domain:api.example.com", Target: "ip:192.0.2.10", EvidenceIDs: []string{"dns-1"}},
+			{ID: "resolves-to:www.example.com:192.0.2.10", Type: EdgeResolvesTo, Source: "domain:www.example.com", Target: "ip:192.0.2.10", EvidenceIDs: []string{"dns-2"}},
 		},
 	}
 
