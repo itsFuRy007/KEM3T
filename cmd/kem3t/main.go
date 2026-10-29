@@ -380,10 +380,21 @@ func runHistory(target, snapshotDir string) error {
 	if err != nil {
 		return err
 	}
-	// Reconstruct one immutable, evidence-backed snapshot per completed run.
-	// Saving by run ID makes repeated history queries idempotent.
+	// Backfill snapshots for completed runs recorded before generalized history
+	// was introduced. Never overwrite a snapshot captured by its live pipeline.
+	existingSnapshots, err := historyStore.List()
+	if err != nil {
+		return fmt.Errorf("load existing history snapshots: %w", err)
+	}
+	existingRunIDs := make(map[string]struct{}, len(existingSnapshots))
+	for _, snapshot := range existingSnapshots {
+		existingRunIDs[snapshot.RunID] = struct{}{}
+	}
 	for _, run := range runs {
 		if run.Status != evidence.CollectionRunCompleted {
+			continue
+		}
+		if _, exists := existingRunIDs[run.ID]; exists {
 			continue
 		}
 		snapshot, err := history.BuildSnapshot(run, allEvidence, allObservations)
