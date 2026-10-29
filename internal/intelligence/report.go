@@ -63,9 +63,14 @@ func (e *ReportEngine) BuildWithVerification(
 
 	correlations, err := correlationEngine.CorrelateForTarget(registry, target)
 	if err != nil { return IntelligenceReport{}, fmt.Errorf("correlate evidence for target %q: %w", target, err) }
+	// Multi-hop discovery needs the second-hop relationships around a target's
+	// first-hop pivots. Keep the report's direct correlations target-scoped, but
+	// build paths from the full evidence-backed correlation set.
+	allCorrelations, err := correlationEngine.Correlate(registry)
+	if err != nil { return IntelligenceReport{}, fmt.Errorf("correlate evidence for multi-hop discovery: %w", err) }
 	discoveries, err := discoveryEngine.Discover(correlations, target)
 	if err != nil { return IntelligenceReport{}, fmt.Errorf("discover higher-order relationships: %w", err) }
-	discoveryPaths, err := discoveryEngine.DiscoverPaths(correlations, target)
+	discoveryPaths, err := discoveryEngine.DiscoverPaths(allCorrelations, target)
 	if err != nil { return IntelligenceReport{}, fmt.Errorf("discover multi-hop relationships: %w", err) }
 	discoveryPivots, err := discoveryEngine.DiscoverPivots(discoveryPaths, target)
 	if err != nil { return IntelligenceReport{}, fmt.Errorf("discover recurring pivots: %w", err) }
