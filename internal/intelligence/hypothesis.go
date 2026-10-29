@@ -240,16 +240,10 @@ func validateHypothesisCorrelation(correlation Correlation) error {
 	if correlation.ConfidenceScope != expectedScope {
 		return fmt.Errorf("confidence scope %q does not match correlation type", correlation.ConfidenceScope)
 	}
-	seenEvidence := make(map[string]struct{}, len(correlation.EvidenceIDs))
 	for _, rawID := range correlation.EvidenceIDs {
-		id := strings.TrimSpace(rawID)
-		if id == "" {
+		if strings.TrimSpace(rawID) == "" {
 			return fmt.Errorf("supporting evidence IDs must not be empty")
 		}
-		if _, exists := seenEvidence[id]; exists {
-			return fmt.Errorf("duplicate supporting evidence ID %q", id)
-		}
-		seenEvidence[id] = struct{}{}
 	}
 	return nil
 }
