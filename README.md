@@ -29,7 +29,7 @@ The goal is to move from isolated scan results toward a traceable picture of inf
 - **Evidence and provenance:** register and validate evidence, track collection runs and observations, and persist records.
 - **Normalized observations and service model:** convert DNS, TCP, TLS, and HTTP/HTTPS collector events into a shared representation while retaining source, event IDs, timestamps, attributes, and evidence references. Service aggregation combines observations for the same target and port without guessing an application from the port number alone.
 - **Infrastructure graph and investigation pivots:** represent observed domains, IPs, TCP ports, HTTP services, network services, and TLS certificates with evidence-backed relationships; traverse deterministic one-hop pivots and inspect relationship provenance without inventing facts.
-- **Certificate Transparency intelligence (initial Phase 6 slice):** query public CT search data for a domain, normalize and scope certificate DNS names, deduplicate certificate rows, and report retrieval time, issuer-label diversity, and explicit interpretation limits. CT observations are leads—not proof of current hosting, shared ownership, or vulnerability.
+- **Certificate Transparency intelligence (initial Phase 6 slice):** query public CT search data for a domain, normalize and scope certificate DNS names, deduplicate certificate rows, preserve timestamped evidence in SQLite, and represent CT search results and certificate-name relationships in the infrastructure graph with evidence/observation provenance. CT observations are leads—not proof of current hosting, shared ownership, or vulnerability.
 - **Evidence-traceable intelligence workflow:** scope correlations and findings to the requested target, correlate both shared DNS addresses and shared TLS certificate fingerprints, normalize comparable entities and values, retain evidence and observation references, and expose the exact scope of qualitative confidence. Generate hypotheses with explicit alternatives, limitations, and actionable verification steps. The verification API accepts investigator-classified independent evidence, preserves both supporting and contradicting facts, reports mixed outcomes instead of hiding conflicts, and excludes reused/non-independent evidence from assessment. Qualitative confidence is not silently converted into a probability or verdict.
 - **CLI:** run demo, DNS, TCP, TLS, HTTP, and history modes.
 
@@ -192,7 +192,8 @@ The project is under active development. Checkboxes below distinguish implemente
 - [x] Add actionable verification criteria, alternatives, and structured independent support/contradiction assessment
 
 ### Phase 6 — External Intelligence
-- [x] Initial Certificate Transparency (CT) domain lookup with scope validation, bounded responses, deduplication, and explicit caveats
+- [x] Certificate Transparency (CT) lookup with scope validation, bounded responses, deduplication, and explicit caveats
+- [x] Persist CT evidence and timestamped observations; expose CT search-result and certificate-name relationships in the provenance graph
 - [ ] RDAP/WHOIS
 - [ ] ASN and network ownership context
 - [ ] Passive DNS
