@@ -142,6 +142,9 @@ func RunTLS(
 	if err := <-collectorErrCh; err != nil {
 		return TLSResult{}, err
 	}
+	if result.Event == nil {
+		return TLSResult{}, fmt.Errorf("TLS collector returned no certificate event")
+	}
 
 	result.Normalized = observations.NormalizeEvents([]events.Event{*result.Event})
 	observations.AttachEvidence(&result.Normalized, []evidence.Observation{result.Observation})
@@ -153,6 +156,10 @@ func RunTLS(
 		return TLSResult{}, fmt.Errorf("build infrastructure graph: %w", err)
 	}
 
+	builtGraph, err = graph.AttachServices(builtGraph, result.Normalized.Services)
+	if err != nil {
+		return TLSResult{}, fmt.Errorf("attach normalized services to graph: %w", err)
+	}
 	result.Graph = builtGraph
 	return result, nil
 }
