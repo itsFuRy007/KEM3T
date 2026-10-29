@@ -321,3 +321,26 @@ func TestCorrelateEvidenceScopesSharedTLSCertificateToTarget(t *testing.T) {
 		t.Fatalf("expected target correlation to retain all related entities, got %#v", results)
 	}
 }
+
+
+func TestCorrelateEvidenceRejectsMalformedTLSFingerprints(t *testing.T) {
+	tests := []struct {
+		name        string
+		fingerprint string
+	}{
+		{name: "empty", fingerprint: ""},
+		{name: "too short", fingerprint: "abcd"},
+		{name: "non hexadecimal", fingerprint: strings.Repeat("g", 64)},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			records := []evidence.Evidence{
+				tlsEvidenceForTest(t, "tls-a", "a.example.com", test.fingerprint),
+			}
+			if _, err := (&CorrelationEngine{}).CorrelateEvidence(records, nil); err == nil {
+				t.Fatal("expected malformed TLS fingerprint to be rejected")
+			}
+		})
+	}
+}
