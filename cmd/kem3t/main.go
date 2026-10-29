@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
+	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/pipeline"
 )
 
@@ -349,37 +351,71 @@ func printFinding(finding intelligence.Finding) {
 }
 
 func runHistory(target, snapshotDir string) error {
-	dbPath := strings.TrimRight(snapshotDir, "/")
-	if dbPath == "" {
-		dbPath = "."
-	}
-	dbPath += "/evidence.db"
-
+	dbPath := filepath.Join(snapshotDir, "evidence.db")
 	registry, err := evidence.OpenRegistry(dbPath)
 	if err != nil {
 		return fmt.Errorf("open collection history: %w", err)
 	}
 	defer registry.Close()
 
-	runs, err := registry.CollectionRuns(strings.TrimSpace(target))
+	target = strings.TrimSpace(target)
+	runs, err := registry.CollectionRuns(target)
 	if err != nil {
 		return fmt.Errorf("load collection history: %w", err)
+	}
+	allEvidence := registry.AllEvidence()
+	allObservations := registry.AllObservations()
+
+	historyStore, err := history.NewStore(filepath.Join(snapshotDir, "history"))
+	if err != nil {
+		return err
+	}
+	// Reconstruct one immutable, evidence-backed snapshot per completed run.
+	// Saving by run ID makes repeated history queries idempotent.
+	for _, run := range runs {
+		if run.Status != evidence.CollectionRunCompleted {
+			continue
+		}
+		snapshot, err := history.BuildSnapshot(run, allEvidence, allObservations)
+		if err != nil {
+			return fmt.Errorf("build snapshot for run %q: %w", run.ID, err)
+		}
+		if err := historyStore.Save(snapshot); err != nil {
+			return fmt.Errorf("save snapshot for run %q: %w", run.ID, err)
+		}
+	}
+
+	snapshots, err := historyStore.List()
+	if err != nil {
+		return fmt.Errorf("load generalized history snapshots: %w", err)
+	}
+	if target != "" {
+		normalizedTarget := strings.TrimSuffix(strings.ToLower(target), ".")
+		filtered := make([]history.Snapshot, 0, len(snapshots))
+		for _, snapshot := range snapshots {
+			if strings.TrimSuffix(strings.ToLower(snapshot.Target), ".") == normalizedTarget {
+				filtered = append(filtered, snapshot)
+			}
+		}
+		snapshots = filtered
+	}
+	timeline, err := history.BuildTimeline(snapshots)
+	if err != nil {
+		return fmt.Errorf("build investigation timeline: %w", err)
 	}
 
 	fmt.Println("[COLLECTION RUN HISTORY]")
 	fmt.Printf("Database: %s\n", dbPath)
-
-	if strings.TrimSpace(target) != "" {
-		fmt.Printf("Target: %s\n", strings.TrimSpace(target))
+	fmt.Printf("Generalized snapshots: %s\n", filepath.Join(snapshotDir, "history"))
+	if target != "" {
+		fmt.Printf("Target: %s\n", target)
 	}
+	fmt.Printf("Runs: %d | Snapshots: %d | Changes: %d\n\n", len(runs), len(timeline.Snapshots), len(timeline.Changes))
 
 	if len(runs) == 0 {
 		fmt.Println("No collection runs found.")
 		return nil
 	}
-
-	fmt.Printf("Runs: %d\n\n", len(runs))
-
 	for i, run := range runs {
 		fmt.Printf("%d. [%s] %s\n", i+1, run.Status, run.Target)
 		fmt.Printf("   Run ID: %s\n", run.ID)
@@ -395,6 +431,37 @@ func runHistory(target, snapshotDir string) error {
 		fmt.Println()
 	}
 
+	fmt.Println("[INFRASTRUCTURE TIMELINE]")
+	if len(timeline.Snapshots) == 0 {
+		fmt.Println("No completed collection snapshots are available.")
+	} else {
+		for _, snapshot := range timeline.Snapshots {
+			fmt.Printf("[%s] %s | %s | records: %d\n", snapshot.CollectedAt.Format(time.RFC3339), snapshot.Collector, snapshot.Target, len(snapshot.Records))
+			fmt.Printf("  Run: %s\n", snapshot.RunID)
+		}
+	}
+
+	fmt.Println("\n[HISTORICAL CHANGES]")
+	if len(timeline.Changes) == 0 {
+		fmt.Println("No changes between comparable snapshots.")
+	} else {
+		for _, change := range timeline.Changes {
+			fmt.Printf("[%s] %s | %s | %s\n", change.Type, change.Collector, change.Target, change.Key)
+			fmt.Printf("  Runs: %s -> %s | evidence refs: %d | observation refs: %d\n", change.PreviousRunID, change.CurrentRunID, len(change.EvidenceIDs), len(change.ObservationIDs))
+		}
+	}
+
+	fmt.Println("\n[ANOMALY REVIEW SIGNALS]")
+	anomalies := history.DetectAnomalies(timeline)
+	if len(anomalies) == 0 {
+		fmt.Println("No high-change-volume signals detected.")
+	} else {
+		for _, anomaly := range anomalies {
+			fmt.Printf("[%s] %s | %s | run %s\n", anomaly.Type, anomaly.Target, anomaly.Collector, anomaly.RunID)
+			fmt.Printf("  %s\n", anomaly.Summary)
+		}
+	}
+	fmt.Println("Anomaly signals are review prompts, not proof of compromise or malicious activity.")
 	return nil
 }
 
