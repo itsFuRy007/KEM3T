@@ -94,7 +94,12 @@ func(c *ThreatIntelClient)Lookup(ctx context.Context,rawTarget string)(ThreatInt
  for _,item:=range raw.PulseInfo.Pulses{
   id,name:=strings.TrimSpace(item.ID),strings.TrimSpace(item.Name);if id==""||name==""{continue}
   tags:=uniqueSorted(item.Tags)
-  pulseMap[id]=ThreatPulse{ID:id,Name:name,Tags:tags,Created:strings.TrimSpace(item.Created),Modified:strings.TrimSpace(item.Modified)}
+  pulse:=ThreatPulse{ID:id,Name:name,Tags:tags,Created:strings.TrimSpace(item.Created),Modified:strings.TrimSpace(item.Modified)}
+  if prior,exists:=pulseMap[id];exists{
+   prior.Tags=uniqueSorted(append(prior.Tags,pulse.Tags...))
+   if prior.Name==""{prior.Name=pulse.Name};if prior.Created==""{prior.Created=pulse.Created};if prior.Modified==""{prior.Modified=pulse.Modified}
+   pulseMap[id]=prior
+  }else{pulseMap[id]=pulse}
  }
  pulses:=make([]ThreatPulse,0,len(pulseMap));for _,pulse:=range pulseMap{pulses=append(pulses,pulse)}
  sort.Slice(pulses,func(i,j int)bool{if pulses[i].ID!=pulses[j].ID{return pulses[i].ID<pulses[j].ID};return pulses[i].Name<pulses[j].Name})
