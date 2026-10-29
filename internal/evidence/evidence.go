@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -18,6 +19,7 @@ const (
 	TypeDNSAddress     Type = "DNS_ADDRESS"
 	TypeTLSCertificate Type = "TLS_CERTIFICATE"
 	TypeTCPPort        Type = "TCP_PORT"
+	TypeHTTPService    Type = "HTTP_SERVICE"
 )
 
 // TLSCertificateDetails contains the certificate metadata stored in evidence.
@@ -44,6 +46,24 @@ type TCPPortDetails struct {
 	Protocol string `json:"protocol"`
 	Port     int    `json:"port"`
 	State    string `json:"state"`
+}
+
+// HTTPServiceDetails records a bounded HTTP response observation.
+type HTTPServiceDetails struct {
+	Target        string `json:"target"`
+	Scheme        string `json:"scheme"`
+	Port          int    `json:"port"`
+	URL           string `json:"url"`
+	FinalURL      string `json:"final_url"`
+	StatusCode    int    `json:"status_code"`
+	ContentType   string `json:"content_type"`
+	Server        string `json:"server"`
+	PoweredBy     string `json:"powered_by"`
+	Title         string `json:"title"`
+	RedirectCount int    `json:"redirect_count"`
+	BodyTruncated bool   `json:"body_truncated"`
+	TLSVersion    string `json:"tls_version,omitempty"`
+	TLSVerified   bool   `json:"tls_verified"`
 }
 
 // Evidence represents a normalized fact about an entity.
@@ -84,6 +104,9 @@ func (e Evidence) Validate() error {
 
 	case TypeTCPPort:
 		return validateTCPPortEvidence(e)
+
+	case TypeHTTPService:
+		return validateHTTPServiceEvidence(e)
 
 	default:
 		return errors.New("evidence type is invalid")
@@ -165,4 +188,18 @@ func validateTCPPortEvidence(e Evidence) error {
 		return errors.New("TCP port state must be open")
 	}
 	return nil
+}
+
+func validateHTTPServiceEvidence(e Evidence) error {
+ target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(e.EntityID)), ".")
+ if !IsValidDomain(target) && net.ParseIP(target) == nil { return errors.New("HTTP evidence entity ID must be a valid domain or IP address") }
+ var d HTTPServiceDetails
+ if err := json.Unmarshal([]byte(e.Value), &d); err != nil { return fmt.Errorf("HTTP service evidence value must be valid JSON: %w", err) }
+ if strings.TrimSuffix(strings.ToLower(strings.TrimSpace(d.Target)), ".") != target { return errors.New("HTTP service target must match evidence entity ID") }
+ if d.Scheme != "http" && d.Scheme != "https" { return errors.New("HTTP service scheme must be http or https") }
+ if d.Port < 1 || d.Port > 65535 { return errors.New("HTTP service port must be between 1 and 65535") }
+ if d.StatusCode < 100 || d.StatusCode > 599 { return errors.New("HTTP status code must be between 100 and 599") }
+ for label, raw := range map[string]string{"url": d.URL, "final URL": d.FinalURL} { u, err := url.Parse(strings.TrimSpace(raw)); if err != nil || u == nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") { return fmt.Errorf("HTTP service %s must be an absolute HTTP(S) URL", label) } }
+ if d.RedirectCount < 0 { return errors.New("HTTP redirect count cannot be negative") }
+ return nil
 }

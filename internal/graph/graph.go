@@ -18,6 +18,7 @@ const (
 	NodeIP             NodeType = "IP_ADDRESS"
 	NodeTLSCertificate NodeType = "TLS_CERTIFICATE"
 	NodeTCPPort        NodeType = "TCP_PORT"
+	NodeHTTPService    NodeType = "HTTP_SERVICE"
 )
 
 type EdgeType string
@@ -26,6 +27,7 @@ const (
 	EdgeResolvesTo          EdgeType = "RESOLVES_TO"
 	EdgePresentsCertificate EdgeType = "PRESENTS_CERTIFICATE"
 	EdgeHasOpenPort         EdgeType = "HAS_OPEN_PORT"
+	EdgeServesHTTP          EdgeType = "SERVES_HTTP"
 )
 
 type Node struct {
@@ -158,6 +160,36 @@ func Build(records []evidence.Evidence, observations []evidence.Observation) (Gr
 				edge.ObservationIDs = appendUnique(edge.ObservationIDs, observationID)
 			}
 
+		case evidence.TypeHTTPService:
+			var details evidence.HTTPServiceDetails
+			if err := json.Unmarshal([]byte(record.Value), &details); err != nil {
+				return Graph{}, fmt.Errorf("decode HTTP evidence %q: %w", record.ID, err)
+			}
+			target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(record.EntityID)), ".")
+			var host Node
+			if ip := net.ParseIP(target); ip != nil {
+				host = Node{ID: "ip:" + ip.String(), Type: NodeIP, Value: ip.String()}
+			} else {
+				if !evidence.IsValidDomain(target) {
+					return Graph{}, fmt.Errorf("HTTP evidence %q has an invalid target", record.ID)
+				}
+				host = Node{ID: "domain:" + target, Type: NodeDomain, Value: target}
+			}
+			serviceID := fmt.Sprintf("http-service:%s:%d:%s", target, details.Port, details.Scheme)
+			service := Node{ID: serviceID, Type: NodeHTTPService, Value: fmt.Sprintf("%s://%s:%d", details.Scheme, target, details.Port)}
+			nodesByID[host.ID] = host
+			nodesByID[service.ID] = service
+			edgeID := fmt.Sprintf("serves-http:%s:%d:%s", target, details.Port, details.Scheme)
+			edge, exists := edgesByID[edgeID]
+			if !exists {
+				edge = &Edge{ID: edgeID, Type: EdgeServesHTTP, Source: host.ID, Target: service.ID, Port: details.Port}
+				edgesByID[edgeID] = edge
+			}
+			edge.EvidenceIDs = appendUnique(edge.EvidenceIDs, record.ID)
+			for _, observationID := range observationByEvidence[record.ID] {
+				edge.ObservationIDs = appendUnique(edge.ObservationIDs, observationID)
+			}
+
 		case evidence.TypeTLSCertificate:
 			var details evidence.TLSCertificateDetails
 			if err := json.Unmarshal([]byte(record.Value), &details); err != nil {
@@ -257,6 +289,10 @@ func (g Graph) Validate() error {
 			if ip == nil || ip.String() != node.Value || node.ID != "ip:"+node.Value {
 				return fmt.Errorf("IP node %q is not normalized", node.ID)
 			}
+		case NodeHTTPService:
+			if !strings.HasPrefix(node.ID, "http-service:") || !strings.Contains(node.Value, "://") {
+				return fmt.Errorf("HTTP service node %q has an invalid identity", node.ID)
+			}
 		case NodeTCPPort:
 			if !strings.HasPrefix(node.ID, "tcp-port:") {
 				return fmt.Errorf("TCP port node %q has an invalid identity", node.ID)
@@ -316,6 +352,25 @@ func (g Graph) Validate() error {
 			expectedID := fmt.Sprintf("has-open-port:%s:%d", source.Value, edge.Port)
 			if edge.ID != expectedID || target.ID != fmt.Sprintf("tcp-port:%s:%d", source.Value, edge.Port) || target.Value != fmt.Sprintf("%s:%d", source.Value, edge.Port) {
 				return fmt.Errorf("edge %q has an invalid TCP identity", edge.ID)
+			}
+		case EdgeServesHTTP:
+			if (source.Type != NodeDomain && source.Type != NodeIP) || target.Type != NodeHTTPService {
+				return fmt.Errorf("edge %q has invalid HTTP endpoints", edge.ID)
+			}
+			if edge.Port < 1 || edge.Port > 65535 {
+				return fmt.Errorf("edge %q has an invalid HTTP port", edge.ID)
+			}
+			prefix := fmt.Sprintf("http-service:%s:%d:", source.Value, edge.Port)
+			if !strings.HasPrefix(target.ID, prefix) {
+				return fmt.Errorf("edge %q has an invalid HTTP service identity", edge.ID)
+			}
+			scheme := strings.TrimPrefix(target.ID, prefix)
+			if scheme != "http" && scheme != "https" {
+				return fmt.Errorf("edge %q has an invalid HTTP scheme", edge.ID)
+			}
+			expectedID := fmt.Sprintf("serves-http:%s:%d:%s", source.Value, edge.Port, scheme)
+			if edge.ID != expectedID || target.Value != fmt.Sprintf("%s://%s:%d", scheme, source.Value, edge.Port) {
+				return fmt.Errorf("edge %q has an invalid HTTP identity", edge.ID)
 			}
 		case EdgePresentsCertificate:
 			if (source.Type != NodeDomain && source.Type != NodeIP) || target.Type != NodeTLSCertificate {
