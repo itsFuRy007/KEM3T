@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feat/unified-service-model
+      - phase8-usability-foundation
   pull_request:
     branches:
       - main
