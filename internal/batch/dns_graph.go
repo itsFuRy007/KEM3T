@@ -207,7 +207,6 @@ func BuildDNSInvestigationGraph(outcomes []DNSOutcome, generatedAt time.Time) DN
 	}
 	nodes := make(map[string]DNSGraphNode)
 	edges := make(map[string]DNSGraphEdge)
-	targetAddresses := make(map[string]map[string]DNSObservationRef)
 	addressTargets := make(map[string][]DNSObservationRef)
 	targetSeen := make(map[string]struct{})
 
@@ -242,9 +241,6 @@ func BuildDNSInvestigationGraph(outcomes []DNSOutcome, generatedAt time.Time) DN
 			continue
 		}
 
-		if targetAddresses[target] == nil {
-			targetAddresses[target] = make(map[string]DNSObservationRef)
-		}
 		seenForTarget := make(map[string]struct{})
 		for _, raw := range outcome.Addresses {
 			ip := net.ParseIP(strings.TrimSpace(raw))
@@ -257,7 +253,6 @@ func BuildDNSInvestigationGraph(outcomes []DNSOutcome, generatedAt time.Time) DN
 			}
 			seenForTarget[address] = struct{}{}
 			ref := DNSObservationRef{Target: target, CollectedAt: outcome.CollectedAt, EvidenceStore: outcome.EvidenceStore}
-			targetAddresses[target][address] = ref
 			addressTargets[address] = append(addressTargets[address], ref)
 			ipID := "ip:" + address
 			nodes[ipID] = DNSGraphNode{ID: ipID, Type: "IP_ADDRESS", Value: address}
@@ -272,11 +267,9 @@ func BuildDNSInvestigationGraph(outcomes []DNSOutcome, generatedAt time.Time) DN
 	}
 
 	for address, refs := range addressTargets {
-		uniqueTargets := make(map[string]DNSObservationRef)
-		for _, ref := range refs {
-			uniqueTargets[ref.Target] = ref
-		}
-		if len(uniqueTargets) < 2 {
+		// Each target scope is accepted once and each address is deduplicated
+		// within that scope above, so refs already contains unique targets.
+		if len(refs) < 2 {
 			continue
 		}
 		graph.Summary.SharedAddressGroups++
@@ -291,9 +284,9 @@ func BuildDNSInvestigationGraph(outcomes []DNSOutcome, generatedAt time.Time) DN
 			ID: clusterEdgeID, Type: "CORRELATION_REFERENCES_ADDRESS", Source: clusterID, Target: ipID,
 			Interpretation: "The cluster groups target scopes observed resolving to this address; it does not assert common ownership.",
 		}
-		for target, ref := range uniqueTargets {
-			targetID := "target:" + target
-			edgeID := "member-of-shared-address-correlation:" + address + ":" + target
+		for _, ref := range refs {
+			targetID := "target:" + ref.Target
+			edgeID := "member-of-shared-address-correlation:" + address + ":" + ref.Target
 			edges[edgeID] = DNSGraphEdge{
 				ID: edgeID, Type: "MEMBER_OF_SHARED_ADDRESS_CORRELATION", Source: targetID, Target: clusterID,
 				ObservedAt: ref.CollectedAt, EvidenceStore: ref.EvidenceStore,
