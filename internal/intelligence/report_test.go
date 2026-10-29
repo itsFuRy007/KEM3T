@@ -50,6 +50,15 @@ func TestReportEngineBuildsEmptyReport(t *testing.T) {
 	if report.Correlations == nil {
 		t.Fatal("expected correlations to be an empty array, not nil")
 	}
+	if report.Discoveries == nil {
+		t.Fatal("expected discoveries to be an empty array, not nil")
+	}
+	if report.DiscoveryPaths == nil {
+		t.Fatal("expected discovery paths to be an empty array, not nil")
+	}
+	if report.DiscoveryPivots == nil {
+		t.Fatal("expected discovery pivots to be an empty array, not nil")
+	}
 	if report.Hypotheses == nil {
 		t.Fatal("expected hypotheses to be an empty array, not nil")
 	}
