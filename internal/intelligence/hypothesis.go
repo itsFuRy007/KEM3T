@@ -275,7 +275,11 @@ func (e *HypothesisEngine) Assess(
 		originalIDs[strings.TrimSpace(id)] = struct{}{}
 	}
 	seen := make(map[string]struct{}, len(evidenceRecords))
-	for _, record := range evidenceRecords {
+	orderedRecords := append([]VerificationEvidence(nil), evidenceRecords...)
+	sort.Slice(orderedRecords, func(i, j int) bool {
+		return strings.TrimSpace(orderedRecords[i].ID) < strings.TrimSpace(orderedRecords[j].ID)
+	})
+	for _, record := range orderedRecords {
 		id := strings.TrimSpace(record.ID)
 		if id == "" {
 			return VerificationAssessment{}, fmt.Errorf("verification evidence ID is required")
@@ -309,10 +313,6 @@ func (e *HypothesisEngine) Assess(
 		assessment.Status = VerificationInconclusive
 		assessment.Explanation = "No independent verification evidence was eligible to assess the hypothesis."
 	} else {
-		sort.Slice(assessment.SupportingEvidenceIDs, func(i, j int) bool { return assessment.SupportingEvidenceIDs[i] < assessment.SupportingEvidenceIDs[j] })
-		sort.Slice(assessment.ContradictingEvidenceIDs, func(i, j int) bool { return assessment.ContradictingEvidenceIDs[i] < assessment.ContradictingEvidenceIDs[j] })
-		// Facts are kept paired with their IDs by sorting the records before
-		// populating the output in the implementation below.
 		switch {
 		case len(assessment.SupportingEvidenceIDs) > 0 && len(assessment.ContradictingEvidenceIDs) > 0:
 			assessment.Status = VerificationMixed
