@@ -21,6 +21,7 @@ const (
 	TypeTCPPort        Type = "TCP_PORT"
 	TypeHTTPService    Type = "HTTP_SERVICE"
 	TypeCTDNSName      Type = "CT_DNS_NAME"
+	TypeRDAPRegistration Type = "RDAP_REGISTRATION"
 )
 
 // TLSCertificateDetails contains the certificate metadata stored in evidence.
@@ -52,6 +53,19 @@ type CTDNSNameDetails struct {
 	NotAfter     string    `json:"not_after,omitempty"`
 	Source       string    `json:"source"`
 	RetrievedAt  time.Time `json:"retrieved_at"`
+}
+
+// RDAPRegistrationDetails stores minimized public registration metadata.
+type RDAPRegistrationDetails struct {
+ Target string `json:"target"`
+ Handle string `json:"handle,omitempty"`
+ Registrar string `json:"registrar,omitempty"`
+ Status []string `json:"status"`
+ NameServers []string `json:"name_servers"`
+ Events []struct {
+  Action string `json:"action"`
+  Date string `json:"date"`
+ } `json:"events"`
 }
 
 // TCPPortDetails contains metadata for a discovered TCP port.
@@ -124,6 +138,9 @@ func (e Evidence) Validate() error {
 
 	case TypeCTDNSName:
 		return validateCTDNSNameEvidence(e)
+
+	case TypeRDAPRegistration:
+		return validateRDAPRegistrationEvidence(e)
 
 	default:
 		return errors.New("evidence type is invalid")
@@ -234,4 +251,17 @@ func validateCTDNSNameEvidence(e Evidence) error {
 	if strings.TrimSpace(d.Source) == "" { return errors.New("CT source is required") }
 	if d.RetrievedAt.IsZero() { return errors.New("CT retrieval timestamp is required") }
 	return nil
+}
+
+func validateRDAPRegistrationEvidence(e Evidence) error {
+ target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(e.EntityID)), ".")
+ if !IsValidDomain(target) { return errors.New("RDAP evidence entity ID must be a valid domain") }
+ var d RDAPRegistrationDetails
+ if err := json.Unmarshal([]byte(e.Value), &d); err != nil { return fmt.Errorf("RDAP evidence value must be valid JSON: %w", err) }
+ if d.Target != target { return errors.New("RDAP target must match evidence entity ID") }
+ for _, ns := range d.NameServers {
+  normalized := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(ns)), ".")
+  if !IsValidDomain(normalized) || normalized != ns { return fmt.Errorf("RDAP nameserver %q is invalid or not normalized", ns) }
+ }
+ return nil
 }
