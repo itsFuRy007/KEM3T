@@ -56,16 +56,18 @@ type CTDNSNameDetails struct {
 }
 
 // RDAPRegistrationDetails stores minimized public registration metadata.
+type RDAPRegistrationEvent struct {
+ Action string `json:"action"`
+ Date string `json:"date"`
+}
+
 type RDAPRegistrationDetails struct {
  Target string `json:"target"`
  Handle string `json:"handle,omitempty"`
  Registrar string `json:"registrar,omitempty"`
  Status []string `json:"status"`
  NameServers []string `json:"name_servers"`
- Events []struct {
-  Action string `json:"action"`
-  Date string `json:"date"`
- } `json:"events"`
+ Events []RDAPRegistrationEvent `json:"events"`
 }
 
 // TCPPortDetails contains metadata for a discovered TCP port.
