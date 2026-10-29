@@ -9,6 +9,7 @@ import (
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
+	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
 )
 
@@ -66,8 +67,9 @@ type Engine struct {
 	Registry  *evidence.Registry
 	Stages    []Stage
 	Planner   Planner
-	MaxStages int
-	Now       func() time.Time
+	MaxStages  int
+	SnapshotDir string
+	Now        func() time.Time
 }
 
 func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr error) {
@@ -203,6 +205,11 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 	}
 	if err := e.Registry.UpdateCollectionRun(run); err != nil {
 		retErr = errors.Join(retErr, fmt.Errorf("finalize investigation run: %w", err))
+	}
+	if run.Status == evidence.CollectionRunCompleted && strings.TrimSpace(e.SnapshotDir) != "" {
+		if err := history.PersistRunSnapshot(e.SnapshotDir, run, e.Registry); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("persist unified investigation history: %w", err))
+		}
 	}
 	return result, retErr
 }
