@@ -200,7 +200,8 @@ The project is under active development. Checkboxes below distinguish implemente
 - [x] Persist ASN findings with mapping/RDAP source attribution and connect IP → ASN → prefix relationships in the evidence graph
 - [ ] IP RDAP network-range registration enrichment
 - [ ] ASN and network ownership context
-- [ ] Passive DNS
+- [x] OTX passive-DNS collection with target-scope filtering, A/AAAA validation, historical timestamps, optional API-key support, and truncation signaling
+- [x] Persist passive-DNS facts and time-aware observations; distinguish historical DNS relationships from live DNS edges in the graph
 - [ ] Threat-intelligence integrations
 
 ### Phase 7 — Scale

@@ -42,6 +42,7 @@ const (
 	EdgeRDAPRegistrar       EdgeType = "RDAP_REGISTRAR"
 	EdgeOriginatesFrom      EdgeType = "ORIGINATES_FROM_ASN"
 	EdgeASNAnnouncesPrefix  EdgeType = "ASN_ANNOUNCES_PREFIX"
+	EdgePassiveDNSResolvesTo EdgeType = "PASSIVE_DNS_RESOLVES_TO"
 )
 
 type Node struct {
@@ -344,6 +345,18 @@ func Build(records []evidence.Evidence, observations []evidence.Observation) (Gr
 				for _,observationID:=range observationByEvidence[record.ID]{announceEdge.ObservationIDs=appendUnique(announceEdge.ObservationIDs,observationID)}
 			}
 
+		case evidence.TypePassiveDNS:
+			var details evidence.PassiveDNSDetails
+			if err:=json.Unmarshal([]byte(record.Value),&details);err!=nil{return Graph{},fmt.Errorf("decode passive-DNS evidence %q: %w",record.ID,err)}
+			hostname:=strings.TrimSuffix(strings.ToLower(strings.TrimSpace(details.Hostname)),".")
+			ip:=net.ParseIP(details.Address);if !evidence.IsValidDomain(hostname)||ip==nil{return Graph{},fmt.Errorf("passive-DNS evidence %q has invalid hostname or IP",record.ID)}
+			domainNode:=Node{ID:"domain:"+hostname,Type:NodeDomain,Value:hostname};ipNode:=Node{ID:"ip:"+ip.String(),Type:NodeIP,Value:ip.String()}
+			nodesByID[domainNode.ID]=domainNode;nodesByID[ipNode.ID]=ipNode
+			edgeID:="passive-dns-resolves:"+hostname+":"+ip.String()
+			edge,exists:=edgesByID[edgeID];if !exists{edge=&Edge{ID:edgeID,Type:EdgePassiveDNSResolvesTo,Source:domainNode.ID,Target:ipNode.ID};edgesByID[edgeID]=edge}
+			edge.EvidenceIDs=appendUnique(edge.EvidenceIDs,record.ID)
+			for _,observationID:=range observationByEvidence[record.ID]{edge.ObservationIDs=appendUnique(edge.ObservationIDs,observationID)}
+
 		}
 	}
 
@@ -513,6 +526,8 @@ func (g Graph) Validate() error {
 			if application == "" || edge.ID != fmt.Sprintf("hosts-service:%s:%d:%s", source.Value, edge.Port, application) {
 				return fmt.Errorf("edge %q has an invalid service identity", edge.ID)
 			}
+		case EdgePassiveDNSResolvesTo:
+			if source.Type!=NodeDomain||target.Type!=NodeIP||edge.Port!=0||edge.ID!="passive-dns-resolves:"+source.Value+":"+target.Value{return fmt.Errorf("edge %q has invalid passive-DNS identity or endpoints",edge.ID)}
 		case EdgeOriginatesFrom:
 			if source.Type!=NodeIP||target.Type!=NodeASN||edge.Port!=0||edge.ID!="origin-asn:"+source.Value+":"+strings.TrimPrefix(target.ID,"asn:"){return fmt.Errorf("edge %q has invalid origin-ASN identity or endpoints",edge.ID)}
 		case EdgeASNAnnouncesPrefix:

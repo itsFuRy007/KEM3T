@@ -23,6 +23,7 @@ const (
 	TypeCTDNSName      Type = "CT_DNS_NAME"
 	TypeRDAPRegistration Type = "RDAP_REGISTRATION"
 	TypeASNOrigin Type = "ASN_ORIGIN"
+	TypePassiveDNS Type = "PASSIVE_DNS"
 )
 
 // TLSCertificateDetails contains the certificate metadata stored in evidence.
@@ -69,6 +70,17 @@ type RDAPRegistrationDetails struct {
  Status []string `json:"status"`
  NameServers []string `json:"name_servers"`
  Events []RDAPRegistrationEvent `json:"events"`
+}
+
+type PassiveDNSDetails struct {
+ Target string `json:"target"`
+ Hostname string `json:"hostname"`
+ Address string `json:"address"`
+ RecordType string `json:"record_type"`
+ FirstSeen string `json:"first_seen,omitempty"`
+ LastSeen string `json:"last_seen,omitempty"`
+ ASN string `json:"asn,omitempty"`
+ Source string `json:"source"`
 }
 
 type ASNOriginRecord struct {
@@ -162,6 +174,9 @@ func (e Evidence) Validate() error {
 
 	case TypeASNOrigin:
 		return validateASNOriginEvidence(e)
+
+	case TypePassiveDNS:
+		return validatePassiveDNSEvidence(e)
 
 	default:
 		return errors.New("evidence type is invalid")
@@ -299,5 +314,19 @@ func validateASNOriginEvidence(e Evidence) error {
   _,prefix,err:=net.ParseCIDR(record.Prefix);if err!=nil||!prefix.Contains(target){return fmt.Errorf("ASN prefix %q does not contain target IP",record.Prefix)}
   if strings.TrimSpace(record.MappingSource)==""||strings.TrimSpace(record.RDAPSource)==""{return errors.New("ASN mapping and RDAP source attribution are required")}
  }
+ return nil
+}
+
+func validatePassiveDNSEvidence(e Evidence)error{
+ target:=strings.TrimSuffix(strings.ToLower(strings.TrimSpace(e.EntityID)),".")
+ if !IsValidDomain(target){return errors.New("passive-DNS evidence entity ID must be a valid domain")}
+ var d PassiveDNSDetails
+ if err:=json.Unmarshal([]byte(e.Value),&d);err!=nil{return fmt.Errorf("passive-DNS evidence value must be valid JSON: %w",err)}
+ if d.Target!=target{return errors.New("passive-DNS target must match evidence entity ID")}
+ hostname:=strings.TrimSuffix(strings.ToLower(strings.TrimSpace(d.Hostname)),".")
+ if !IsValidDomain(hostname)||hostname!=d.Hostname||(hostname!=target&&!strings.HasSuffix(hostname,"."+target)){return errors.New("passive-DNS hostname must be normalized and within target scope")}
+ ip:=net.ParseIP(d.Address);if ip==nil||ip.String()!=d.Address{return errors.New("passive-DNS address must be a normalized IP")}
+ if d.RecordType=="A"&&ip.To4()==nil||d.RecordType=="AAAA"&&ip.To4()!=nil||(d.RecordType!="A"&&d.RecordType!="AAAA"){return errors.New("passive-DNS record type must match address family")}
+ if strings.TrimSpace(d.Source)==""{return errors.New("passive-DNS source is required")}
  return nil
 }
