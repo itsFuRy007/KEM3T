@@ -21,6 +21,7 @@ const (
 	NodeTCPPort        NodeType = "TCP_PORT"
 	NodeHTTPService    NodeType = "HTTP_SERVICE"
 	NodeNetworkService NodeType = "NETWORK_SERVICE"
+	NodeCTCertificate  NodeType = "CT_CERTIFICATE_RECORD"
 )
 
 type EdgeType string
@@ -31,6 +32,8 @@ const (
 	EdgeHasOpenPort         EdgeType = "HAS_OPEN_PORT"
 	EdgeServesHTTP          EdgeType = "SERVES_HTTP"
 	EdgeHostsService        EdgeType = "HOSTS_SERVICE"
+	EdgeCTSearchResult      EdgeType = "CT_SEARCH_RESULT"
+	EdgeCTIncludesName      EdgeType = "CT_INCLUDES_DNS_NAME"
 )
 
 type Node struct {
@@ -235,6 +238,49 @@ func Build(records []evidence.Evidence, observations []evidence.Observation) (Gr
 			for _, observationID := range observationByEvidence[record.ID] {
 				edge.ObservationIDs = appendUnique(edge.ObservationIDs, observationID)
 			}
+		case evidence.TypeCTDNSName:
+			var details evidence.CTDNSNameDetails
+			if err := json.Unmarshal([]byte(record.Value), &details); err != nil {
+				return Graph{}, fmt.Errorf("decode CT evidence %q: %w", record.ID, err)
+			}
+			root := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(details.Target)), ".")
+			name := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(details.DNSName)), ".")
+			rootNode := Node{ID: "domain:" + root, Type: NodeDomain, Value: root}
+			nameNode := Node{ID: "domain:" + name, Type: NodeDomain, Value: name}
+			certKey := details.Source + ":" + fmt.Sprint(details.CertificateID)
+			if details.CertificateID <= 0 {
+				certKey = details.Source + ":unknown:" + strings.TrimPrefix(record.ID, "ct-dns-name:")
+			}
+			certNode := Node{ID: "ct-cert:" + certKey, Type: NodeCTCertificate, Value: details.Source + "#" + fmt.Sprint(details.CertificateID)}
+			if details.CertificateID <= 0 {
+				certNode.Value = details.Source + "#unknown:" + strings.TrimPrefix(record.ID, "ct-dns-name:")
+			}
+			nodesByID[rootNode.ID] = rootNode
+			nodesByID[nameNode.ID] = nameNode
+			nodesByID[certNode.ID] = certNode
+
+			searchEdgeID := "ct-search-result:" + root + ":" + certNode.ID
+			searchEdge, exists := edgesByID[searchEdgeID]
+			if !exists {
+				searchEdge = &Edge{ID: searchEdgeID, Type: EdgeCTSearchResult, Source: rootNode.ID, Target: certNode.ID}
+				edgesByID[searchEdgeID] = searchEdge
+			}
+			searchEdge.EvidenceIDs = appendUnique(searchEdge.EvidenceIDs, record.ID)
+			for _, observationID := range observationByEvidence[record.ID] {
+				searchEdge.ObservationIDs = appendUnique(searchEdge.ObservationIDs, observationID)
+			}
+
+			nameEdgeID := "ct-includes-name:" + certNode.ID + ":" + name
+			nameEdge, exists := edgesByID[nameEdgeID]
+			if !exists {
+				nameEdge = &Edge{ID: nameEdgeID, Type: EdgeCTIncludesName, Source: certNode.ID, Target: nameNode.ID}
+				edgesByID[nameEdgeID] = nameEdge
+			}
+			nameEdge.EvidenceIDs = appendUnique(nameEdge.EvidenceIDs, record.ID)
+			for _, observationID := range observationByEvidence[record.ID] {
+				nameEdge.ObservationIDs = appendUnique(nameEdge.ObservationIDs, observationID)
+			}
+
 		}
 	}
 
@@ -303,6 +349,10 @@ func (g Graph) Validate() error {
 		case NodeTCPPort:
 			if !strings.HasPrefix(node.ID, "tcp-port:") {
 				return fmt.Errorf("TCP port node %q has an invalid identity", node.ID)
+			}
+		case NodeCTCertificate:
+			if !strings.HasPrefix(node.ID, "ct-cert:") || !strings.Contains(node.Value, "#") {
+				return fmt.Errorf("CT certificate node %q has an invalid identity", node.ID)
 			}
 		case NodeTLSCertificate:
 			fingerprint := strings.ToLower(strings.TrimSpace(node.Value))
@@ -393,6 +443,20 @@ func (g Graph) Validate() error {
 			application := strings.TrimPrefix(target.ID, servicePrefix)
 			if application == "" || edge.ID != fmt.Sprintf("hosts-service:%s:%d:%s", source.Value, edge.Port, application) {
 				return fmt.Errorf("edge %q has an invalid service identity", edge.ID)
+			}
+		case EdgeCTSearchResult:
+			if source.Type != NodeDomain || target.Type != NodeCTCertificate || edge.Port != 0 {
+				return fmt.Errorf("edge %q has invalid CT search-result endpoints", edge.ID)
+			}
+			if edge.ID != "ct-search-result:"+source.Value+":"+target.ID {
+				return fmt.Errorf("edge %q has an invalid CT search-result identity", edge.ID)
+			}
+		case EdgeCTIncludesName:
+			if source.Type != NodeCTCertificate || target.Type != NodeDomain || edge.Port != 0 {
+				return fmt.Errorf("edge %q has invalid CT name endpoints", edge.ID)
+			}
+			if edge.ID != "ct-includes-name:"+source.ID+":"+target.Value {
+				return fmt.Errorf("edge %q has an invalid CT name identity", edge.ID)
 			}
 		case EdgePresentsCertificate:
 			if (source.Type != NodeDomain && source.Type != NodeIP) || target.Type != NodeTLSCertificate {

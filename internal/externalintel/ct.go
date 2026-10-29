@@ -2,7 +2,10 @@ package externalintel
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -232,4 +235,67 @@ func mergeCTRecords(a, b CTRecord) CTRecord {
 	if a.NotBefore == "" { a.NotBefore = b.NotBefore }
 	if a.NotAfter == "" { a.NotAfter = b.NotAfter }
 	return a
+}
+
+ 
+// RegisterCTReport persists certificate-name observations with stable evidence
+// IDs and timestamped observation IDs, allowing repeated queries to extend
+// provenance history without duplicating the underlying fact.
+func RegisterCTReport(registry *evidence.Registry, report CTReport) (int, error) {
+	if registry == nil {
+		return 0, fmt.Errorf("evidence registry is required")
+	}
+	target := normalizeDomain(report.Target)
+	if !evidence.IsValidDomain(target) {
+		return 0, fmt.Errorf("CT report target is invalid")
+	}
+	source := strings.TrimSpace(report.Source)
+	if source == "" {
+		return 0, fmt.Errorf("CT report source is required")
+	}
+	if report.RetrievedAt.IsZero() {
+		return 0, fmt.Errorf("CT report retrieval timestamp is required")
+	}
+
+	added := 0
+	for _, record := range report.Records {
+		for _, rawName := range record.DNSNames {
+			name := normalizeDomain(rawName)
+			if !evidence.IsValidDomain(name) || !inDomainScope(name, target) {
+				return added, fmt.Errorf("CT report contains out-of-scope name %q", rawName)
+			}
+			details := evidence.CTDNSNameDetails{
+				Target: target, DNSName: name, CertificateID: record.CertificateID,
+				IssuerName: strings.TrimSpace(record.IssuerName),
+				NotBefore: strings.TrimSpace(record.NotBefore), NotAfter: strings.TrimSpace(record.NotAfter),
+				Source: source, RetrievedAt: report.RetrievedAt.UTC(),
+			}
+			value, err := json.Marshal(details)
+			if err != nil {
+				return added, fmt.Errorf("encode CT evidence: %w", err)
+			}
+			sum := sha256.Sum256(value)
+			factKey := hex.EncodeToString(sum[:])
+			item := evidence.Evidence{
+				ID: "ct-dns-name:" + factKey, EntityID: target,
+				Type: evidence.TypeCTDNSName, Value: string(value),
+			}
+			if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
+				return added, fmt.Errorf("register CT evidence: %w", err)
+			}
+			eventID := "ct:" + factKey + ":" + fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
+			observation := evidence.Observation{
+				ID: "observation:" + eventID, EvidenceID: item.ID, Source: source,
+				ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID},
+			}
+			if err := registry.AddObservation(observation); err != nil {
+				if errors.Is(err, evidence.ErrObservationExists) {
+					continue
+				}
+				return added, fmt.Errorf("register CT observation: %w", err)
+			}
+			added++
+		}
+	}
+	return added, nil
 }

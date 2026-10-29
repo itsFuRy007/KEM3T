@@ -58,7 +58,7 @@ func run() error {
 		if strings.TrimSpace(*target) == "" {
 			return fmt.Errorf("-target is required in CT mode")
 		}
-		return runCT(strings.TrimSpace(*target))
+		return runCT(strings.TrimSpace(*target), *snapshotDir)
 	case "demo":
 		return runDemo()
 	case "dns":
@@ -522,13 +522,32 @@ func printInfrastructureGraph(g graph.Graph) {
 	}
 }
 
-func runCT(target string) error {
+func runCT(target, snapshotDir string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	report, err := (&externalintel.CTClient{}).LookupDomain(ctx, target)
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(snapshotDir) == "" {
+		return fmt.Errorf("snapshot directory is required")
+	}
+	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
+		return fmt.Errorf("create snapshot directory: %w", err)
+	}
+	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
+	if err != nil {
+		return fmt.Errorf("open evidence registry: %w", err)
+	}
+	defer registry.Close()
+	added, err := externalintel.RegisterCTReport(registry, report)
+	if err != nil {
+		return err
+	}
+	infrastructureGraph, err := graph.BuildFromRegistry(registry)
+	if err != nil {
+		return fmt.Errorf("build CT infrastructure graph: %w", err)
 	}
 
 	fmt.Println("[CERTIFICATE TRANSPARENCY INTELLIGENCE]")
@@ -545,5 +564,7 @@ func runCT(target string) error {
 	for _, limitation := range report.Limitations {
 		fmt.Printf("- %s\n", limitation)
 	}
+	fmt.Printf("Evidence records added: %d\n", added)
+	printInfrastructureGraph(infrastructureGraph)
 	return nil
 }

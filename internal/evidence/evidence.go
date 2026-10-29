@@ -20,6 +20,7 @@ const (
 	TypeTLSCertificate Type = "TLS_CERTIFICATE"
 	TypeTCPPort        Type = "TCP_PORT"
 	TypeHTTPService    Type = "HTTP_SERVICE"
+	TypeCTDNSName      Type = "CT_DNS_NAME"
 )
 
 // TLSCertificateDetails contains the certificate metadata stored in evidence.
@@ -38,6 +39,19 @@ type TLSCertificateDetails struct {
 	PublicKeyAlgorithm string    `json:"public_key_algorithm"`
 	TLSVersion         string    `json:"tls_version"`
 	Verified           bool      `json:"verified"`
+}
+
+// CTDNSNameDetails records a domain name observed in a CT certificate entry.
+// It records a source observation, not proof of current hosting or ownership.
+type CTDNSNameDetails struct {
+	Target       string    `json:"target"`
+	DNSName      string    `json:"dns_name"`
+	CertificateID int      `json:"certificate_id"`
+	IssuerName   string    `json:"issuer_name,omitempty"`
+	NotBefore    string    `json:"not_before,omitempty"`
+	NotAfter     string    `json:"not_after,omitempty"`
+	Source       string    `json:"source"`
+	RetrievedAt  time.Time `json:"retrieved_at"`
 }
 
 // TCPPortDetails contains metadata for a discovered TCP port.
@@ -107,6 +121,9 @@ func (e Evidence) Validate() error {
 
 	case TypeHTTPService:
 		return validateHTTPServiceEvidence(e)
+
+	case TypeCTDNSName:
+		return validateCTDNSNameEvidence(e)
 
 	default:
 		return errors.New("evidence type is invalid")
@@ -202,4 +219,19 @@ func validateHTTPServiceEvidence(e Evidence) error {
  for label, raw := range map[string]string{"url": d.URL, "final URL": d.FinalURL} { u, err := url.Parse(strings.TrimSpace(raw)); if err != nil || u == nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") { return fmt.Errorf("HTTP service %s must be an absolute HTTP(S) URL", label) } }
  if d.RedirectCount < 0 { return errors.New("HTTP redirect count cannot be negative") }
  return nil
+}
+
+func validateCTDNSNameEvidence(e Evidence) error {
+	target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(e.EntityID)), ".")
+	if !IsValidDomain(target) { return errors.New("CT evidence entity ID must be a valid domain") }
+	var d CTDNSNameDetails
+	if err := json.Unmarshal([]byte(e.Value), &d); err != nil { return fmt.Errorf("CT evidence value must be valid JSON: %w", err) }
+	if d.Target != target { return errors.New("CT evidence target must match evidence entity ID") }
+	name := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(d.DNSName)), ".")
+	if !IsValidDomain(name) || name != d.DNSName { return errors.New("CT DNS name must be valid and normalized") }
+	if name != target && !strings.HasSuffix(name, "."+target) { return errors.New("CT DNS name must be within the requested domain scope") }
+	if d.CertificateID < 0 { return errors.New("CT certificate ID cannot be negative") }
+	if strings.TrimSpace(d.Source) == "" { return errors.New("CT source is required") }
+	if d.RetrievedAt.IsZero() { return errors.New("CT retrieval timestamp is required") }
+	return nil
 }
