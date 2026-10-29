@@ -103,7 +103,7 @@ func (e *HypothesisEngine) Generate(
 		}
 
 		switch correlation.Type {
-		case CorrelationSharedIPAddress:
+		case CorrelationSharedIPAddress, CorrelationSharedTLSCertificateFingerprint:
 			entities := append([]string(nil), correlation.Entities...)
 			for i := range entities {
 				entities[i] = strings.ToLower(strings.TrimSpace(entities[i]))
@@ -137,31 +137,47 @@ func (e *HypothesisEngine) Generate(
 			sort.Strings(evidenceIDs)
 			evidenceIDs = uniqueStrings(evidenceIDs)
 
+			title := "Potential shared infrastructure"
+			statement := fmt.Sprintf(
+				"The entities %s may share or use the same network infrastructure because they were observed resolving to %s.",
+				strings.Join(entities, ", "), correlation.SharedValue,
+			)
+			supportingFact := fmt.Sprintf(
+				"%d distinct entities were associated with IP address %s.",
+				len(entities), correlation.SharedValue,
+			)
+			alternative := "The address may belong to a CDN, reverse proxy, shared hosting provider, cloud platform, or other shared service."
+			limitations := "A shared IP address alone does not prove common ownership, control, a direct relationship, or a security weakness. Confidence is qualitative and is not a probability."
+			verification := []string{
+				"Collect timestamped DNS observations for each entity and compare answer sets across at least two collection times.",
+				"Seek an independent signal, such as certificate names or fingerprints, that links the entities; retain the supporting evidence IDs and collection timestamps.",
+				"Check whether the address belongs to shared hosting, a CDN, or a reverse proxy; if so, do not infer common ownership from the address alone.",
+				"Keep this hypothesis at LOW confidence unless independent evidence supports a more specific relationship, and record contradictory observations.",
+			}
+			if correlation.Type == CorrelationSharedTLSCertificateFingerprint {
+				title = "Potential shared TLS certificate deployment"
+				statement = fmt.Sprintf(
+					"The entities %s were observed presenting the same TLS certificate SHA-256 fingerprint (%s); this may reflect a shared or centrally managed certificate deployment.",
+					strings.Join(entities, ", "), correlation.SharedValue,
+				)
+				supportingFact = fmt.Sprintf(
+					"%d distinct entities presented the same TLS certificate SHA-256 fingerprint %s.",
+					len(entities), correlation.SharedValue,
+				)
+				alternative = "The same wildcard or centrally managed certificate may be deployed across unrelated services, a hosting provider may manage certificates for customers, or endpoints may share a TLS termination layer."
+				limitations = "A matching certificate fingerprint proves only that the same certificate was observed on these endpoints. It does not prove common ownership, a direct relationship, or a vulnerability. Confidence is qualitative and is not a probability."
+				verification = []string{
+					"Compare the certificate subject, SANs, issuer, validity period, and collection timestamps while retaining evidence references.",
+					"Seek an independent signal such as DNS history, network ownership context, or a verified organizational record; do not count the same fingerprint twice as corroboration.",
+					"Check for wildcard certificates, shared hosting, centralized TLS termination, or managed certificate deployment before inferring a relationship.",
+					"Keep the hypothesis at LOW confidence unless independent evidence supports a more specific relationship, and record contradictory observations.",
+				}
+			}
 			hypothesis := Hypothesis{
-				ID:    "hypothesis:" + correlation.ID,
-				Title: "Potential shared infrastructure",
-				Statement: fmt.Sprintf(
-					"The entities %s may share or use the same network infrastructure because they were observed resolving to %s.",
-					strings.Join(entities, ", "),
-					correlation.SharedValue,
-				),
-				Confidence:    HypothesisConfidenceLow,
-				SupportingIDs: evidenceIDs,
-				SupportingFacts: []string{
-					fmt.Sprintf(
-						"%d distinct entities were associated with IP address %s.",
-						len(entities),
-						correlation.SharedValue,
-					),
-				},
-				Alternative: "The address may belong to a CDN, reverse proxy, shared hosting provider, cloud platform, or other shared service.",
-				Limitations: "A shared IP address alone does not prove common ownership, control, a direct relationship, or a security weakness. Confidence is qualitative and is not a probability.",
-				Verification: []string{
-					"Collect timestamped DNS observations for each entity and compare answer sets across at least two collection times.",
-					"Seek an independent signal, such as certificate names or fingerprints, that links the entities; retain the supporting evidence IDs and collection timestamps.",
-					"Check whether the address belongs to shared hosting, a CDN, or a reverse proxy; if so, do not infer common ownership from the address alone.",
-					"Keep this hypothesis at LOW confidence unless independent evidence supports a more specific relationship, and record contradictory observations.",
-				},
+				ID: "hypothesis:" + correlation.ID, Title: title, Statement: statement,
+				Confidence: HypothesisConfidenceLow, SupportingIDs: evidenceIDs,
+				SupportingFacts: []string{supportingFact}, Alternative: alternative,
+				Limitations: limitations, Verification: verification,
 			}
 
 			if err := hypothesis.Validate(); err != nil {
