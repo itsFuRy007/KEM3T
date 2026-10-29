@@ -24,6 +24,9 @@ const (
 // Every result is backed by an existing graph edge and therefore retains the
 // graph's evidence boundary. No new relationship is inferred by this API.
 func Pivot(g Graph, nodeID string, kind PivotKind) ([]Node, error) {
+	if err := validatePivotKind(kind); err != nil {
+		return nil, err
+	}
 	if err := g.Validate(); err != nil {
 		return nil, fmt.Errorf("validate graph before pivot: %w", err)
 	}
@@ -65,8 +68,6 @@ func Pivot(g Graph, nodeID string, kind PivotKind) ([]Node, error) {
 			if source.ID == nodeID && (source.Type == NodeDomain || source.Type == NodeIP) && edge.Type == EdgePresentsCertificate && target.Type == NodeTLSCertificate {
 				nodeIDs[target.ID] = struct{}{}
 			}
-		default:
-			return nil, fmt.Errorf("unsupported pivot kind %q", kind)
 		}
 	}
 
@@ -110,6 +111,21 @@ func Related(g Graph, nodeID string) ([]Node, error) {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result, nil
+}
+
+func validatePivotKind(kind PivotKind) error {
+	switch kind {
+	case PivotDomainToIPs,
+		PivotDomainToServices,
+		PivotIPToDomains,
+		PivotIPToServices,
+		PivotServiceToHosts,
+		PivotCertificateToHosts,
+		PivotHostToCertificates:
+		return nil
+	default:
+		return fmt.Errorf("unsupported pivot kind %q", kind)
+	}
 }
 
 func findNode(nodes []Node, id string) (Node, bool) {
