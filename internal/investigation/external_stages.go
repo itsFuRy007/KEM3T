@@ -83,3 +83,27 @@ func NewASNStageWithClient(client *externalintel.ASNClient) Stage {
 		return StageResult{Evidence:count,Observations:count},err
 	}}
 }
+
+
+// NewIPRDAPStageForIP queries RDAP for one caller-authorized IP address.
+// It is suitable for a planner that has independently checked an explicit
+// IP allowlist; DNS discovery alone must not authorize this pivot.
+func NewIPRDAPStageForIP(ip string) Stage {
+	client:=&externalintel.RDAPClient{}
+	return FuncStage{StageName:"rdap-ip:"+ip,Lookup:func(ctx context.Context,_ string,registry *evidence.Registry)(StageResult,error){
+		report,err:=client.LookupIP(ctx,ip); if err!=nil{return StageResult{},err}
+		registered,err:=externalintel.RegisterIPRDAPReport(registry,report); count:=0; if registered {count=1}
+		return StageResult{Evidence:count,Observations:count},err
+	}}
+}
+
+// NewASNStageForIP queries origin/ASN intelligence for one caller-authorized
+// IP address. The planner/caller remains responsible for enforcing scope.
+func NewASNStageForIP(ip string) Stage {
+	client:=&externalintel.ASNClient{}
+	return FuncStage{StageName:"asn:"+ip,Lookup:func(ctx context.Context,_ string,registry *evidence.Registry)(StageResult,error){
+		report,err:=client.LookupIP(ctx,ip); if err!=nil{return StageResult{},err}
+		registered,err:=externalintel.RegisterASNReport(registry,report); count:=0; if registered {count=1}
+		return StageResult{Evidence:count,Observations:count},err
+	}}
+}
