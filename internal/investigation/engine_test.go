@@ -3,6 +3,7 @@ package investigation
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
 	"time"
 
@@ -62,4 +63,20 @@ func TestEngineAcceptsSuccessfulEmptyLookup(t *testing.T) {
 	if result.Report.Target!="example.com" {t.Fatalf("missing target-scoped report: %+v",result.Report)}
 	runs,err:=registry.CollectionRuns("example.com")
 	if err!=nil||len(runs)!=1||runs[0].Status!=evidence.CollectionRunCompleted {t.Fatalf("empty successful run should be completed: %+v, %v",runs,err)}
+}
+
+type fixedResolver struct{}
+func (fixedResolver) LookupIPAddr(context.Context,string)([]net.IPAddr,error) {
+	return []net.IPAddr{{IP:net.ParseIP("203.0.113.25")}},nil
+}
+
+func TestEngineIntegratesExistingDNSCollectorEndToEnd(t *testing.T) {
+	registry:=evidence.NewRegistry()
+	engine:=Engine{Registry:registry,Stages:[]Stage{NewDNSStageWithResolver("example.com",fixedResolver{})}}
+	result,err:=engine.Run(context.Background(),"example.com")
+	if err!=nil {t.Fatal(err)}
+	if len(registry.AllEvidence())!=1||len(registry.AllObservations())!=1 {t.Fatalf("DNS collector output missing from shared registry")}
+	if len(result.Graph.Nodes)!=2||len(result.Graph.Edges)!=1 {t.Fatalf("unexpected integrated graph: %+v",result.Graph)}
+	if result.Report.Target!="example.com" {t.Fatalf("unexpected intelligence report: %+v",result.Report)}
+	if len(result.Stages)!=1||result.Stages[0].Result.Evidence!=1 {t.Fatalf("unexpected stage outcome: %+v",result.Stages)}
 }
