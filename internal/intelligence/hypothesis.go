@@ -1,7 +1,9 @@
 package intelligence
 
 import (
+	"encoding/hex"
 	"fmt"
+	"net"
 	"sort"
 	"strings"
 )
@@ -78,11 +80,17 @@ func (e *HypothesisEngine) Generate(
 	correlations []Correlation,
 ) ([]Hypothesis, error) {
 	results := make([]Hypothesis, 0)
+	seenCorrelationIDs := make(map[string]struct{}, len(correlations))
 
 	for _, correlation := range correlations {
 		if strings.TrimSpace(correlation.ID) == "" {
 			return nil, fmt.Errorf("correlation ID is required")
 		}
+		correlationID := strings.TrimSpace(correlation.ID)
+		if _, exists := seenCorrelationIDs[correlationID]; exists {
+			return nil, fmt.Errorf("duplicate correlation ID %q", correlationID)
+		}
+		seenCorrelationIDs[correlationID] = struct{}{}
 		if strings.TrimSpace(correlation.SharedValue) == "" {
 			return nil, fmt.Errorf(
 				"correlation %q has no shared value",
@@ -104,6 +112,9 @@ func (e *HypothesisEngine) Generate(
 
 		switch correlation.Type {
 		case CorrelationSharedIPAddress, CorrelationSharedTLSCertificateFingerprint:
+			if err := validateHypothesisCorrelation(correlation); err != nil {
+				return nil, fmt.Errorf("invalid correlation %q: %w", correlation.ID, err)
+			}
 			entities := append([]string(nil), correlation.Entities...)
 			for i := range entities {
 				entities[i] = strings.ToLower(strings.TrimSpace(entities[i]))
@@ -203,6 +214,38 @@ func (e *HypothesisEngine) Generate(
 	})
 
 	return results, nil
+}
+
+
+// validateHypothesisCorrelation prevents malformed correlation objects from
+// being promoted into apparently authoritative intelligence.
+func validateHypothesisCorrelation(correlation Correlation) error {
+	expectedScope := "OBSERVED_SHARED_ADDRESS"
+	switch correlation.Type {
+	case CorrelationSharedIPAddress:
+		ip := net.ParseIP(strings.TrimSpace(correlation.SharedValue))
+		if ip == nil || ip.String() != strings.TrimSpace(correlation.SharedValue) {
+			return fmt.Errorf("shared IP address must be valid and canonical")
+		}
+	case CorrelationSharedTLSCertificateFingerprint:
+		expectedScope = "OBSERVED_SHARED_CERTIFICATE_FINGERPRINT"
+		fingerprint := strings.TrimSpace(correlation.SharedValue)
+		if len(fingerprint) != 64 {
+			return fmt.Errorf("TLS certificate fingerprint must contain 64 hexadecimal characters")
+		}
+		if _, err := hex.DecodeString(fingerprint); err != nil || strings.ToLower(fingerprint) != fingerprint {
+			return fmt.Errorf("TLS certificate fingerprint must be lowercase hexadecimal")
+		}
+	}
+	if correlation.ConfidenceScope != expectedScope {
+		return fmt.Errorf("confidence scope %q does not match correlation type", correlation.ConfidenceScope)
+	}
+	for _, rawID := range correlation.EvidenceIDs {
+		if strings.TrimSpace(rawID) == "" {
+			return fmt.Errorf("supporting evidence IDs must not be empty")
+		}
+	}
+	return nil
 }
 
 func uniqueStrings(values []string) []string {
