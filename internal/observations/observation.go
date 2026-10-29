@@ -1,6 +1,7 @@
 package observations
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net"
 	"strconv"
@@ -67,22 +68,28 @@ func Normalize(event events.Event) (Observation, error) {
 			return Observation{}, fmt.Errorf("TCP observation must describe an open TCP port")
 		}
 		port, err := parsePort(event.Data["port"])
-		if err != nil { return Observation{}, err }
+		if err != nil {
+			return Observation{}, err
+		}
 		out.Kind, out.Protocol, out.Port, out.Value = KindTCPPort, "tcp", port, "open"
 	case events.EventTLSCertificateFound:
 		port, err := parsePort(event.Data["port"])
-		if err != nil { return Observation{}, err }
+		if err != nil {
+			return Observation{}, err
+		}
 		fingerprint := strings.ToLower(strings.TrimSpace(event.Data["sha256_fingerprint"]))
 		if len(fingerprint) != 64 {
 			return Observation{}, fmt.Errorf("TLS SHA-256 fingerprint must contain 64 hexadecimal characters")
 		}
-		if _, err := strconv.ParseUint(fingerprint[:16], 16, 64); err != nil {
+		if _, err := hex.DecodeString(fingerprint); err != nil {
 			return Observation{}, fmt.Errorf("TLS fingerprint must be hexadecimal")
 		}
 		out.Kind, out.Protocol, out.Port, out.Value = KindTLSCertificate, "tls", port, fingerprint
 	case events.EventHTTPObserved:
 		port, err := parsePort(event.Data["port"])
-		if err != nil { return Observation{}, err }
+		if err != nil {
+			return Observation{}, err
+		}
 		scheme := strings.ToLower(strings.TrimSpace(event.Data["scheme"]))
 		if scheme != "http" && scheme != "https" {
 			return Observation{}, fmt.Errorf("HTTP scheme must be http or https")
