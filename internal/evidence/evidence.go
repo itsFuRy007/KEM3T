@@ -22,6 +22,7 @@ const (
 	TypeHTTPService    Type = "HTTP_SERVICE"
 	TypeCTDNSName      Type = "CT_DNS_NAME"
 	TypeRDAPRegistration Type = "RDAP_REGISTRATION"
+	TypeASNOrigin Type = "ASN_ORIGIN"
 )
 
 // TLSCertificateDetails contains the certificate metadata stored in evidence.
@@ -68,6 +69,21 @@ type RDAPRegistrationDetails struct {
  Status []string `json:"status"`
  NameServers []string `json:"name_servers"`
  Events []RDAPRegistrationEvent `json:"events"`
+}
+
+type ASNOriginRecord struct {
+ ASN uint32 `json:"asn"`
+ Prefix string `json:"prefix"`
+ Country string `json:"country,omitempty"`
+ Registry string `json:"registry,omitempty"`
+ Allocated string `json:"allocated,omitempty"`
+ NetworkName string `json:"network_name,omitempty"`
+ MappingSource string `json:"mapping_source"`
+ RDAPSource string `json:"rdap_source"`
+}
+type ASNOriginDetails struct {
+ Target string `json:"target"`
+ Records []ASNOriginRecord `json:"records"`
 }
 
 // TCPPortDetails contains metadata for a discovered TCP port.
@@ -143,6 +159,9 @@ func (e Evidence) Validate() error {
 
 	case TypeRDAPRegistration:
 		return validateRDAPRegistrationEvidence(e)
+
+	case TypeASNOrigin:
+		return validateASNOriginEvidence(e)
 
 	default:
 		return errors.New("evidence type is invalid")
@@ -264,6 +283,21 @@ func validateRDAPRegistrationEvidence(e Evidence) error {
  for _, ns := range d.NameServers {
   normalized := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(ns)), ".")
   if !IsValidDomain(normalized) || normalized != ns { return fmt.Errorf("RDAP nameserver %q is invalid or not normalized", ns) }
+ }
+ return nil
+}
+
+func validateASNOriginEvidence(e Evidence) error {
+ target:=net.ParseIP(strings.TrimSpace(e.EntityID))
+ if target==nil{return errors.New("ASN evidence entity ID must be an IP address")}
+ var d ASNOriginDetails
+ if err:=json.Unmarshal([]byte(e.Value),&d);err!=nil{return fmt.Errorf("ASN evidence value must be valid JSON: %w",err)}
+ if net.ParseIP(d.Target)==nil||net.ParseIP(d.Target).String()!=target.String(){return errors.New("ASN target must match evidence entity ID")}
+ if len(d.Records)==0{return errors.New("ASN evidence must contain at least one origin record")}
+ for _,record:=range d.Records{
+  if record.ASN==0{return errors.New("origin ASN must be positive")}
+  _,prefix,err:=net.ParseCIDR(record.Prefix);if err!=nil||!prefix.Contains(target){return fmt.Errorf("ASN prefix %q does not contain target IP",record.Prefix)}
+  if strings.TrimSpace(record.MappingSource)==""||strings.TrimSpace(record.RDAPSource)==""{return errors.New("ASN mapping and RDAP source attribution are required")}
  }
  return nil
 }
