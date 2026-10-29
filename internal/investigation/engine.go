@@ -115,21 +115,19 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		retErr = ctx.Err()
 	}
 	// A failed source does not discard useful evidence from successful stages.
-	if len(e.Registry.AllEvidence()) > 0 {
-		built, err := graph.BuildFromRegistry(e.Registry)
-		if err != nil {
-			retErr = errors.Join(retErr, fmt.Errorf("build investigation graph: %w", err))
-		} else {
-			result.Graph = built
-		}
-		report, err := (&intelligence.ReportEngine{}).Build(target, nil, e.Registry)
-		if err != nil {
-			retErr = errors.Join(retErr, fmt.Errorf("build intelligence report: %w", err))
-		} else {
-			result.Report = report
-		}
-	} else if retErr == nil {
-		retErr = errors.New("investigation completed without registering evidence")
+	// Empty-but-successful lookups are valid outcomes and still produce an
+	// empty graph and a target-scoped report with explicit intelligence gaps.
+	built, err := graph.BuildFromRegistry(e.Registry)
+	if err != nil {
+		retErr = errors.Join(retErr, fmt.Errorf("build investigation graph: %w", err))
+	} else {
+		result.Graph = built
+	}
+	report, err := (&intelligence.ReportEngine{}).Build(target, nil, e.Registry)
+	if err != nil {
+		retErr = errors.Join(retErr, fmt.Errorf("build intelligence report: %w", err))
+	} else {
+		result.Report = report
 	}
 	run.FinishedAt = now().UTC()
 	run.EventCount = 0
@@ -140,17 +138,12 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 			run.ErrorMessage = strings.TrimSpace(run.ErrorMessage + "; " + outcome.Name + ": " + outcome.Error)
 		}
 	}
-	newEvidence := 0
 	for _, item := range e.Registry.AllEvidence() {
 		if _, existed := evidenceBefore[item.ID]; existed { continue }
-		newEvidence++
 		if item.Type == evidence.TypeDNSAddress { run.AddressCount++ }
 	}
 	if result.Partial || retErr != nil {
 		run.Status = evidence.CollectionRunFailed
-	} else if newEvidence == 0 {
-		run.Status = evidence.CollectionRunFailed
-		if run.ErrorMessage == "" { run.ErrorMessage = "investigation produced no new evidence" }
 	} else {
 		run.Status = evidence.CollectionRunCompleted
 	}
