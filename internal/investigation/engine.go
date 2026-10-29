@@ -75,7 +75,19 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 	if now == nil {
 		now = time.Now
 	}
+	for _, stage := range e.Stages {
+		if stage == nil || strings.TrimSpace(stage.Name()) == "" {
+			return Result{}, errors.New("investigation stages must be non-nil and named")
+		}
+		name := strings.TrimSpace(stage.Name())
+		if _, exists := seen[name]; exists {
+			return Result{}, fmt.Errorf("duplicate investigation stage %q", name)
+		}
+		seen[name] = struct{}{}
+	}
 	started := now().UTC()
+	evidenceBefore := make(map[string]struct{})
+	for _, item := range e.Registry.AllEvidence() { evidenceBefore[item.ID] = struct{}{} }
 	run := evidence.CollectionRun{
 		ID: fmt.Sprintf("investigation-%d", started.UnixNano()),
 		Target: target, StartedAt: started, Status: evidence.CollectionRunRunning,
@@ -90,16 +102,7 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 			retErr = err
 			break
 		}
-		if stage == nil || strings.TrimSpace(stage.Name()) == "" {
-			retErr = errors.New("investigation stages must be non-nil and named")
-			break
-		}
 		name := strings.TrimSpace(stage.Name())
-		if _, ok := seen[name]; ok {
-			retErr = fmt.Errorf("duplicate investigation stage %q", name)
-			break
-		}
-		seen[name] = struct{}{}
 		stageResult, err := stage.Run(ctx, target, e.Registry)
 		outcome := StageOutcome{Name: name, Result: stageResult}
 		if err != nil {
@@ -137,16 +140,17 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 			run.ErrorMessage = strings.TrimSpace(run.ErrorMessage + "; " + outcome.Name + ": " + outcome.Error)
 		}
 	}
+	newEvidence := 0
 	for _, item := range e.Registry.AllEvidence() {
-		if item.Type == evidence.TypeDNSAddress {
-			run.AddressCount++
-		}
+		if _, existed := evidenceBefore[item.ID]; existed { continue }
+		newEvidence++
+		if item.Type == evidence.TypeDNSAddress { run.AddressCount++ }
 	}
-	if retErr != nil && len(e.Registry.AllEvidence()) == 0 {
+	if result.Partial || retErr != nil {
 		run.Status = evidence.CollectionRunFailed
-		if run.ErrorMessage == "" {
-			run.ErrorMessage = retErr.Error()
-		}
+	} else if newEvidence == 0 {
+		run.Status = evidence.CollectionRunFailed
+		if run.ErrorMessage == "" { run.ErrorMessage = "investigation produced no new evidence" }
 	} else {
 		run.Status = evidence.CollectionRunCompleted
 	}
