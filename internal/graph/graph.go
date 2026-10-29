@@ -482,7 +482,9 @@ func AttachServices(g Graph, services []observations.Service) (Graph, error) {
 		edgeID := fmt.Sprintf("hosts-service:%s:%d:%s", target, service.Port, strings.TrimPrefix(serviceID, fmt.Sprintf("service:%s:%d:", target, service.Port)))
 		edge := edges[edgeID]
 		edge.ID, edge.Type, edge.Source, edge.Target, edge.Port = edgeID, EdgeHostsService, host.ID, serviceNode.ID, service.Port
-		edge.EvidenceIDs = appendUnique(edge.EvidenceIDs, service.EvidenceIDs...)
+		for _, evidenceID := range service.EvidenceIDs {
+			edge.EvidenceIDs = appendUnique(edge.EvidenceIDs, evidenceID)
+		}
 		sort.Strings(edge.EvidenceIDs)
 		edge.EvidenceIDs = uniqueStrings(edge.EvidenceIDs)
 		edges[edgeID] = edge
