@@ -150,9 +150,16 @@ func (c *CTClient) LookupDomain(ctx context.Context, target string) (CTReport, e
 			names[name] = struct{}{}
 		}
 		sort.Strings(dnsNames)
+		commonName := normalizeDomain(row.CommonName)
+		if strings.HasPrefix(commonName, "*.") {
+			commonName = strings.TrimPrefix(commonName, "*.")
+		}
+		if !inDomainScope(commonName, target) || !evidence.IsValidDomain(commonName) {
+			commonName = ""
+		}
 		record := CTRecord{
 			CertificateID: row.ID,
-			CommonName:    normalizeDomain(row.CommonName),
+			CommonName:    commonName,
 			DNSNames:      dnsNames,
 			IssuerName:    strings.TrimSpace(row.IssuerName),
 			NotBefore:     strings.TrimSpace(row.NotBefore),
