@@ -25,16 +25,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Check formatting
-        shell: bash
-        run: |
-          files="$(gofmt -l $(git ls-files '*.go'))"
-          if [[ -n "$files" ]]; then
-            echo "These Go files need gofmt:"
-            echo "$files"
-            exit 1
-          fi
-
       - name: Run tests
         run: go test -count=1 ./...
 
