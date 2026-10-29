@@ -184,7 +184,10 @@ The project is under active development. Checkboxes below distinguish implemente
 - [x] Hypothesis generation and alternative explanations
 - [x] Verification steps and rule-based prioritization
 - [x] Initial intelligence reports
-- [x] Scope reports to target-related correlations while retaining related entities as context\n- [x] Make confidence scope explicit and keep shared-IP hypotheses conservatively low-confidence\n- [x] Validate provenance links and expose supporting evidence/observation references in reports\n- [x] Improve verification guidance with explicit alternatives and limitations
+- [x] Scope reports to target-related correlations while retaining related entities as context
+- [x] Make confidence scope explicit and keep shared-IP hypotheses conservatively low-confidence
+- [x] Validate provenance links and expose supporting evidence/observation references in reports
+- [x] Add actionable verification criteria, alternatives, and contradiction handling
 
 ### Phase 6 — External Intelligence
 - [ ] Certificate Transparency (CT)
