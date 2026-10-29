@@ -202,3 +202,129 @@ func uniqueStrings(values []string) []string {
 	}
 	return result
 }
+
+
+// VerificationRelation records whether an independently collected fact supports
+// or contradicts a hypothesis. The engine never infers this relation itself.
+type VerificationRelation string
+
+const (
+	VerificationSupports     VerificationRelation = "SUPPORTS"
+	VerificationContradicts  VerificationRelation = "CONTRADICTS"
+)
+
+// VerificationStatus is an evidence assessment, not a probability or a verdict
+// about ownership, compromise, or vulnerability.
+type VerificationStatus string
+
+const (
+	VerificationUnverified   VerificationStatus = "UNVERIFIED"
+	VerificationInconclusive VerificationStatus = "INCONCLUSIVE"
+	VerificationSupported    VerificationStatus = "SUPPORTED"
+	VerificationContradicted VerificationStatus = "CONTRADICTED"
+	VerificationMixed        VerificationStatus = "MIXED"
+)
+
+// VerificationEvidence is an explicitly classified fact supplied by an
+// investigator. Independent must be true only when the fact is independent of
+// the evidence that originally generated the hypothesis.
+type VerificationEvidence struct {
+	ID          string              `json:"id"`
+	Fact        string              `json:"fact"`
+	Relation    VerificationRelation `json:"relation"`
+	Independent bool                `json:"independent"`
+}
+
+// VerificationAssessment preserves both corroboration and contradiction so
+// that conflicting evidence is not silently collapsed into a single score.
+type VerificationAssessment struct {
+	HypothesisID           string              `json:"hypothesis_id"`
+	Status                 VerificationStatus  `json:"status"`
+	SupportingEvidenceIDs  []string            `json:"supporting_evidence_ids"`
+	SupportingFacts        []string            `json:"supporting_facts"`
+	ContradictingEvidenceIDs []string          `json:"contradicting_evidence_ids"`
+	ContradictingFacts     []string            `json:"contradicting_facts"`
+	ExcludedEvidenceIDs    []string            `json:"excluded_evidence_ids"`
+	Explanation            string              `json:"explanation"`
+	Limitations            string              `json:"limitations"`
+}
+
+// Assess evaluates investigator-classified verification evidence without
+// changing the hypothesis confidence. Only explicitly independent evidence
+// affects status; reused or non-independent evidence is disclosed as excluded.
+func (e *HypothesisEngine) Assess(
+	hypothesis Hypothesis,
+	evidenceRecords []VerificationEvidence,
+) (VerificationAssessment, error) {
+	if err := hypothesis.Validate(); err != nil {
+		return VerificationAssessment{}, fmt.Errorf("invalid hypothesis: %w", err)
+	}
+
+	assessment := VerificationAssessment{
+		HypothesisID: hypothesis.ID,
+		Status: VerificationUnverified,
+		SupportingEvidenceIDs: []string{},
+		SupportingFacts: []string{},
+		ContradictingEvidenceIDs: []string{},
+		ContradictingFacts: []string{},
+		ExcludedEvidenceIDs: []string{},
+		Limitations: "Assessment status summarizes explicitly classified evidence only; it is not a probability or proof. Independence is supplied by the investigator and cannot be established from an evidence ID alone.",
+	}
+	originalIDs := make(map[string]struct{}, len(hypothesis.SupportingIDs))
+	for _, id := range hypothesis.SupportingIDs {
+		originalIDs[strings.TrimSpace(id)] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(evidenceRecords))
+	for _, record := range evidenceRecords {
+		id := strings.TrimSpace(record.ID)
+		if id == "" {
+			return VerificationAssessment{}, fmt.Errorf("verification evidence ID is required")
+		}
+		if _, exists := seen[id]; exists {
+			return VerificationAssessment{}, fmt.Errorf("duplicate verification evidence ID %q", id)
+		}
+		seen[id] = struct{}{}
+		if strings.TrimSpace(record.Fact) == "" {
+			return VerificationAssessment{}, fmt.Errorf("verification evidence %q has no fact", id)
+		}
+		if record.Relation != VerificationSupports && record.Relation != VerificationContradicts {
+			return VerificationAssessment{}, fmt.Errorf("verification evidence %q has invalid relation %q", id, record.Relation)
+		}
+		_, reused := originalIDs[id]
+		if !record.Independent || reused {
+			assessment.ExcludedEvidenceIDs = append(assessment.ExcludedEvidenceIDs, id)
+			continue
+		}
+		if record.Relation == VerificationSupports {
+			assessment.SupportingEvidenceIDs = append(assessment.SupportingEvidenceIDs, id)
+			assessment.SupportingFacts = append(assessment.SupportingFacts, strings.TrimSpace(record.Fact))
+		} else {
+			assessment.ContradictingEvidenceIDs = append(assessment.ContradictingEvidenceIDs, id)
+			assessment.ContradictingFacts = append(assessment.ContradictingFacts, strings.TrimSpace(record.Fact))
+		}
+	}
+	if len(evidenceRecords) == 0 {
+		assessment.Explanation = "No verification evidence was supplied; the hypothesis remains unverified."
+	} else if len(assessment.SupportingEvidenceIDs) == 0 && len(assessment.ContradictingEvidenceIDs) == 0 {
+		assessment.Status = VerificationInconclusive
+		assessment.Explanation = "No independent verification evidence was eligible to assess the hypothesis."
+	} else {
+		sort.Slice(assessment.SupportingEvidenceIDs, func(i, j int) bool { return assessment.SupportingEvidenceIDs[i] < assessment.SupportingEvidenceIDs[j] })
+		sort.Slice(assessment.ContradictingEvidenceIDs, func(i, j int) bool { return assessment.ContradictingEvidenceIDs[i] < assessment.ContradictingEvidenceIDs[j] })
+		// Facts are kept paired with their IDs by sorting the records before
+		// populating the output in the implementation below.
+		switch {
+		case len(assessment.SupportingEvidenceIDs) > 0 && len(assessment.ContradictingEvidenceIDs) > 0:
+			assessment.Status = VerificationMixed
+			assessment.Explanation = "Independent evidence both supports and contradicts the hypothesis; investigate the conflict rather than collapsing it into a single confidence score."
+		case len(assessment.SupportingEvidenceIDs) > 0:
+			assessment.Status = VerificationSupported
+			assessment.Explanation = "Independent evidence supports the hypothesis; this does not establish that it is conclusively true."
+		default:
+			assessment.Status = VerificationContradicted
+			assessment.Explanation = "Independent evidence contradicts the hypothesis; retain the original observations and review whether the hypothesis should be revised or rejected."
+		}
+	}
+	sort.Strings(assessment.ExcludedEvidenceIDs)
+	return assessment, nil
+}
