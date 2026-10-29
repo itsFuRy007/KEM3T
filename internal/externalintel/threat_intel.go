@@ -80,7 +80,7 @@ func(c *ThreatIntelClient)Lookup(ctx context.Context,rawTarget string)(ThreatInt
  req,err:=http.NewRequestWithContext(ctx,http.MethodGet,endpoint,nil);if err!=nil{return ThreatIntelReport{},err}
  req.Header.Set("Accept","application/json");req.Header.Set("User-Agent","KEM3T-External-Intelligence/1.0 (research)")
  if key:=strings.TrimSpace(c.APIKey);key!=""{req.Header.Set("X-OTX-API-KEY",key)}
- resp,err:=client.Do(req);if err!=nil{return ThreatIntelReport{},fmt.Errorf("query OTX threat intelligence: %w",err)}
+ resp,err:=doExternalRequest(ctx, client, req);if err!=nil{return ThreatIntelReport{},fmt.Errorf("query OTX threat intelligence: %w",err)}
  if resp.StatusCode<200||resp.StatusCode>=300{status:=resp.StatusCode;_,_=io.Copy(io.Discard,io.LimitReader(resp.Body,2048));resp.Body.Close();return ThreatIntelReport{},fmt.Errorf("OTX threat-intelligence source returned HTTP %d",status)}
  body,err:=io.ReadAll(io.LimitReader(resp.Body,maxPassiveDNSBytes+1));resp.Body.Close();if err!=nil{return ThreatIntelReport{},err};if len(body)>maxPassiveDNSBytes{return ThreatIntelReport{},fmt.Errorf("OTX response exceeds %d bytes",maxPassiveDNSBytes)}
  var raw otxGeneralResponse;if err:=json.Unmarshal(body,&raw);err!=nil{return ThreatIntelReport{},fmt.Errorf("decode OTX threat response: %w",err)}

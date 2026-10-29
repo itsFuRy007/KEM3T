@@ -108,7 +108,7 @@ func (c *CTClient) LookupDomain(ctx context.Context, target string) (CTReport, e
 	if client == nil {
 		client = &http.Client{Timeout: timeout}
 	}
-	resp, err := client.Do(req)
+	resp, err := doExternalRequest(ctx, client, req)
 	if err != nil {
 		return CTReport{}, fmt.Errorf("query Certificate Transparency source: %w", err)
 	}
