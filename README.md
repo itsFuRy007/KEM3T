@@ -29,9 +29,9 @@ The goal is to move from isolated scan results toward a traceable picture of inf
 - **Evidence and provenance:** register and validate evidence, track collection runs and observations, and persist records.
 - **Normalized observations and service model:** convert DNS, TCP, TLS, and HTTP/HTTPS collector events into a shared representation while retaining source, event IDs, timestamps, attributes, and evidence references. Service aggregation combines observations for the same target and port without guessing an application from the port number alone.
 - **Infrastructure graph and investigation pivots:** represent observed domains, IPs, TCP ports, HTTP services, network services, and TLS certificates with evidence-backed relationships; traverse deterministic one-hop pivots and inspect relationship provenance without inventing facts.
-- **Certificate Transparency intelligence (initial Phase 6 slice):** query public CT search data for a domain, normalize and scope certificate DNS names, deduplicate certificate rows, preserve timestamped evidence in SQLite, and represent CT search results and certificate-name relationships in the infrastructure graph with evidence/observation provenance. CT observations are leads—not proof of current hosting, shared ownership, or vulnerability.
+- **External infrastructure intelligence:** collect Certificate Transparency (CT), domain RDAP registration metadata, IP RDAP network-range context, origin-ASN mappings, historical passive DNS, and OTX community pulse references. Normalize observations, retain source attribution and retrieval history, and connect CT certificates, registrar/nameserver relationships, IP allocation ranges, ASN/prefix relationships, historical hostname-to-IP mappings, and threat-report references to the evidence-backed graph. External records are investigative leads—not proof of ownership, current hosting, maliciousness, or compromise.
 - **Evidence-traceable intelligence workflow:** scope correlations and findings to the requested target, correlate both shared DNS addresses and shared TLS certificate fingerprints, normalize comparable entities and values, retain evidence and observation references, and expose the exact scope of qualitative confidence. Generate hypotheses with explicit alternatives, limitations, and actionable verification steps. The verification API accepts investigator-classified independent evidence, preserves both supporting and contradicting facts, reports mixed outcomes instead of hiding conflicts, and excludes reused/non-independent evidence from assessment. Qualitative confidence is not silently converted into a probability or verdict.
-- **CLI:** run demo, DNS, TCP, TLS, HTTP, and history modes.
+- **CLI:** run demo, DNS, TCP, TLS, HTTP, history, CT, domain RDAP, IP RDAP, origin ASN, passive DNS, and threat-intelligence modes.
 
 ### HTTP/HTTPS safety boundaries
 
@@ -110,6 +110,42 @@ go run ./cmd/kem3t -mode history
 go run ./cmd/kem3t -mode history -target example.com
 ~~~
 
+### External intelligence examples
+
+Inspect public Certificate Transparency records and persist their evidence/graph relationships:
+
+~~~bash
+go run ./cmd/kem3t -mode ct -target example.com
+~~~
+
+Inspect domain registration metadata, registrar labels, and nameservers:
+
+~~~bash
+go run ./cmd/kem3t -mode rdap -target example.com
+~~~
+
+Inspect the registry-reported IP allocation range for a public address:
+
+~~~bash
+go run ./cmd/kem3t -mode iprdap -target 8.8.8.8
+~~~
+
+Resolve an IP's origin ASN and enrich it with ASN RDAP:
+
+~~~bash
+go run ./cmd/kem3t -mode asn -target 8.8.8.8
+~~~
+
+Query historical passive DNS and community pulse context from AlienVault OTX:
+
+~~~bash
+go run ./cmd/kem3t -mode pdns -target example.com
+go run ./cmd/kem3t -mode threat -target example.com
+~~~
+
+OTX endpoints are anonymously accessible subject to provider rate limits. Setting OTX_API_KEY in the environment can improve available quota; KEM3T sends it only as the provider request header and does not print it. The passive-DNS and threat modes use the same provider family, so their results must not be treated as independent corroboration.
+
+
 DNS snapshots, generalized run snapshots, and the evidence database use .kem3t/snapshots by default. Generalized snapshots are stored under .kem3t/snapshots/history and are captured after successful collection; history mode also reconstructs snapshots for older completed runs. Override the root directory with -snapshot-dir <directory>. Run go run ./cmd/kem3t -h for all flags.
 
 ## Project structure
@@ -120,6 +156,7 @@ DNS snapshots, generalized run snapshots, and the evidence database use .kem3t/s
 - internal/observations/ — normalized collector observations and conservative service model
 - internal/evidence/ — evidence validation and persistence
 - internal/graph/ — infrastructure graph entities and relationships
+- internal/externalintel/ — CT, domain/IP RDAP, origin ASN, passive DNS, and threat-intelligence clients
 - internal/changes/ — DNS-specific change detection
 - internal/snapshots/ — DNS snapshot handling
 - internal/history/ — generalized run snapshots, cross-run comparisons, timelines, and anomaly review signals
@@ -199,7 +236,7 @@ The project is under active development. Checkboxes below distinguish implemente
 - [x] Origin-ASN lookup through Team Cymru origin DNS via DNS-over-HTTPS, enriched with IANA-bootstrapped ASN RDAP
 - [x] Persist ASN findings with mapping/RDAP source attribution and connect IP → ASN → prefix relationships in the evidence graph
 - [x] IP RDAP network-range enrichment via IANA IPv4/IPv6 bootstrap, validated allocation bounds, and evidence-backed IP → registered-range graph edges
-- [ ] ASN and network ownership context
+- [x] ASN and network ownership context via origin-ASN mapping, authoritative ASN RDAP, and IP allocation-range RDAP
 - [x] OTX passive-DNS collection with target-scope filtering, A/AAAA validation, historical timestamps, optional API-key support, and truncation signaling
 - [x] Persist passive-DNS facts and time-aware observations; distinguish historical DNS relationships from live DNS edges in the graph
 - [x] OTX community pulse context for domains/public IPs with evidence-backed pulse links and explicit non-verdict interpretation
@@ -213,7 +250,7 @@ The project is under active development. Checkboxes below distinguish implemente
 - [ ] Performance benchmarks and storage optimization
 
 ### Phase 8 — Usability
-- [x] CLI modes for demo, DNS, TCP, TLS, HTTP, and history
+- [x] CLI modes for demo, DNS, TCP, TLS, HTTP, history, CT, domain RDAP, IP RDAP, ASN, passive DNS, and threat intelligence
 - [x] Console output for graph and intelligence results
 - [ ] Structured exports and report formats
 - [ ] End-to-end investigation workflow and usability improvements
