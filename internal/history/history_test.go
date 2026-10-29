@@ -54,3 +54,36 @@ func TestBuildSnapshotRejectsFailedRuns(t *testing.T){
 	run:=evidence.CollectionRun{ID:"dns-1",Target:"example.test",StartedAt:time.Now().Add(-time.Minute),FinishedAt:time.Now(),Status:evidence.CollectionRunFailed}
 	if _,err:=BuildSnapshot(run,nil,nil);err==nil{t.Fatal("expected failed run to be rejected")}
 }
+
+func TestBuildSnapshotNormalizesURLAndScopesCollectorType(t *testing.T) {
+	start := time.Date(2026, 10, 10, 10, 0, 0, 0, time.UTC)
+	run := evidence.CollectionRun{
+		ID: "http-1", Target: "https://api.example.test/path", StartedAt: start,
+		FinishedAt: start.Add(time.Minute), Status: evidence.CollectionRunCompleted,
+	}
+	httpEvidence := evidence.Evidence{
+		ID: "http-service:api.example.test:443:https", EntityID: "api.example.test",
+		Type: evidence.TypeHTTPService,
+		Value: `{"target":"api.example.test","scheme":"https","port":443,"url":"https://api.example.test","final_url":"https://api.example.test","status_code":200,"redirect_count":0}`,
+	}
+	tcpEvidence := evidence.Evidence{
+		ID: "tcp-port:api.example.test:443", EntityID: "api.example.test",
+		Type: evidence.TypeTCPPort,
+		Value: `{"target":"api.example.test","protocol":"tcp","port":443,"state":"open"}`,
+	}
+	observations := []evidence.Observation{
+		{ID: "http-observation", EvidenceID: httpEvidence.ID, ObservedAt: start.Add(time.Second)},
+		{ID: "tcp-observation", EvidenceID: tcpEvidence.ID, ObservedAt: start.Add(2 * time.Second)},
+	}
+	snapshot, err := BuildSnapshot(run, []evidence.Evidence{httpEvidence, tcpEvidence}, observations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Target != "api.example.test" {
+		t.Fatalf("target = %q, want api.example.test", snapshot.Target)
+	}
+	if len(snapshot.Records) != 1 || snapshot.Records[0].Type != evidence.TypeHTTPService {
+		t.Fatalf("snapshot must contain only HTTP records from the HTTP run: %+v", snapshot.Records)
+	}
+}
+
