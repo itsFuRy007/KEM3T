@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/history"
 )
 
 func TestRunTCPRejectsInvalidPortRange(t *testing.T) {
@@ -82,5 +83,17 @@ func TestRunTCPStoresEvidenceAndBuildsGraph(t *testing.T) {
 
 	if got := len(registry.AllEvidence()); got == 0 {
 		t.Fatal("evidence was not persisted")
+	}
+
+	historyStore, err := history.NewStore(filepath.Join(dir, "history"))
+	if err != nil {
+		t.Fatalf("open generalized history store: %v", err)
+	}
+	snapshots, err := historyStore.List()
+	if err != nil {
+		t.Fatalf("load generalized history snapshots: %v", err)
+	}
+	if len(snapshots) != 1 || snapshots[0].Collector != "tcp" || len(snapshots[0].Records) != 1 {
+		t.Fatalf("successful TCP run did not persist an evidence-backed history snapshot: %+v", snapshots)
 	}
 }
