@@ -9,6 +9,7 @@ import (
  "fmt"
  "io"
  "net/http"
+ "net/netip"
  "net/url"
  "sort"
  "strings"
@@ -42,6 +43,7 @@ type RDAPReport struct {
 type RDAPClient struct {
  HTTPClient *http.Client
  BootstrapURL string
+ IPBootstrapURL string
  Timeout time.Duration
  Now func() time.Time
 }
@@ -54,6 +56,29 @@ type rdapDomainResponse struct {
  NameServers []struct { LDHName string `json:"ldhName"` } `json:"nameservers"`
  Events []struct { Action string `json:"eventAction"`; Date string `json:"eventDate"` } `json:"events"`
  Entities []struct { Roles []string `json:"roles"`; VCard []any `json:"vcardArray"` } `json:"entities"`
+}
+
+type IPRDAPReport struct {
+ Target string `json:"target"`
+ Source string `json:"source"`
+ RetrievedAt time.Time `json:"retrieved_at"`
+ Handle string `json:"handle,omitempty"`
+ Name string `json:"name,omitempty"`
+ StartAddress string `json:"start_address"`
+ EndAddress string `json:"end_address"`
+ Country string `json:"country,omitempty"`
+ NetworkType string `json:"network_type,omitempty"`
+ Status []string `json:"status"`
+ Limitations []string `json:"limitations"`
+}
+type rdapIPResponse struct {
+ Handle string `json:"handle"`
+ Name string `json:"name"`
+ StartAddress string `json:"startAddress"`
+ EndAddress string `json:"endAddress"`
+ Country string `json:"country"`
+ Type string `json:"type"`
+ Status []string `json:"status"`
 }
 
 // LookupDomain discovers the authoritative RDAP service using IANA bootstrap data.
@@ -146,6 +171,52 @@ func uniqueSorted(values []string)[]string{set:=map[string]struct{}{};for _,valu
  
 // RegisterRDAPReport stores a stable registration fact and a separate timestamped
 // observation so later changes become history instead of overwriting prior evidence.
+// LookupIP discovers the authoritative RIR RDAP service for an IP address.
+func(c *RDAPClient)LookupIP(ctx context.Context,rawTarget string)(IPRDAPReport,error){
+ if ctx==nil{return IPRDAPReport{},fmt.Errorf("context is required")}
+ ip:=net.ParseIP(strings.TrimSpace(rawTarget));if ip==nil{return IPRDAPReport{},fmt.Errorf("target must be an IP address")}
+ target:=ip.String()
+ timeout:=c.Timeout;if timeout<=0{timeout=12*time.Second}
+ ctx,cancel:=context.WithTimeout(ctx,timeout);defer cancel()
+ client:=c.HTTPClient
+ if client==nil{client=&http.Client{Timeout:timeout,CheckRedirect:func(req *http.Request,via []*http.Request)error{if req.URL.Scheme!="https"{return fmt.Errorf("RDAP redirects must use HTTPS")};if len(via)>=4{return fmt.Errorf("too many RDAP redirects")};return nil}}}
+ bootstrapURL:=strings.TrimSpace(c.IPBootstrapURL)
+ if bootstrapURL==""{if ip.To4()!=nil{bootstrapURL="https://data.iana.org/rdap/ipv4.json"}else{bootstrapURL="https://data.iana.org/rdap/ipv6.json"}}
+ bp,err:=url.Parse(bootstrapURL);if err!=nil||bp.Scheme!="https"||bp.Host==""{return IPRDAPReport{},fmt.Errorf("IP RDAP bootstrap URL must be absolute HTTPS")}
+ body,err:=rdapGET(ctx,client,bootstrapURL);if err!=nil{return IPRDAPReport{},fmt.Errorf("fetch IP RDAP bootstrap: %w",err)}
+ var bootstrap rdapBootstrap;if err:=json.Unmarshal(body,&bootstrap);err!=nil{return IPRDAPReport{},fmt.Errorf("decode IP RDAP bootstrap: %w",err)}
+ serviceURL,err:=selectIPRDAPService(bootstrap,ip);if err!=nil{return IPRDAPReport{},err}
+ service,err:=url.Parse(serviceURL);if err!=nil||service.Scheme!="https"||service.Host==""{return IPRDAPReport{},fmt.Errorf("IP RDAP bootstrap selected an invalid HTTPS service")}
+ service.Path=strings.TrimRight(service.Path,"/")+"/ip/"+url.PathEscape(target)
+ response,err:=rdapGET(ctx,client,service.String());if err!=nil{return IPRDAPReport{},fmt.Errorf("query IP RDAP: %w",err)}
+ var raw rdapIPResponse;if err:=json.Unmarshal(response,&raw);err!=nil{return IPRDAPReport{},fmt.Errorf("decode IP RDAP response: %w",err)}
+ start,err:=netip.ParseAddr(strings.TrimSpace(raw.StartAddress));if err!=nil{return IPRDAPReport{},fmt.Errorf("RDAP start address is invalid: %w",err)}
+ end,err:=netip.ParseAddr(strings.TrimSpace(raw.EndAddress));if err!=nil{return IPRDAPReport{},fmt.Errorf("RDAP end address is invalid: %w",err)}
+ targetAddr,err:=netip.ParseAddr(target);if err!=nil{return IPRDAPReport{},err}
+ if start.Is4()!=targetAddr.Is4()||end.Is4()!=targetAddr.Is4()||start.Compare(end)>0||targetAddr.Compare(start)<0||targetAddr.Compare(end)>0{return IPRDAPReport{},fmt.Errorf("RDAP network range does not contain requested IP")}
+ now:=time.Now().UTC();if c.Now!=nil{now=c.Now().UTC()}
+ return IPRDAPReport{Target:target,Source:service.Host,RetrievedAt:now,Handle:strings.TrimSpace(raw.Handle),Name:strings.TrimSpace(raw.Name),StartAddress:start.String(),EndAddress:end.String(),Country:strings.TrimSpace(raw.Country),NetworkType:strings.TrimSpace(raw.Type),Status:uniqueSorted(raw.Status),Limitations:[]string{
+  "IP RDAP describes a registry allocation/assignment range; it does not prove which customer currently operates a host.",
+  "Network names and country fields are registry-provided labels and may be absent, broad, or stale.",
+  "A registered network range is context, not a security or reputation verdict.",
+ }},nil
+}
+
+func selectIPRDAPService(bootstrap rdapBootstrap,ip net.IP)(string,error){
+ bestBits:=-1;bestURL:=""
+ for _,service:=range bootstrap.Services{
+  if len(service)!=2{continue};var prefixes,urls []string
+  if json.Unmarshal(service[0],&prefixes)!=nil||json.Unmarshal(service[1],&urls)!=nil{continue}
+  for _,rawPrefix:=range prefixes{
+   _,prefix,err:=net.ParseCIDR(strings.TrimSpace(rawPrefix));if err!=nil||!prefix.Contains(ip){continue}
+   bits,_:=prefix.Mask.Size();if bits<=bestBits{continue}
+   for _,rawURL:=range urls{u,err:=url.Parse(strings.TrimSpace(rawURL));if err==nil&&u.Scheme=="https"&&u.Host!=""{bestBits=bits;bestURL=strings.TrimRight(u.String(),"/")+"/";break}}
+  }
+ }
+ if bestURL==""{return "",fmt.Errorf("IANA IP RDAP bootstrap has no HTTPS service for %s",ip.String())}
+ return bestURL,nil
+}
+
 func RegisterRDAPReport(registry *evidence.Registry, report RDAPReport) (bool,error) {
  if registry==nil{return false,fmt.Errorf("evidence registry is required")}
  target:=normalizeDomain(report.Target)
