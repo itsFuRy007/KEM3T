@@ -12,17 +12,19 @@ import (
 // IntelligenceReport combines findings, correlations, hypotheses, verification
 // assessments, and transparent investigation priorities.
 type IntelligenceReport struct {
-	Target              string               `json:"target"`
-	Findings            []Finding            `json:"findings"`
-	Correlations        []Correlation        `json:"correlations"`
-	Hypotheses              []Hypothesis              `json:"hypotheses"`
-	VerificationAssessments []VerificationAssessment `json:"verification_assessments"`
-	PrioritizedFindings     []PrioritizedFinding      `json:"prioritized_findings"`
+	Target                  string                     `json:"target"`
+	Findings                []Finding                  `json:"findings"`
+	Correlations            []Correlation              `json:"correlations"`
+	Discoveries             []Discovery                `json:"discoveries"`
+	Hypotheses              []Hypothesis               `json:"hypotheses"`
+	VerificationAssessments []VerificationAssessment   `json:"verification_assessments"`
+	PrioritizedFindings     []PrioritizedFinding       `json:"prioritized_findings"`
 }
 
 // ReportEngine coordinates the intelligence analysis engines.
 type ReportEngine struct {
 	Correlation    *CorrelationEngine
+	Discovery      *DiscoveryEngine
 	Hypothesis     *HypothesisEngine
 	Prioritization *PrioritizationEngine
 }
@@ -60,6 +62,11 @@ func (e *ReportEngine) BuildWithVerification(
 		correlationEngine = &CorrelationEngine{}
 	}
 
+	discoveryEngine := e.Discovery
+	if discoveryEngine == nil {
+		discoveryEngine = &DiscoveryEngine{}
+	}
+
 	hypothesisEngine := e.Hypothesis
 	if hypothesisEngine == nil {
 		hypothesisEngine = &HypothesisEngine{}
@@ -73,6 +80,11 @@ func (e *ReportEngine) BuildWithVerification(
 	correlations, err := correlationEngine.CorrelateForTarget(registry, target)
 	if err != nil {
 		return IntelligenceReport{}, fmt.Errorf("correlate evidence for target %q: %w", target, err)
+	}
+
+	discoveries, err := discoveryEngine.Discover(correlations, target)
+	if err != nil {
+		return IntelligenceReport{}, fmt.Errorf("discover higher-order relationships: %w", err)
 	}
 
 	hypotheses, err := hypothesisEngine.Generate(correlations)
@@ -123,6 +135,7 @@ func (e *ReportEngine) BuildWithVerification(
 	// Normalize empty collections to JSON arrays rather than null.
 	reportFindings := append([]Finding{}, scopedFindings...)
 	reportCorrelations := append([]Correlation{}, correlations...)
+	reportDiscoveries := append([]Discovery{}, discoveries...)
 	reportHypotheses := append([]Hypothesis{}, hypotheses...)
 	reportAssessments := append([]VerificationAssessment{}, assessments...)
 	reportPrioritized := append([]PrioritizedFinding{}, prioritized...)
@@ -131,12 +144,12 @@ func (e *ReportEngine) BuildWithVerification(
 		Target:                  strings.TrimSpace(target),
 		Findings:                reportFindings,
 		Correlations:            reportCorrelations,
+		Discoveries:             reportDiscoveries,
 		Hypotheses:              reportHypotheses,
 		VerificationAssessments: reportAssessments,
 		PrioritizedFindings:     reportPrioritized,
 	}, nil
 }
-
 
 // normalizeFindingTarget accepts hostnames, IP addresses, host:port values,
 // and URLs while keeping report scope anchored to the actual host.
