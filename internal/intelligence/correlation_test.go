@@ -2,6 +2,7 @@ package intelligence
 
 import (
 	"encoding/json"
+ "fmt"
 	"testing"
 	"time"
 	"strings"
@@ -375,4 +376,61 @@ func TestCorrelationReportsDistinctSourcesWithoutClaimingIndependence(t *testing
 	if got.Confidence != "HIGH" {
 		t.Fatalf("observed association confidence contract unexpectedly changed: %q", got.Confidence)
 	}
+}
+
+func TestCorrelateEvidenceFindsSharedCTRecordAndHistoricalIP(t *testing.T){
+ now:=time.Date(2026,10,29,12,0,0,0,time.UTC)
+ makeCT:=func(id,target,name string)evidence.Evidence{
+  details:=evidence.CTDNSNameDetails{Target:target,DNSName:name,CertificateID:77,IssuerName:"Example CA",Source:"crt.sh",RetrievedAt:now}
+  value,err:=json.Marshal(details);if err!=nil{t.Fatal(err)}
+  return evidence.Evidence{ID:id,EntityID:target,Type:evidence.TypeCTDNSName,Value:string(value)}
+ }
+ makePDNS:=func(id,target,hostname string)evidence.Evidence{
+  details:=evidence.PassiveDNSDetails{Target:target,Hostname:hostname,Address:"203.0.113.7",RecordType:"A",FirstSeen:"2024-01-01",LastSeen:"2025-01-01",Source:"otx.alienvault.com"}
+  value,err:=json.Marshal(details);if err!=nil{t.Fatal(err)}
+  return evidence.Evidence{ID:id,EntityID:target,Type:evidence.TypePassiveDNS,Value:string(value)}
+ }
+ records:=[]evidence.Evidence{
+  makeCT("ct-a","a.example.com","a.example.com"),
+  makeCT("ct-b","b.example.net","b.example.net"),
+  makePDNS("pdns-a","a.example.com","a.example.com"),
+  makePDNS("pdns-b","b.example.net","b.example.net"),
+ }
+ observations:=[]evidence.Observation{
+  {ID:"obs-ct-a",EvidenceID:"ct-a",Source:"crt.sh",ObservedAt:now,EventIDs:[]string{"evt-ct-a"}},
+  {ID:"obs-ct-b",EvidenceID:"ct-b",Source:"crt.sh",ObservedAt:now,EventIDs:[]string{"evt-ct-b"}},
+  {ID:"obs-pdns-a",EvidenceID:"pdns-a",Source:"otx.alienvault.com",ObservedAt:now,EventIDs:[]string{"evt-pdns-a"}},
+  {ID:"obs-pdns-b",EvidenceID:"pdns-b",Source:"otx.alienvault.com",ObservedAt:now,EventIDs:[]string{"evt-pdns-b"}},
+ }
+ results,err:=(&CorrelationEngine{}).CorrelateEvidence(records,observations);if err!=nil{t.Fatal(err)}
+ if len(results)!=2{t.Fatalf("expected CT and historical-IP correlations, got %+v",results)}
+ foundCT,foundHistorical:=false,false
+ for _,result:=range results{
+  if len(result.Entities)!=2||len(result.EvidenceIDs)!=2||len(result.ObservationIDs)!=2{t.Fatalf("incomplete provenance: %+v",result)}
+  switch result.Type{
+  case CorrelationSharedCTCertificateRecord:
+   foundCT=true
+   if result.SharedValue!="crt.sh#77"{t.Fatalf("unexpected CT key: %q",result.SharedValue)}
+   if !strings.Contains(result.Limitations,"not proof of common ownership"){t.Fatalf("missing CT limitations: %s",result.Limitations)}
+  case CorrelationSharedHistoricalIPAddress:
+   foundHistorical=true
+   if result.SharedValue!="203.0.113.7"{t.Fatalf("unexpected historical IP: %q",result.SharedValue)}
+   if !strings.Contains(result.Limitations,"Historical passive-DNS overlap"){t.Fatalf("missing historical DNS limitations: %s",result.Limitations)}
+  }
+ }
+ if !foundCT||!foundHistorical{t.Fatalf("missing correlation types: %+v",results)}
+}
+
+func TestCorrelateExternalEvidenceHonorsTargetScope(t *testing.T){
+ now:=time.Date(2026,10,29,12,0,0,0,time.UTC)
+ records:=make([]evidence.Evidence,0,2)
+ observations:=make([]evidence.Observation,0,2)
+ for i,target:=range []string{"a.example.com","b.example.net"}{
+  details:=evidence.CTDNSNameDetails{Target:target,DNSName:target,CertificateID:99,Source:"crt.sh",RetrievedAt:now}
+  value,_:=json.Marshal(details);id:=fmt.Sprintf("ct-%d",i)
+  records=append(records,evidence.Evidence{ID:id,EntityID:target,Type:evidence.TypeCTDNSName,Value:string(value)})
+  observations=append(observations,evidence.Observation{ID:"obs-"+id,EvidenceID:id,Source:"crt.sh",ObservedAt:now,EventIDs:[]string{"evt-"+id}})
+ }
+ results,err:=(&CorrelationEngine{}).CorrelateEvidenceForTarget(records,observations,"a.example.com");if err!=nil{t.Fatal(err)}
+ if len(results)!=1||len(results[0].Entities)!=2{t.Fatalf("expected only target-related CT correlation, got %+v",results)}
 }
