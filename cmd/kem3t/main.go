@@ -238,7 +238,7 @@ func runDNS(target, snapshotDir, exportJSON string) error {
 
 	printIntelligenceReport(result.Report)
 	if strings.TrimSpace(exportJSON) != "" {
-		if err := writeInvestigationExport(exportJSON, target, result.Report); err != nil {
+		if err := writeInvestigationExport(exportJSON, intelligence.NewDNSInvestigationExport(target, &result.Report, result.CurrentSnapshot, result.PreviousSnapshot, result.Changes, result.History, result.BaselineCreated)); err != nil {
 			return fmt.Errorf("write investigation export: %w", err)
 		}
 		fmt.Printf("[INVESTIGATION EXPORT] %s\n", exportJSON)
@@ -293,12 +293,11 @@ func runDNS(target, snapshotDir, exportJSON string) error {
 }
 
 
-func writeInvestigationExport(path, target string, report intelligence.IntelligenceReport) error {
+func writeInvestigationExport(path string, export intelligence.InvestigationExport) error {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return fmt.Errorf("export path is required")
 	}
-	export := intelligence.NewInvestigationExport(target, &report)
 	data, err := json.MarshalIndent(export, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode scoped report: %w", err)

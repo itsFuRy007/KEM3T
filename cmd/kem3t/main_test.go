@@ -116,7 +116,7 @@ func TestPrintInfrastructureGraph(t *testing.T) {
 func TestWriteInvestigationExport(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "investigation.json")
 	report := intelligence.IntelligenceReport{Target: "example.com"}
-	if err := writeInvestigationExport(path, "example.com", report); err != nil {
+	if err := writeInvestigationExport(path, intelligence.NewInvestigationExport("example.com", &report)); err != nil {
 		t.Fatalf("writeInvestigationExport() error = %v", err)
 	}
 	data, err := os.ReadFile(path)
@@ -141,7 +141,7 @@ func TestWriteInvestigationExport(t *testing.T) {
 
 func TestWriteInvestigationExportRejectsMismatchedScope(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "investigation.json")
-	err := writeInvestigationExport(path, "example.com", intelligence.IntelligenceReport{Target: "other.example"})
+	err := writeInvestigationExport(path, intelligence.NewInvestigationExport("example.com", &intelligence.IntelligenceReport{Target: "other.example"}))
 	if err == nil {
 		t.Fatal("expected mismatched report scope to fail")
 	}
