@@ -311,7 +311,6 @@ func PersistDNSBatchReport(snapshotDir string, outcomes []DNSOutcome) error {
 		return fmt.Errorf("encode batch DNS report: %w", err)
 	}
 	data = append(data, byte(10))
-')
 	if err := writeAtomicFile(dir, "report.json", data, ".report-*.tmp"); err != nil {
 		return fmt.Errorf("persist batch DNS report: %w", err)
 	}
