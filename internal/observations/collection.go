@@ -98,6 +98,9 @@ func BuildServices(input []Observation) []Service {
 		if observation.Source != "" {
 			current.Sources = appendUniqueString(current.Sources, observation.Source)
 		}
+		for _, evidenceID := range observation.EvidenceIDs {
+			current.EvidenceIDs = appendUniqueString(current.EvidenceIDs, evidenceID)
+		}
 		for key, value := range service.Indicators {
 			if value != "" {
 				current.Indicators[key] = value
@@ -108,6 +111,7 @@ func BuildServices(input []Observation) []Service {
 	result := make([]Service, 0, len(byID))
 	for _, service := range byID {
 		sort.Strings(service.Sources)
+		sort.Strings(service.EvidenceIDs)
 		if service.Application == "" {
 			service.ID = fmt.Sprintf("service:%s:%d:unknown", service.Target, service.Port)
 		} else {
