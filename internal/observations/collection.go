@@ -30,7 +30,7 @@ func NormalizeEvents(input []events.Event) Collection {
 	result := Collection{
 		Observations: make([]Observation, 0, len(input)),
 		Services:     make([]Service, 0),
-		Rejected:    make([]Rejection, 0),
+		Rejected:     make([]Rejection, 0),
 	}
 	for _, event := range input {
 		observation, err := Normalize(event)

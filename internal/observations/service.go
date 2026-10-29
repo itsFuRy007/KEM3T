@@ -69,10 +69,14 @@ func uniqueSorted(values []string) []string {
 	set := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		value = strings.TrimSpace(value)
-		if value != "" { set[value] = struct{}{} }
+		if value != "" {
+			set[value] = struct{}{}
+		}
 	}
 	out := make([]string, 0, len(set))
-	for value := range set { out = append(out, value) }
+	for value := range set {
+		out = append(out, value)
+	}
 	// Small slices are expected; keep this helper dependency-light.
 	for i := 1; i < len(out); i++ {
 		for j := i; j > 0 && out[j] < out[j-1]; j-- {

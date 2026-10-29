@@ -30,7 +30,7 @@ const (
 	EdgePresentsCertificate EdgeType = "PRESENTS_CERTIFICATE"
 	EdgeHasOpenPort         EdgeType = "HAS_OPEN_PORT"
 	EdgeServesHTTP          EdgeType = "SERVES_HTTP"
-	EdgeHostsService         EdgeType = "HOSTS_SERVICE"
+	EdgeHostsService        EdgeType = "HOSTS_SERVICE"
 )
 
 type Node struct {
@@ -446,7 +446,6 @@ func isSortedUnique(values []string) bool {
 	}
 	return true
 }
-
 
 // AttachServices adds normalized service nodes and host-to-service relationships
 // to an existing infrastructure graph. Services without evidence references

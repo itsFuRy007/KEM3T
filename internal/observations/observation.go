@@ -27,16 +27,16 @@ const (
 // Observation is the shared representation used to compare results from
 // different collectors without discarding their source or original event ID.
 type Observation struct {
-	EventID    string            `json:"event_id"`
-	Kind       Kind              `json:"kind"`
-	Target     string            `json:"target"`
-	Protocol   string            `json:"protocol,omitempty"`
-	Port       int               `json:"port,omitempty"`
-	Value      string            `json:"value"`
-	Source     string            `json:"source"`
-	ObservedAt time.Time         `json:"observed_at"`
-	Attributes map[string]string `json:"attributes,omitempty"`
-	EvidenceIDs []string `json:"evidence_ids,omitempty"`
+	EventID     string            `json:"event_id"`
+	Kind        Kind              `json:"kind"`
+	Target      string            `json:"target"`
+	Protocol    string            `json:"protocol,omitempty"`
+	Port        int               `json:"port,omitempty"`
+	Value       string            `json:"value"`
+	Source      string            `json:"source"`
+	ObservedAt  time.Time         `json:"observed_at"`
+	Attributes  map[string]string `json:"attributes,omitempty"`
+	EvidenceIDs []string          `json:"evidence_ids,omitempty"`
 }
 
 // Normalize converts supported collector events to a stable shared shape.
@@ -119,7 +119,6 @@ func parsePort(raw string) (int, error) {
 	}
 	return port, nil
 }
-
 
 // AttachEvidence links normalized observations to the existing evidence
 // provenance records by their original collector event IDs, then rebuilds
