@@ -53,6 +53,7 @@ type DNSBatchReport struct {
 	CompletedCount  int                       `json:"completed_count"`
 	FailedCount     int                       `json:"failed_count"`
 	GraphFile       string                    `json:"graph_file,omitempty"`
+	ChangesFile     string                    `json:"changes_file,omitempty"`
 	Outcomes        []DNSOutcome              `json:"outcomes"`
 	SharedAddresses []SharedAddressCorrelation `json:"shared_addresses"`
 	Limitations     []string                  `json:"limitations"`
@@ -306,6 +307,7 @@ func PersistDNSBatchReport(snapshotDir string, outcomes []DNSOutcome) error {
 	}
 	report := BuildDNSBatchReport(outcomes, time.Now().UTC())
 	report.GraphFile = "investigation-graph.json"
+	report.ChangesFile = "graph-changes.json"
 	data, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode batch DNS report: %w", err)

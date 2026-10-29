@@ -115,3 +115,98 @@ func TestPersistDNSBatchReportWritesGraphAndReferencesIt(t *testing.T) {
 		t.Fatalf("graph missing shared-address cluster: %+v", graph.Summary)
 	}
 }
+
+
+func TestBuildDNSGraphChangesDoesNotTreatFailedOrMissingScopesAsDisappearance(t *testing.T) {
+	when := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	previous := BuildDNSInvestigationGraph([]DNSOutcome{
+		{Target: "a.example", Addresses: []string{"192.0.2.1"}, CollectedAt: when},
+		{Target: "b.example", Addresses: []string{"192.0.2.1"}, CollectedAt: when},
+	}, when)
+	current := BuildDNSInvestigationGraph([]DNSOutcome{
+		{Target: "a.example", Addresses: []string{"192.0.2.2"}, CollectedAt: when.Add(time.Hour)},
+		{Target: "b.example", Error: "timeout", Err: errors.New("timeout")},
+	}, when.Add(time.Hour))
+	changes := BuildDNSGraphChanges(&previous, current)
+	if !changes.BaselineAvailable {
+		t.Fatal("expected previous graph baseline")
+	}
+	if len(changes.AddedResolutionEdges) != 1 || changes.AddedResolutionEdges[0].Target != "ip:192.0.2.2" {
+		t.Fatalf("unexpected added edges: %+v", changes.AddedResolutionEdges)
+	}
+	if len(changes.NoLongerObservedEdges) != 1 || changes.NoLongerObservedEdges[0].Source != "target:a.example" {
+		t.Fatalf("failed target must not generate disappearance claims: %+v", changes.NoLongerObservedEdges)
+	}
+	if len(changes.RemovedSharedAddressGroups) != 0 {
+		t.Fatalf("shared group should not be called removed while a member target failed: %+v", changes.RemovedSharedAddressGroups)
+	}
+	if !reflect.DeepEqual(changes.SkippedRemovalsForTargets, []string{"b.example"}) {
+		t.Fatalf("expected failed target removal suppression, got %v", changes.SkippedRemovalsForTargets)
+	}
+}
+
+func TestBuildDNSGraphChangesReportsSharedAddressNoLongerObservedOnlyForSuccessfulScopes(t *testing.T) {
+	when := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	previous := BuildDNSInvestigationGraph([]DNSOutcome{
+		{Target: "a.example", Addresses: []string{"192.0.2.1"}, CollectedAt: when},
+		{Target: "b.example", Addresses: []string{"192.0.2.1"}, CollectedAt: when},
+	}, when)
+	current := BuildDNSInvestigationGraph([]DNSOutcome{
+		{Target: "a.example", Addresses: []string{"192.0.2.2"}, CollectedAt: when.Add(time.Hour)},
+		{Target: "b.example", Addresses: []string{"192.0.2.3"}, CollectedAt: when.Add(time.Hour)},
+	}, when.Add(time.Hour))
+	changes := BuildDNSGraphChanges(&previous, current)
+	if len(changes.NoLongerObservedEdges) != 2 {
+		t.Fatalf("expected two no-longer-observed edges, got %+v", changes.NoLongerObservedEdges)
+	}
+	if !reflect.DeepEqual(changes.RemovedSharedAddressGroups, []string{"192.0.2.1"}) {
+		t.Fatalf("expected shared group removal, got %v", changes.RemovedSharedAddressGroups)
+	}
+	if len(changes.SkippedRemovalsForTargets) != 0 {
+		t.Fatalf("unexpected skipped removals: %v", changes.SkippedRemovalsForTargets)
+	}
+}
+
+func TestPersistDNSGraphCreatesTemporalHistoryAndChangeReport(t *testing.T) {
+	dir := t.TempDir()
+	firstTime := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	secondTime := firstTime.Add(time.Hour)
+	first := []DNSOutcome{{Target: "a.example", Addresses: []string{"192.0.2.1"}, CollectedAt: firstTime}}
+	second := []DNSOutcome{{Target: "a.example", Addresses: []string{"192.0.2.2"}, CollectedAt: secondTime}}
+	if err := PersistDNSBatchReport(dir, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := PersistDNSBatchReport(dir, second); err != nil {
+		t.Fatal(err)
+	}
+	base := filepath.Join(dir, "batch-dns")
+	changeData, err := os.ReadFile(filepath.Join(base, "graph-changes.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var changes DNSGraphChanges
+	if err := json.Unmarshal(changeData, &changes); err != nil {
+		t.Fatal(err)
+	}
+	if !changes.BaselineAvailable || len(changes.AddedResolutionEdges) != 1 || len(changes.NoLongerObservedEdges) != 1 {
+		t.Fatalf("unexpected persisted graph changes: %+v", changes)
+	}
+	history, err := os.ReadDir(filepath.Join(base, "history"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("expected two timestamped graph snapshots, got %d", len(history))
+	}
+	reportData, err := os.ReadFile(filepath.Join(base, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report DNSBatchReport
+	if err := json.Unmarshal(reportData, &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.ChangesFile != "graph-changes.json" {
+		t.Fatalf("report changes reference=%q", report.ChangesFile)
+	}
+}
