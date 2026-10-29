@@ -85,7 +85,7 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 			}
 		}
 			if retErr == nil && run.Status == evidence.CollectionRunCompleted {
-			if err := history.PersistRunSnapshot(snapshotDir, run, registry); err != nil {
+			if err := history.PersistRunSnapshot(snapshotDir, run, registry, []evidence.Observation{result.Observation}); err != nil {
 				retErr = fmt.Errorf("persist history snapshot: %w", err)
 			}
 		}
