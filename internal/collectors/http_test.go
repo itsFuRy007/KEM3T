@@ -99,7 +99,7 @@ func TestHTTPRejectsCrossHostRedirect(t *testing.T) {
 	}))
 	defer other.Close()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, other.URL, http.StatusFound)
+		http.Redirect(w, r, strings.Replace(other.URL, "127.0.0.1", "localhost", 1), http.StatusFound)
 	}))
 	defer server.Close()
 	out := make(chan events.Event, 1)

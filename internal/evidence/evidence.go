@@ -50,20 +50,20 @@ type TCPPortDetails struct {
 
 // HTTPServiceDetails records a bounded HTTP response observation.
 type HTTPServiceDetails struct {
- Target string `+"`json:"target"`"+`
- Scheme string `+"`json:"scheme"`"+`
- Port int `+"`json:"port"`"+`
- URL string `+"`json:"url"`"+`
- FinalURL string `+"`json:"final_url"`"+`
- StatusCode int `+"`json:"status_code"`"+`
- ContentType string `+"`json:"content_type"`"+`
- Server string `+"`json:"server"`"+`
- PoweredBy string `+"`json:"powered_by"`"+`
- Title string `+"`json:"title"`"+`
- RedirectCount int `+"`json:"redirect_count"`"+`
- BodyTruncated bool `+"`json:"body_truncated"`"+`
- TLSVersion string `+"`json:"tls_version,omitempty"`"+`
- TLSVerified bool `+"`json:"tls_verified"`"+`
+	Target        string `json:"target"`
+	Scheme        string `json:"scheme"`
+	Port          int    `json:"port"`
+	URL           string `json:"url"`
+	FinalURL      string `json:"final_url"`
+	StatusCode    int    `json:"status_code"`
+	ContentType   string `json:"content_type"`
+	Server        string `json:"server"`
+	PoweredBy     string `json:"powered_by"`
+	Title         string `json:"title"`
+	RedirectCount int    `json:"redirect_count"`
+	BodyTruncated bool   `json:"body_truncated"`
+	TLSVersion    string `json:"tls_version,omitempty"`
+	TLSVerified   bool   `json:"tls_verified"`
 }
 
 // Evidence represents a normalized fact about an entity.

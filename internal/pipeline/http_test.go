@@ -29,7 +29,7 @@ func TestRunHTTPPersistsEvidenceAndBuildsGraph(t *testing.T) {
 	if err := result.Graph.Validate(); err != nil { t.Fatalf("graph validation: %v", err) }
 	foundService, foundEdge := false, false
 	for _, node := range result.Graph.Nodes {
-		if node.Type == graph.NodeHTTPService && node.Value == fmt.Sprintf("http://127.0.0.1:%s", server.Listener.Addr().(*net.TCPAddr).Port) {
+		if node.Type == graph.NodeHTTPService && node.Value == fmt.Sprintf("http://127.0.0.1:%d", server.Listener.Addr().(*net.TCPAddr).Port) {
 			foundService = true
 		}
 	}
