@@ -9,13 +9,14 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 )
 
-// IntelligenceReport combines findings, correlations, hypotheses, verification
-// assessments, and transparent investigation priorities.
+// IntelligenceReport combines findings, correlations, discoveries, hypotheses,
+// verification assessments, and transparent investigation priorities.
 type IntelligenceReport struct {
 	Target                  string                     `json:"target"`
 	Findings                []Finding                  `json:"findings"`
 	Correlations            []Correlation              `json:"correlations"`
 	Discoveries             []Discovery                `json:"discoveries"`
+	DiscoveryPaths           []DiscoveryPath            `json:"discovery_paths"`
 	Hypotheses              []Hypothesis               `json:"hypotheses"`
 	VerificationAssessments []VerificationAssessment   `json:"verification_assessments"`
 	PrioritizedFindings     []PrioritizedFinding       `json:"prioritized_findings"`
@@ -87,6 +88,11 @@ func (e *ReportEngine) BuildWithVerification(
 		return IntelligenceReport{}, fmt.Errorf("discover higher-order relationships: %w", err)
 	}
 
+	discoveryPaths, err := discoveryEngine.DiscoverPaths(correlations, target)
+	if err != nil {
+		return IntelligenceReport{}, fmt.Errorf("discover multi-hop relationships: %w", err)
+	}
+
 	hypotheses, err := hypothesisEngine.Generate(correlations)
 	if err != nil {
 		return IntelligenceReport{}, fmt.Errorf("generate hypotheses: %w", err)
@@ -136,6 +142,7 @@ func (e *ReportEngine) BuildWithVerification(
 	reportFindings := append([]Finding{}, scopedFindings...)
 	reportCorrelations := append([]Correlation{}, correlations...)
 	reportDiscoveries := append([]Discovery{}, discoveries...)
+	reportDiscoveryPaths := append([]DiscoveryPath{}, discoveryPaths...)
 	reportHypotheses := append([]Hypothesis{}, hypotheses...)
 	reportAssessments := append([]VerificationAssessment{}, assessments...)
 	reportPrioritized := append([]PrioritizedFinding{}, prioritized...)
@@ -145,6 +152,7 @@ func (e *ReportEngine) BuildWithVerification(
 		Findings:                reportFindings,
 		Correlations:            reportCorrelations,
 		Discoveries:             reportDiscoveries,
+		DiscoveryPaths:          reportDiscoveryPaths,
 		Hypotheses:              reportHypotheses,
 		VerificationAssessments: reportAssessments,
 		PrioritizedFindings:     reportPrioritized,
