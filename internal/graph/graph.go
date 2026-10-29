@@ -386,7 +386,12 @@ func (g Graph) Validate() error {
 			if edge.Port < 1 || edge.Port > 65535 {
 				return fmt.Errorf("edge %q has an invalid service port", edge.ID)
 			}
-			if edge.ID != fmt.Sprintf("hosts-service:%s:%d:%s", source.Value, edge.Port, strings.TrimPrefix(target.ID, "service:")) || target.ID != fmt.Sprintf("service:%s:%d:%s", source.Value, edge.Port, strings.TrimPrefix(target.ID, fmt.Sprintf("service:%s:%d:", source.Value, edge.Port))) {
+			servicePrefix := fmt.Sprintf("service:%s:%d:", source.Value, edge.Port)
+			if !strings.HasPrefix(target.ID, servicePrefix) {
+				return fmt.Errorf("edge %q has an invalid service identity", edge.ID)
+			}
+			application := strings.TrimPrefix(target.ID, servicePrefix)
+			if application == "" || edge.ID != fmt.Sprintf("hosts-service:%s:%d:%s", source.Value, edge.Port, application) {
 				return fmt.Errorf("edge %q has an invalid service identity", edge.ID)
 			}
 		case EdgePresentsCertificate:
