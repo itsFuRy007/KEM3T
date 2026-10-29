@@ -2,6 +2,7 @@ package investigation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -32,10 +33,12 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 	if s.Convert == nil { return StageResult{}, fmt.Errorf("event converter is required") }
 	if strings.TrimSpace(target) == "" { return StageResult{}, fmt.Errorf("target is required") }
 
+	stageCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	eventCh := make(chan events.Event)
 	done := make(chan error, 1)
 	go func() {
-		err := s.Collector.Run(ctx, eventCh)
+		err := s.Collector.Run(stageCtx, eventCh)
 		close(eventCh)
 		done <- err
 	}()
@@ -43,27 +46,32 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 	result := StageResult{}
 	var registrationErr error
 	for event := range eventCh {
-		if err := ctx.Err(); err != nil { registrationErr = err; break }
+		if err := stageCtx.Err(); err != nil { registrationErr = err; break }
 		if err := event.Validate(); err != nil {
 			registrationErr = fmt.Errorf("collector %q emitted invalid event: %w", s.Name(), err)
+			cancel()
 			break
 		}
 		if !strings.EqualFold(strings.TrimSuffix(strings.TrimSpace(event.Target), "."), strings.TrimSuffix(strings.TrimSpace(target), ".")) {
 			registrationErr = fmt.Errorf("collector %q emitted out-of-scope target %q", s.Name(), event.Target)
+			cancel()
 			break
 		}
 		if s.Accept != nil && !s.Accept(event) { continue }
 		item, observation, err := s.Convert(event)
 		if err != nil {
 			registrationErr = fmt.Errorf("convert %s event: %w", s.Name(), err)
+			cancel()
 			break
 		}
-		if err := registry.AddEvidence(item); err != nil && err != evidence.ErrEvidenceExists {
+		if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
 			registrationErr = fmt.Errorf("register %s evidence: %w", s.Name(), err)
+			cancel()
 			break
 		}
-		if err := registry.AddObservation(observation); err != nil && err != evidence.ErrObservationExists {
+		if err := registry.AddObservation(observation); err != nil && !errors.Is(err, evidence.ErrObservationExists) {
 			registrationErr = fmt.Errorf("register %s observation: %w", s.Name(), err)
+			cancel()
 			break
 		}
 		result.Events++
@@ -72,7 +80,7 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 	}
 	collectorErr := <-done
 	if registrationErr != nil { return result, registrationErr }
-	if err := ctx.Err(); err != nil { return result, err }
+	if err := stageCtx.Err(); err != nil { return result, err }
 	if collectorErr != nil { return result, fmt.Errorf("%s collector: %w", s.Name(), collectorErr) }
 	return result, nil
 }
