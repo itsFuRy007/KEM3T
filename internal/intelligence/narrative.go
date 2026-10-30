@@ -190,6 +190,21 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 		addSteps("pivot", pivot.ID, pivot.WhyItMatters, pivot.Verification)
 	}
 
+	for _, surface := range report.ServiceSurfaces {
+		refs := []string{"service-surface:" + surface.ID}
+		refs = appendPrefixed(refs, "evidence", surface.EvidenceIDs)
+		refs = appendPrefixed(refs, "observation", surface.ObservationIDs)
+		n.Signals = append(n.Signals, NarrativeSignal{
+			ID: "service-surface:" + surface.ID, Kind: "SERVICE_SURFACE",
+			Summary: surface.Summary, Confidence: "OBSERVED_ENDPOINT_ASSOCIATION",
+			AlternativeExplanations: strings.Join(surface.Limitations, " "),
+			References: stableUnique(refs),
+		})
+		addSteps("service-surface", surface.ID,
+			"Review the endpoint-level evidence together; the grouping does not prove a shared backend or process.",
+			surface.NextSteps)
+	}
+
 	for _, hypothesis := range report.Hypotheses {
 		refs := appendPrefixed([]string{"hypothesis:" + hypothesis.ID}, "evidence", hypothesis.SupportingIDs)
 		n.Signals = append(n.Signals, NarrativeSignal{
