@@ -133,3 +133,29 @@ func TestRenderMarkdownReportRejectsMissingTarget(t *testing.T) {
 		t.Fatal("expected missing target to be rejected")
 	}
 }
+
+func TestRenderMarkdownReportPreservesFeedbackAndPrioritizesActiveTasks(t *testing.T) {
+	report := IntelligenceReport{
+		Target: "example.com",
+		InvestigationPlan: InvestigationPlan{
+			Summary: "1 active action, 1 completed action.",
+			Items: []InvestigationTask{
+				{ID: "task:completed", Action: "Review completed evidence.", Rationale: "Already reviewed.", Priority: 100, PriorityLabel: "HIGH", Status: TaskCompleted, OutcomeNote: "Evidence was inconclusive after independent review.", EvidenceIDs: []string{"evidence:reviewed"}},
+				{ID: "task:active", Action: "Collect an independent source.", Rationale: "Resolve the remaining uncertainty.", Priority: 40, PriorityLabel: "LOW", Status: TaskRecommended, References: []string{"gap:remaining"}},
+			},
+		},
+	}
+	got, err := RenderMarkdownReport(report)
+	if err != nil { t.Fatal(err) }
+	activeAt := strings.Index(got, "Collect an independent source.")
+	completedAt := strings.Index(got, "Review completed evidence.")
+	if activeAt < 0 || completedAt < 0 || activeAt > completedAt {
+		t.Fatalf("active work should be shown before completed history:\n%s", got)
+	}
+	if !strings.Contains(got, "Investigator note: Evidence was inconclusive after independent review.") {
+		t.Fatalf("investigator outcome note was omitted:\n%s", got)
+	}
+	if !strings.Contains(got, "`evidence:reviewed`") {
+		t.Fatalf("completed task evidence reference was omitted:\n%s", got)
+	}
+}
