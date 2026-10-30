@@ -13,8 +13,8 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/collectors"
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
-	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/graph"
+	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/observations"
 	"github.com/itsFuRy007/kem3t/internal/snapshots"
@@ -139,12 +139,12 @@ func runDNSWithCollectorAndPlan(
 				retErr = fmt.Errorf("%w; additionally, %v", retErr, updateErr)
 			}
 		}
-			if retErr == nil && run.Status == evidence.CollectionRunCompleted {
+		if retErr == nil && run.Status == evidence.CollectionRunCompleted {
 			if err := history.PersistRunSnapshot(snapshotDir, run, registry, runObservations); err != nil {
 				retErr = fmt.Errorf("persist history snapshot: %w", err)
 			}
 		}
-}()
+	}()
 
 	aggregator := intelligence.NewAggregator()
 	eventCh := make(chan events.Event)
@@ -216,7 +216,7 @@ func runDNSWithCollectorAndPlan(
 
 	findings := aggregator.Findings()
 
-	dnsGraph, err := graph.BuildFromRegistry(registry)
+	dnsGraph, err := graph.BuildFromRegistryForTarget(registry, target)
 	if err != nil {
 		return DNSResult{}, fmt.Errorf("build DNS graph: %w", err)
 	}

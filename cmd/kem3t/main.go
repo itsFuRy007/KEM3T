@@ -917,7 +917,7 @@ func runCT(target, snapshotDir string) error {
 	if err != nil {
 		return err
 	}
-	infrastructureGraph, err := graph.BuildFromRegistry(registry)
+	infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
 	if err != nil {
 		return fmt.Errorf("build CT infrastructure graph: %w", err)
 	}
@@ -963,7 +963,7 @@ func runRDAP(target, snapshotDir string) error {
 	if err != nil {
 		return err
 	}
-	infrastructureGraph, err := graph.BuildFromRegistry(registry)
+	infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
 	if err != nil {
 		return fmt.Errorf("build RDAP infrastructure graph: %w", err)
 	}
@@ -1013,7 +1013,7 @@ func runASN(target, snapshotDir string) error {
 	if err != nil {
 		return err
 	}
-	infrastructureGraph, err := graph.BuildFromRegistry(registry)
+	infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
 	if err != nil {
 		return fmt.Errorf("build ASN infrastructure graph: %w", err)
 	}
@@ -1055,7 +1055,7 @@ func runPassiveDNS(target, snapshotDir string) error {
 	if err != nil {
 		return err
 	}
-	infrastructureGraph, err := graph.BuildFromRegistry(registry)
+	infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
 	if err != nil {
 		return fmt.Errorf("build passive-DNS infrastructure graph: %w", err)
 	}
@@ -1099,7 +1099,7 @@ func runThreatIntel(target, snapshotDir string) error {
 	if err != nil {
 		return err
 	}
-	infrastructureGraph, err := graph.BuildFromRegistry(registry)
+	infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
 	if err != nil {
 		return fmt.Errorf("build threat-intelligence graph: %w", err)
 	}
@@ -1145,7 +1145,7 @@ func runIPRDAP(target, snapshotDir string) error {
 	if err != nil {
 		return err
 	}
-	infrastructureGraph, err := graph.BuildFromRegistry(registry)
+	infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
 	if err != nil {
 		return fmt.Errorf("build IP RDAP graph: %w", err)
 	}
