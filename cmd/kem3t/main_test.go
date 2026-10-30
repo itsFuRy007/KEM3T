@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
 )
@@ -158,4 +159,23 @@ func TestRunRejectsExportOutsideDNSMode(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "-export-json is supported only in DNS mode") {
 		t.Fatalf("run() error = %v, want DNS-only export error", err)
 	}
+}
+
+func TestCountTCPStatesSeparatesOpenClosedAndUnknown(t *testing.T) {
+	input := []events.Event{
+		{Data: map[string]string{"state":"open", "port":"80"}},
+		{Data: map[string]string{"state":"closed", "port":"81"}},
+		{Data: map[string]string{"state":"unknown", "port":"82"}},
+		{Data: map[string]string{"state":"closed", "port":"83"}},
+	}
+	got, err := countTCPStates(input)
+	if err != nil { t.Fatalf("countTCPStates() error = %v", err) }
+	if got["open"] != 1 || got["closed"] != 2 || got["unknown"] != 1 {
+		t.Fatalf("counts = %#v", got)
+	}
+}
+
+func TestCountTCPStatesRejectsInvalidState(t *testing.T) {
+	_, err := countTCPStates([]events.Event{{Data: map[string]string{"state":"filtered", "port":"80"}}})
+	if err == nil { t.Fatal("expected unsupported TCP state to be rejected") }
 }
