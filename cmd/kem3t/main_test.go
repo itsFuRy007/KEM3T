@@ -193,3 +193,17 @@ func TestCountTCPStatesHandlesEmptyCollection(t *testing.T) {
 		t.Fatalf("empty collection counts = %#v", got)
 	}
 }
+
+func TestCountTCPStatesNormalizesCaseAndWhitespace(t *testing.T) {
+	input := []events.Event{
+		{Data: map[string]string{"state": " OPEN ", "port": "80"}},
+		{Data: map[string]string{"state": " Closed ", "port": "81"}},
+	}
+	got, err := countTCPStates(input)
+	if err != nil {
+		t.Fatalf("countTCPStates() error = %v", err)
+	}
+	if got["open"] != 1 || got["closed"] != 1 || got["unknown"] != 0 {
+		t.Fatalf("normalized counts = %#v", got)
+	}
+}
