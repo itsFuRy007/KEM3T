@@ -1,6 +1,7 @@
 package evidence
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -240,4 +241,44 @@ func TestClosedRegistryRejectsWritesAndKeepsRecordsReadable(t *testing.T) {
 	if err := registry.Close(); err != nil {
 		t.Errorf("second Close() error = %v", err)
 	}
+}
+
+func TestRegistryAddBatchIsAtomicAndPreservesNormalizedRecords(t *testing.T) {
+	registry:=NewRegistry()
+	first:=validEvidence()
+	second:=validEvidence()
+	second.ID="dns-address:example.com:192.0.2.11"
+	second.Value=" 192.0.2.11 "
+	firstObservation:=validObservation()
+	secondObservation:=validObservation()
+	secondObservation.ID="observation-2"
+	secondObservation.EvidenceID=second.ID
+	secondObservation.EventIDs=[]string{" event-2 "}
+	if err:=registry.AddBatch(context.Background(),[]Evidence{first,second},[]Observation{firstObservation,secondObservation});err!=nil{t.Fatal(err)}
+	if len(registry.AllEvidence())!=2||len(registry.AllObservations())!=2{t.Fatalf("batch not fully registered")}
+	got,err:=registry.GetEvidence(second.ID);if err!=nil{t.Fatal(err)}
+	if got.Value!="192.0.2.11"{t.Fatalf("DNS address was not normalized: %q",got.Value)}
+	gotObservation,err:=registry.GetObservation(secondObservation.ID);if err!=nil{t.Fatal(err)}
+	if gotObservation.EventIDs[0]!="event-2"{t.Fatalf("event reference was not normalized: %q",gotObservation.EventIDs[0])}
+}
+
+func TestRegistryAddBatchDoesNotPartiallyMutateOnValidationFailure(t *testing.T) {
+	registry:=NewRegistry()
+	valid:=validEvidence()
+	invalid:=validEvidence()
+	invalid.ID="invalid-evidence"
+	invalid.Value="not-an-ip"
+	err:=registry.AddBatch(context.Background(),[]Evidence{valid,invalid},nil)
+	if err==nil{t.Fatal("expected invalid evidence to reject batch")}
+	if len(registry.AllEvidence())!=0||len(registry.AllObservations())!=0{t.Fatal("failed batch partially changed registry")}
+}
+
+func TestRegistryAddBatchRejectsMissingReferencesAtomically(t *testing.T) {
+	registry:=NewRegistry()
+	item:=validEvidence()
+	observation:=validObservation()
+	observation.EvidenceID="missing-evidence"
+	err:=registry.AddBatch(context.Background(),[]Evidence{item},[]Observation{observation})
+	if !errors.Is(err,ErrEvidenceNotFound){t.Fatalf("expected ErrEvidenceNotFound, got %v",err)}
+	if len(registry.AllEvidence())!=0||len(registry.AllObservations())!=0{t.Fatal("missing reference partially changed registry")}
 }
