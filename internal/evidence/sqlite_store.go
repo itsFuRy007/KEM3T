@@ -172,6 +172,104 @@ func (s *SQLiteStore) SaveObservation(ctx context.Context, o Observation) error 
 	return nil
 }
 
+
+type encodedBatchObservation struct {
+	observation Observation
+	eventIDs    string
+}
+
+// SaveBatch atomically inserts evidence and observations using one transaction.
+// Evidence is inserted before observations so observations may reference either
+// records in this batch or evidence already present in the database.
+func (s *SQLiteStore) SaveBatch(ctx context.Context, records []Evidence, observations []Observation) error {
+	if s == nil || s.db == nil {
+		return errors.New("SQLite store is required")
+	}
+	if len(records) == 0 && len(observations) == 0 {
+		return nil
+	}
+
+	seenEvidence := make(map[string]struct{}, len(records))
+	for _, item := range records {
+		if err := item.Validate(); err != nil {
+			return fmt.Errorf("validate evidence batch item %q: %w", item.ID, err)
+		}
+		if _, exists := seenEvidence[item.ID]; exists {
+			return ErrEvidenceExists
+		}
+		seenEvidence[item.ID] = struct{}{}
+	}
+
+	seenObservations := make(map[string]struct{}, len(observations))
+	encoded := make([]encodedBatchObservation, 0, len(observations))
+	for _, item := range observations {
+		if err := item.Validate(); err != nil {
+			return fmt.Errorf("validate observation batch item %q: %w", item.ID, err)
+		}
+		if _, exists := seenObservations[item.ID]; exists {
+			return ErrObservationExists
+		}
+		seenObservations[item.ID] = struct{}{}
+		eventIDs, err := json.Marshal(item.EventIDs)
+		if err != nil {
+			return fmt.Errorf("encode observation event IDs for %q: %w", item.ID, err)
+		}
+		encoded = append(encoded, encodedBatchObservation{observation: item, eventIDs: string(eventIDs)})
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin evidence batch transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	evidenceStmt, err := tx.PrepareContext(ctx,
+		`INSERT INTO evidence (id, entity_id, type, value) VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		return fmt.Errorf("prepare evidence batch insert: %w", err)
+	}
+	defer evidenceStmt.Close()
+
+	for _, item := range records {
+		_, err := evidenceStmt.ExecContext(ctx, item.ID, item.EntityID, string(item.Type), item.Value)
+		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "unique constraint failed") {
+				return ErrEvidenceExists
+			}
+			return fmt.Errorf("insert evidence batch item %q: %w", item.ID, err)
+		}
+	}
+
+	observationStmt, err := tx.PrepareContext(ctx, `INSERT INTO observations
+		(id, evidence_id, source, observed_at, event_ids_json) VALUES (?, ?, ?, ?, ?)`)
+	if err != nil {
+		return fmt.Errorf("prepare observation batch insert: %w", err)
+	}
+	defer observationStmt.Close()
+
+	for _, item := range encoded {
+		observation := item.observation
+		_, err := observationStmt.ExecContext(ctx,
+			observation.ID, observation.EvidenceID, observation.Source,
+			observation.ObservedAt.UTC().Format(time.RFC3339Nano), item.eventIDs)
+		if err != nil {
+			message := strings.ToLower(err.Error())
+			if strings.Contains(message, "unique constraint failed") {
+				return ErrObservationExists
+			}
+			if strings.Contains(message, "foreign key constraint failed") {
+				return ErrEvidenceNotFound
+			}
+			return fmt.Errorf("insert observation batch item %q: %w", observation.ID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit evidence batch transaction: %w", err)
+	}
+	return nil
+}
+
 // LoadObservation returns an observation by ID.
 func (s *SQLiteStore) LoadObservation(ctx context.Context, id string) (Observation, error) {
 	var o Observation
