@@ -13,8 +13,6 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 )
 
-// Kind identifies the normalized observation category independently of the
-// collector-specific event payload.
 type Kind string
 
 const (
@@ -24,8 +22,6 @@ const (
 	KindHTTPService    Kind = "http_service"
 )
 
-// Observation is the shared representation used to compare results from
-// different collectors without discarding their source or original event ID.
 type Observation struct {
 	EventID     string            `json:"event_id"`
 	Kind        Kind              `json:"kind"`
@@ -39,18 +35,12 @@ type Observation struct {
 	EvidenceIDs []string          `json:"evidence_ids,omitempty"`
 }
 
-// Normalize converts supported collector events to a stable shared shape.
-// It intentionally does not infer application services from port numbers.
 func Normalize(event events.Event) (Observation, error) {
 	if err := event.Validate(); err != nil {
 		return Observation{}, fmt.Errorf("validate event: %w", err)
 	}
 	target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(event.Target)), ".")
-	out := Observation{
-		EventID: strings.TrimSpace(event.ID), Target: target,
-		Source: strings.TrimSpace(event.Source), ObservedAt: event.Timestamp.UTC(),
-		Attributes: make(map[string]string),
-	}
+	out := Observation{EventID: strings.TrimSpace(event.ID), Target: target, Source: strings.TrimSpace(event.Source), ObservedAt: event.Timestamp.UTC(), Attributes: make(map[string]string)}
 	for key, value := range event.Data {
 		out.Attributes[key] = strings.TrimSpace(value)
 	}
@@ -65,16 +55,22 @@ func Normalize(event events.Event) (Observation, error) {
 			return Observation{}, fmt.Errorf("DNS value must be an IP address")
 		}
 		out.Kind, out.Protocol, out.Value = KindDNSAddress, "dns", ip.String()
-	case events.EventPortDiscovered:
-		if !strings.EqualFold(strings.TrimSpace(event.Data["protocol"]), "tcp") ||
-			!strings.EqualFold(strings.TrimSpace(event.Data["state"]), "open") {
-			return Observation{}, fmt.Errorf("TCP observation must describe an open TCP port")
+	case events.EventPortDiscovered, events.EventTCPPortStateObserved:
+		if !strings.EqualFold(strings.TrimSpace(event.Data["protocol"]), "tcp") {
+			return Observation{}, fmt.Errorf("TCP observation protocol must be tcp")
+		}
+		state := strings.ToLower(strings.TrimSpace(event.Data["state"]))
+		if state != "open" && state != "closed" && state != "unknown" {
+			return Observation{}, fmt.Errorf("unsupported TCP state %q", state)
+		}
+		if event.Type == events.EventPortDiscovered && state != "open" {
+			return Observation{}, fmt.Errorf("PORT_DISCOVERED must describe an open TCP port")
 		}
 		port, err := parsePort(event.Data["port"])
 		if err != nil {
 			return Observation{}, err
 		}
-		out.Kind, out.Protocol, out.Port, out.Value = KindTCPPort, "tcp", port, "open"
+		out.Kind, out.Protocol, out.Port, out.Value = KindTCPPort, "tcp", port, state
 	case events.EventTLSCertificateFound:
 		port, err := parsePort(event.Data["port"])
 		if err != nil {
@@ -120,9 +116,6 @@ func parsePort(raw string) (int, error) {
 	return port, nil
 }
 
-// AttachEvidence links normalized observations to the existing evidence
-// provenance records by their original collector event IDs, then rebuilds
-// service aggregates so every service carries its evidence references.
 func AttachEvidence(collection *Collection, links []evidence.Observation) {
 	if collection == nil {
 		return

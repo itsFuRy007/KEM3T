@@ -19,15 +19,7 @@ func TestTCPFindsOpenPort(t *testing.T) {
 
 	port := listener.Addr().(*net.TCPAddr).Port
 	output := make(chan events.Event, 1)
-
-	scanner := &TCP{
-		Target:      "127.0.0.1",
-		StartPort:   port,
-		EndPort:     port,
-		Timeout:     time.Second,
-		Concurrency: 1,
-	}
-
+	scanner := &TCP{Target: "127.0.0.1", StartPort: port, EndPort: port, Timeout: time.Second, Concurrency: 1}
 	if err := scanner.Run(context.Background(), output); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -48,13 +40,34 @@ func TestTCPFindsOpenPort(t *testing.T) {
 	}
 }
 
-func TestTCPRejectsInvalidRange(t *testing.T) {
-	scanner := &TCP{
-		Target:    "127.0.0.1",
-		StartPort: 9000,
-		EndPort:   8000,
+func TestTCPReportsClosedPort(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+
+	output := make(chan events.Event, 1)
+	scanner := &TCP{Target: "127.0.0.1", StartPort: port, EndPort: port, Timeout: time.Second, Concurrency: 1}
+	if err := scanner.Run(context.Background(), output); err != nil {
+		t.Fatalf("Run() error = %v", err)
 	}
 
+	event := <-output
+	if event.Type != events.EventTCPPortStateObserved {
+		t.Fatalf("unexpected event type: %s", event.Type)
+	}
+	if event.Data["state"] != "closed" {
+		t.Fatalf("unexpected state: %s", event.Data["state"])
+	}
+	if event.Data["reason"] != "connection refused" {
+		t.Fatalf("unexpected reason: %s", event.Data["reason"])
+	}
+}
+
+func TestTCPRejectsInvalidRange(t *testing.T) {
+	scanner := &TCP{Target: "127.0.0.1", StartPort: 9000, EndPort: 8000}
 	err := scanner.Run(context.Background(), make(chan events.Event, 1))
 	if err == nil {
 		t.Fatal("expected invalid port range error")

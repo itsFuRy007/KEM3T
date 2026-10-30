@@ -2,16 +2,18 @@ package collectors
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/itsFuRy007/kem3t/internal/events"
 )
 
-// TCP scans an explicit range of TCP ports on one authorized target.
 type TCP struct {
 	Target      string
 	StartPort   int
@@ -20,7 +22,16 @@ type TCP struct {
 	Concurrency int
 }
 
-// Run emits one PORT_DISCOVERED event for each open TCP port.
+type tcpPortResult struct {
+	port   int
+	state  string
+	reason string
+}
+
+// Run emits one event for every scanned TCP port. OPEN is represented by
+// PORT_DISCOVERED; CLOSED and UNKNOWN are represented by TCP_PORT_STATE_OBSERVED.
+// A simple connect scan deliberately does not claim FILTERED because it cannot
+// distinguish filtering from other inconclusive network failures.
 func (c *TCP) Run(ctx context.Context, output chan<- events.Event) error {
 	if ctx == nil {
 		return fmt.Errorf("context is required")
@@ -49,42 +60,36 @@ func (c *TCP) Run(ctx context.Context, output chan<- events.Event) error {
 		concurrency = 200
 	}
 
-	type result struct {
-		port int
-		open bool
-	}
-	jobs := make(chan int)
-	results := make(chan result, concurrency)
-	workers := concurrency
 	portCount := c.EndPort - c.StartPort + 1
+	workers := concurrency
 	if workers > portCount {
 		workers = portCount
 	}
 
+	jobs := make(chan int)
+	results := make(chan tcpPortResult, workers)
+	workerDone := make(chan struct{})
+
+	var workersWG sync.WaitGroup
+	workersWG.Add(workers)
 	for i := 0; i < workers; i++ {
 		go func() {
+			defer workersWG.Done()
 			for port := range jobs {
-				dialer := net.Dialer{Timeout: timeout}
-				conn, err := dialer.DialContext(
-					ctx,
-					"tcp",
-					net.JoinHostPort(target, strconv.Itoa(port)),
-				)
-				if err == nil {
-					_ = conn.Close()
-					select {
-					case results <- result{port: port, open: true}:
-					case <-ctx.Done():
-					}
-				} else {
-					select {
-					case results <- result{port: port, open: false}:
-					case <-ctx.Done():
-					}
+				state, reason := dialTCP(ctx, target, port, timeout)
+				select {
+				case results <- tcpPortResult{port: port, state: state, reason: reason}:
+				case <-ctx.Done():
+					return
 				}
 			}
 		}()
 	}
+	go func() {
+		workersWG.Wait()
+		close(workerDone)
+		close(results)
+	}()
 
 	go func() {
 		defer close(jobs)
@@ -97,38 +102,41 @@ func (c *TCP) Run(ctx context.Context, output chan<- events.Event) error {
 		}
 	}()
 
-	go func() {
-		// Workers finish after the job queue is closed.
-		// Results are buffered so workers can exit if collection is cancelled.
-	}()
-
 	received := 0
 	for received < portCount {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case item := <-results:
-			received++
-			if !item.open {
-				continue
+		case item, ok := <-results:
+			if !ok {
+				return fmt.Errorf("TCP workers stopped before all ports were classified: received %d of %d", received, portCount)
 			}
+			received++
 
+			timestamp := time.Now().UTC()
+			eventType := events.EventTCPPortStateObserved
+			if item.state == "open" {
+				eventType = events.EventPortDiscovered
+			}
+			data := map[string]string{
+				"protocol": "tcp",
+				"port":     strconv.Itoa(item.port),
+				"state":    item.state,
+			}
+			if item.reason != "" {
+				data["reason"] = item.reason
+			}
 			event := events.Event{
-				ID:        fmt.Sprintf("tcp-%d-%d", time.Now().UTC().UnixNano(), item.port),
-				Type:      events.EventPortDiscovered,
-				Timestamp: time.Now().UTC(),
+				ID:        fmt.Sprintf("tcp-%d-%d", timestamp.UnixNano(), item.port),
+				Type:      eventType,
+				Timestamp: timestamp,
 				Target:    target,
 				Source:    "tcp-collector",
-				Data: map[string]string{
-					"protocol": "tcp",
-					"port":     strconv.Itoa(item.port),
-					"state":    "open",
-				},
+				Data:      data,
 			}
 			if err := event.Validate(); err != nil {
 				return fmt.Errorf("create TCP event: %w", err)
 			}
-
 			select {
 			case output <- event:
 			case <-ctx.Done():
@@ -136,5 +144,33 @@ func (c *TCP) Run(ctx context.Context, output chan<- events.Event) error {
 			}
 		}
 	}
+
+	<-workerDone
 	return nil
+}
+
+func dialTCP(ctx context.Context, target string, port int, timeout time.Duration) (string, string) {
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(target, strconv.Itoa(port)))
+	if err == nil {
+		_ = conn.Close()
+		return "open", ""
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return "closed", "connection refused"
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return "unknown", "timeout"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "unknown", "timeout"
+	}
+	if errors.Is(err, syscall.EHOSTUNREACH) || errors.Is(err, syscall.ENETUNREACH) {
+		return "unknown", "host or network unreachable"
+	}
+	if errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM) {
+		return "unknown", "permission denied"
+	}
+	return "unknown", "connection attempt inconclusive: " + err.Error()
 }

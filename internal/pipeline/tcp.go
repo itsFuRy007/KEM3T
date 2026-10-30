@@ -12,13 +12,16 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/collectors"
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
-	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/graph"
+	"github.com/itsFuRy007/kem3t/internal/history"
+	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/observations"
 )
 
 type TCPResult struct {
 	Events           []events.Event
+	Findings         []intelligence.Finding
+	Report           intelligence.IntelligenceReport
 	Evidence         []evidence.Evidence
 	Observations     []evidence.Observation
 	EvidenceRegistry *evidence.Registry
@@ -33,7 +36,6 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 	if err := ctx.Err(); err != nil {
 		return TCPResult{}, err
 	}
-
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return TCPResult{}, fmt.Errorf("target is required")
@@ -59,11 +61,7 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 		}
 	}()
 
-	run := evidence.CollectionRun{
-		ID:     fmt.Sprintf("tcp-%d", time.Now().UnixNano()),
-		Target: target, StartedAt: time.Now().UTC(),
-		Status: evidence.CollectionRunRunning,
-	}
+	run := evidence.CollectionRun{ID: fmt.Sprintf("tcp-%d", time.Now().UnixNano()), Target: target, StartedAt: time.Now().UTC(), Status: evidence.CollectionRunRunning}
 	if err := registry.AddCollectionRun(run); err != nil {
 		return TCPResult{}, fmt.Errorf("start collection run: %w", err)
 	}
@@ -84,27 +82,35 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 				retErr = fmt.Errorf("%w; additionally, %v", retErr, updateErr)
 			}
 		}
-			if retErr == nil && run.Status == evidence.CollectionRunCompleted {
+		if retErr == nil && run.Status == evidence.CollectionRunCompleted {
 			if err := history.PersistRunSnapshot(snapshotDir, run, registry, result.Observations); err != nil {
 				retErr = fmt.Errorf("persist history snapshot: %w", err)
 			}
 		}
-}()
-
-	collector := &collectors.TCP{
-		Target: target, StartPort: startPort, EndPort: endPort,
-	}
-	eventCh := make(chan events.Event)
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- collector.Run(ctx, eventCh)
-		close(eventCh)
 	}()
 
+	collector := &collectors.TCP{Target: target, StartPort: startPort, EndPort: endPort}
+	engine := &intelligence.Engine{}
+	eventCh := make(chan events.Event)
+	errCh := make(chan error, 1)
+	go func() { errCh <- collector.Run(ctx, eventCh); close(eventCh) }()
+
 	for event := range eventCh {
-		if event.Type != events.EventPortDiscovered {
+		if event.Type != events.EventPortDiscovered && event.Type != events.EventTCPPortStateObserved {
 			continue
 		}
+		finding, err := engine.Analyze(event)
+		if err != nil {
+			return TCPResult{}, fmt.Errorf("analyze TCP event: %w", err)
+		}
+		if finding != nil {
+			result.Findings = append(result.Findings, *finding)
+		}
+		result.Events = append(result.Events, event)
+		if event.Type == events.EventTCPPortStateObserved {
+			continue
+		}
+
 		item, observation, err := evidence.FromTCPEvent(event)
 		if err != nil {
 			return TCPResult{}, fmt.Errorf("convert TCP event to evidence: %w", err)
@@ -115,7 +121,6 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 		if err := registry.AddObservation(observation); err != nil && !errors.Is(err, evidence.ErrObservationExists) {
 			return TCPResult{}, fmt.Errorf("register TCP observation: %w", err)
 		}
-		result.Events = append(result.Events, event)
 		result.Evidence = append(result.Evidence, item)
 		result.Observations = append(result.Observations, observation)
 	}
@@ -138,5 +143,10 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 		return TCPResult{}, fmt.Errorf("attach normalized services to graph: %w", err)
 	}
 	result.Graph = builtGraph
+
+	result.Report, err = (&intelligence.ReportEngine{}).Build(target, result.Findings, registry)
+	if err != nil {
+		return TCPResult{}, fmt.Errorf("build TCP intelligence report: %w", err)
+	}
 	return result, nil
 }

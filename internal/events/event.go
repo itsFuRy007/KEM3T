@@ -10,13 +10,14 @@ import (
 type EventType string
 
 const (
-	EventSubdomainDiscovered EventType = "SUBDOMAIN_DISCOVERED"
-	EventDNSRecordFound      EventType = "DNS_RECORD_FOUND"
-	EventPortDiscovered      EventType = "PORT_DISCOVERED"
-	EventServiceIdentified   EventType = "SERVICE_IDENTIFIED"
-	EventTLSCertificateFound EventType = "TLS_CERTIFICATE_FOUND"
-	EventHTTPObserved        EventType = "HTTP_OBSERVED"
-	EventAssetChanged        EventType = "ASSET_CHANGED"
+	EventSubdomainDiscovered  EventType = "SUBDOMAIN_DISCOVERED"
+	EventDNSRecordFound       EventType = "DNS_RECORD_FOUND"
+	EventPortDiscovered       EventType = "PORT_DISCOVERED"
+	EventTCPPortStateObserved EventType = "TCP_PORT_STATE_OBSERVED"
+	EventServiceIdentified    EventType = "SERVICE_IDENTIFIED"
+	EventTLSCertificateFound  EventType = "TLS_CERTIFICATE_FOUND"
+	EventHTTPObserved         EventType = "HTTP_OBSERVED"
+	EventAssetChanged         EventType = "ASSET_CHANGED"
 )
 
 // Event represents a normalized observation from a collector.
@@ -60,6 +61,7 @@ func (t EventType) IsValid() bool {
 	case EventSubdomainDiscovered,
 		EventDNSRecordFound,
 		EventPortDiscovered,
+		EventTCPPortStateObserved,
 		EventServiceIdentified,
 		EventTLSCertificateFound,
 		EventHTTPObserved,

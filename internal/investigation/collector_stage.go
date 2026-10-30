@@ -10,29 +10,40 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/collectors"
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/intelligence"
 )
 
 type eventCollector interface {
 	Run(context.Context, chan<- events.Event) error
 }
 
-// CollectorStage adapts an existing event collector to the shared registry.
-// It owns event conversion and registration, but never opens or closes storage.
 type CollectorStage struct {
-	StageName string
-	Collector eventCollector
-	Convert   func(events.Event) (evidence.Evidence, evidence.Observation, error)
-	Accept    func(events.Event) bool
+	StageName   string
+	Collector   eventCollector
+	Convert     func(events.Event) (evidence.Evidence, evidence.Observation, error)
+	Accept      func(events.Event) bool
+	ObserveOnly func(events.Event) bool
+	Analyze     func(events.Event) (*intelligence.Finding, error)
 }
 
 func (s *CollectorStage) Name() string { return strings.TrimSpace(s.StageName) }
 
 func (s *CollectorStage) Run(ctx context.Context, target string, registry *evidence.Registry) (StageResult, error) {
-	if ctx == nil { return StageResult{}, fmt.Errorf("context is required") }
-	if registry == nil { return StageResult{}, fmt.Errorf("shared evidence registry is required") }
-	if s == nil || s.Collector == nil { return StageResult{}, fmt.Errorf("collector is required") }
-	if s.Convert == nil { return StageResult{}, fmt.Errorf("event converter is required") }
-	if strings.TrimSpace(target) == "" { return StageResult{}, fmt.Errorf("target is required") }
+	if ctx == nil {
+		return StageResult{}, fmt.Errorf("context is required")
+	}
+	if registry == nil {
+		return StageResult{}, fmt.Errorf("shared evidence registry is required")
+	}
+	if s == nil || s.Collector == nil {
+		return StageResult{}, fmt.Errorf("collector is required")
+	}
+	if s.Convert == nil {
+		return StageResult{}, fmt.Errorf("event converter is required")
+	}
+	if strings.TrimSpace(target) == "" {
+		return StageResult{}, fmt.Errorf("target is required")
+	}
 
 	stageCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -47,7 +58,10 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 	result := StageResult{}
 	var registrationErr error
 	for event := range eventCh {
-		if err := stageCtx.Err(); err != nil { registrationErr = err; break }
+		if err := stageCtx.Err(); err != nil {
+			registrationErr = err
+			break
+		}
 		if err := event.Validate(); err != nil {
 			registrationErr = fmt.Errorf("collector %q emitted invalid event: %w", s.Name(), err)
 			cancel()
@@ -58,7 +72,27 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 			cancel()
 			break
 		}
-		if s.Accept != nil && !s.Accept(event) { continue }
+		if s.Accept != nil && !s.Accept(event) {
+			continue
+		}
+
+		if s.Analyze != nil {
+			finding, err := s.Analyze(event)
+			if err != nil {
+				registrationErr = fmt.Errorf("analyze %s event: %w", s.Name(), err)
+				cancel()
+				break
+			}
+			if finding != nil {
+				result.Findings = append(result.Findings, *finding)
+			}
+		}
+
+		result.Events++
+		if s.ObserveOnly != nil && s.ObserveOnly(event) {
+			continue
+		}
+
 		item, observation, err := s.Convert(event)
 		if err != nil {
 			registrationErr = fmt.Errorf("convert %s event: %w", s.Name(), err)
@@ -77,29 +111,32 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 			cancel()
 			break
 		}
-		result.Events++
-		if evidenceErr == nil { result.Evidence++ }
-		if observationErr == nil { result.Observations++ }
+		if evidenceErr == nil {
+			result.Evidence++
+		}
+		if observationErr == nil {
+			result.Observations++
+		}
 	}
 	collectorErr := <-done
-	if registrationErr != nil { return result, registrationErr }
-	if err := stageCtx.Err(); err != nil { return result, err }
-	if collectorErr != nil { return result, fmt.Errorf("%s collector: %w", s.Name(), collectorErr) }
+	if registrationErr != nil {
+		return result, registrationErr
+	}
+	if err := stageCtx.Err(); err != nil {
+		return result, err
+	}
+	if collectorErr != nil {
+		return result, fmt.Errorf("%s collector: %w", s.Name(), collectorErr)
+	}
 	return result, nil
 }
 
-// NewDNSStage wires the existing DNS collector into a shared investigation.
-// DNS resolution is passive with respect to the target and does not authorize
-// active TCP/TLS/HTTP checks against addresses discovered by DNS.
 func NewDNSStage(target string) *CollectorStage { return NewDNSStageWithResolver(target, nil) }
 
-// NewDNSStageWithResolver allows deterministic resolver injection in tests and
-// controlled deployments while retaining the production DNS collector.
 func NewDNSStageWithResolver(target string, resolver collectors.DNSResolver) *CollectorStage {
 	return newDNSStage("dns", target, resolver)
 }
 
-// NewDNSSubdomainStage resolves one explicitly discovered in-scope subdomain.
 func NewDNSSubdomainStage(target string) *CollectorStage {
 	name := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(target)), ".")
 	return newDNSStage("dns-subdomain:"+name, name, nil)
@@ -109,49 +146,59 @@ func newDNSStage(name, target string, resolver collectors.DNSResolver) *Collecto
 	return &CollectorStage{
 		StageName: name,
 		Collector: &collectors.DNS{Target: target, Resolver: resolver},
-		Accept: func(event events.Event) bool { return event.Type == events.EventDNSRecordFound },
-		Convert: evidence.FromDNSEvent,
+		Accept:    func(event events.Event) bool { return event.Type == events.EventDNSRecordFound },
+		Convert:   evidence.FromDNSEvent,
+		Analyze:   (&intelligence.Engine{}).Analyze,
 	}
 }
 
-
-// NewTCPStage adds an explicitly bounded TCP port-range check. Callers must
-// supply the exact target and range they are authorized to assess.
 func NewTCPStage(target string, startPort, endPort int) *CollectorStage {
 	return &CollectorStage{
 		StageName: "tcp",
 		Collector: &collectors.TCP{Target: target, StartPort: startPort, EndPort: endPort},
-		Accept: func(event events.Event) bool { return event.Type == events.EventPortDiscovered },
-		Convert: evidence.FromTCPEvent,
+		Accept: func(event events.Event) bool {
+			return event.Type == events.EventPortDiscovered || event.Type == events.EventTCPPortStateObserved
+		},
+		ObserveOnly: func(event events.Event) bool { return event.Type == events.EventTCPPortStateObserved },
+		Convert:     evidence.FromTCPEvent,
+		Analyze:     (&intelligence.Engine{}).Analyze,
 	}
 }
 
-// NewTLSStage performs one explicitly requested TLS certificate observation.
 func NewTLSStage(target string, port int) *CollectorStage {
-	if port == 0 { port = 443 }
+	if port == 0 {
+		port = 443
+	}
 	return &CollectorStage{
 		StageName: "tls",
 		Collector: &collectors.TLS{Target: target, Port: port},
-		Accept: func(event events.Event) bool { return event.Type == events.EventTLSCertificateFound },
-		Convert: evidence.FromTLSEvent,
+		Accept:    func(event events.Event) bool { return event.Type == events.EventTLSCertificateFound },
+		Convert:   evidence.FromTLSEvent,
+		Analyze:   (&intelligence.Engine{}).Analyze,
 	}
 }
 
-// NewHTTPStage performs one explicitly requested bounded HTTP(S) observation.
 func NewHTTPStage(target, scheme string, port int) *CollectorStage {
 	return &CollectorStage{
 		StageName: "http",
 		Collector: &collectors.HTTP{Target: target, Scheme: scheme, Port: port},
-		Accept: func(event events.Event) bool { return event.Type == events.EventHTTPObserved },
-		Convert: evidence.FromHTTPEvent,
+		Accept:    func(event events.Event) bool { return event.Type == events.EventHTTPObserved },
+		Convert:   evidence.FromHTTPEvent,
+		Analyze:   (&intelligence.Engine{}).Analyze,
 	}
 }
 
 func eventTargetInScope(eventTarget, target string) bool {
 	eventTarget = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(eventTarget)), ".")
 	target = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(target)), ".")
-	if eventTarget == "" || target == "" { return false }
-	if eventTarget == target { return true }
-	if net.ParseIP(target) != nil { return false }
+	if eventTarget == "" || target == "" {
+		return false
+	}
+	if eventTarget == target {
+		return true
+	}
+	if net.ParseIP(target) != nil {
+		return false
+	}
 	return strings.HasSuffix(eventTarget, "."+target)
 }

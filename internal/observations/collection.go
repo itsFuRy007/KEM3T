@@ -4,41 +4,28 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/itsFuRy007/kem3t/internal/events"
 )
 
-// Collection is the normalized view of one collector batch. It keeps every
-// supported observation, groups service observations conservatively, and
-// reports unsupported events without silently dropping them.
 type Collection struct {
 	Observations []Observation `json:"observations"`
 	Services     []Service     `json:"services"`
 	Rejected     []Rejection   `json:"rejected,omitempty"`
 }
 
-// Rejection explains why an event could not be normalized.
 type Rejection struct {
 	EventID string `json:"event_id"`
 	Reason  string `json:"reason"`
 }
 
-// NormalizeEvents converts a batch of collector events into normalized
-// observations. Invalid or unsupported events are recorded as rejections so
-// callers can inspect partial collection results.
 func NormalizeEvents(input []events.Event) Collection {
-	result := Collection{
-		Observations: make([]Observation, 0, len(input)),
-		Services:     make([]Service, 0),
-		Rejected:     make([]Rejection, 0),
-	}
+	result := Collection{Observations: make([]Observation, 0, len(input)), Services: make([]Service, 0), Rejected: make([]Rejection, 0)}
 	for _, event := range input {
 		observation, err := Normalize(event)
 		if err != nil {
-			result.Rejected = append(result.Rejected, Rejection{
-				EventID: strings.TrimSpace(event.ID),
-				Reason:  err.Error(),
-			})
+			result.Rejected = append(result.Rejected, Rejection{EventID: strings.TrimSpace(event.ID), Reason: err.Error()})
 			continue
 		}
 		result.Observations = append(result.Observations, observation)
@@ -65,29 +52,25 @@ func NormalizeEvents(input []events.Event) Collection {
 	return result
 }
 
-// BuildServices merges service observations for the same target and port.
-// It never infers an application protocol from a port number. Explicit HTTP
-// observations establish the scheme; TLS observations add certificate
-// indicators; TCP observations establish only that the port was open.
 func BuildServices(input []Observation) []Service {
 	byID := make(map[string]Service)
+	tcpObservedAt := make(map[string]time.Time)
 	for _, observation := range input {
 		service, err := IdentifyService(observation)
 		if err != nil {
 			continue
 		}
-		// Keep the aggregation key independent of an application label so
-		// TCP, TLS, and HTTP evidence for the same endpoint enrich one record.
 		key := fmt.Sprintf("%s:%d", service.Target, service.Port)
 		current, exists := byID[key]
 		if !exists {
-			current = Service{
-				Target: service.Target, Port: service.Port, Transport: "tcp",
-				State: "observed", Indicators: make(map[string]string),
-			}
+			current = Service{Target: service.Target, Port: service.Port, Transport: "tcp", State: "observed", Indicators: make(map[string]string)}
 		}
-		if service.State == "open" {
-			current.State = "open"
+		if observation.Kind == KindTCPPort {
+			lastTCP, seenTCP := tcpObservedAt[key]
+			if !seenTCP || observation.ObservedAt.After(lastTCP) {
+				current.State = service.State
+				tcpObservedAt[key] = observation.ObservedAt
+			}
 		}
 		if service.Application != "" {
 			current.Application = service.Application
