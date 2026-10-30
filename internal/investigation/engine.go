@@ -175,9 +175,10 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		retErr = ctx.Err()
 	}
 	// A failed source does not discard useful evidence from successful stages.
-	// Empty-but-successful lookups are valid outcomes and still produce an
-	// empty graph and a target-scoped report with explicit intelligence gaps.
-	built, err := graph.BuildFromRegistry(e.Registry)
+	// Keep the returned graph scoped to this investigation, including IPs
+	// explicitly linked by in-scope DNS evidence from the same registry.
+	scopedEvidence, scopedObservations := scopedRegistryRecords(target, e.Registry)
+	built, err := graph.Build(scopedEvidence, scopedObservations)
 	if err != nil {
 		retErr = errors.Join(retErr, fmt.Errorf("build investigation graph: %w", err))
 	} else {
@@ -216,4 +217,41 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		}
 	}
 	return result, retErr
+}
+
+
+// scopedRegistryRecords limits graph construction to the requested target,
+// its subdomains, and IPs directly observed in DNS evidence for that scope.
+func scopedRegistryRecords(target string, registry *evidence.Registry) ([]evidence.Evidence, []evidence.Observation) {
+	all := registry.AllEvidence()
+	entities := map[string]struct{}{target: {}}
+	for _, item := range all {
+		entity := normalizeEntity(item.EntityID)
+		if withinDomainScope(entity, target) && item.Type == evidence.TypeDNSAddress {
+			entities[normalizeEntity(item.Value)] = struct{}{}
+		}
+	}
+	selected := make([]evidence.Evidence, 0, len(all))
+	selectedIDs := make(map[string]struct{})
+	for _, item := range all {
+		if _, ok := entities[normalizeEntity(item.EntityID)]; !ok && !withinDomainScope(normalizeEntity(item.EntityID), target) { continue }
+		selected = append(selected, item)
+		selectedIDs[item.ID] = struct{}{}
+	}
+	observations := registry.AllObservations()
+	selectedObservations := make([]evidence.Observation, 0, len(observations))
+	for _, observation := range observations {
+		if _, ok := selectedIDs[observation.EvidenceID]; ok { selectedObservations = append(selectedObservations, observation) }
+	}
+	return selected, selectedObservations
+}
+
+func normalizeEntity(value string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(value)), ".")
+}
+
+func withinDomainScope(entity, target string) bool {
+	if entity == target { return true }
+	if net.ParseIP(target) != nil { return false }
+	return strings.HasSuffix(entity, "."+target)
 }
