@@ -183,11 +183,15 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 		fmt.Fprintf(&b, "%s\n\n", mdText(report.InvestigationPlan.Summary))
 		items := append([]InvestigationTask(nil), report.InvestigationPlan.Items...)
 		sort.Slice(items, func(i, j int) bool {
+			leftActive := items[i].Status == TaskRecommended || items[i].Status == TaskInconclusive
+			rightActive := items[j].Status == TaskRecommended || items[j].Status == TaskInconclusive
+			if leftActive != rightActive { return leftActive }
 			if items[i].Priority != items[j].Priority { return items[i].Priority > items[j].Priority }
 			return items[i].ID < items[j].ID
 		})
 		for _, item := range items {
 			fmt.Fprintf(&b, "### [%s | %s] %s\n\n%s\n\n", mdText(item.Status), mdText(item.PriorityLabel), mdText(item.Action), mdText(item.Rationale))
+			if item.OutcomeNote != "" { fmt.Fprintf(&b, "- **Investigator note:** %s\n", mdText(item.OutcomeNote)) }
 			writeMarkdownRefs(&b, "References", item.References)
 			writeMarkdownRefs(&b, "Outcome evidence", item.EvidenceIDs)
 			b.WriteString("\n")
