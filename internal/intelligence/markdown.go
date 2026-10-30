@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/itsFuRy007/kem3t/internal/events"
 )
 
 // RenderMarkdownReport renders a researcher-oriented dossier from an existing
@@ -169,7 +171,9 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 		sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 		for i, item := range items {
 			fmt.Fprintf(&b, "%d. **%s**\n   - Why: %s\n", i+1, mdText(item.Action), mdText(item.Reason))
-			writeMarkdownRefs(&b, "   - References", item.References)
+			if len(item.References) > 0 {
+				fmt.Fprintf(&b, "   - References: %s\\n", markdownRefValues(item.References))
+			}
 		}
 		b.WriteString("\n")
 	}
@@ -212,6 +216,17 @@ func mdCode(value string) string {
 	value = strings.Join(strings.Fields(value), " ")
 	value = strings.ReplaceAll(value, "`", "'")
 	return "`" + value + "`"
+}
+
+func markdownRefValues(values []string) string {
+	items := append([]string(nil), values...)
+	sort.Strings(items)
+	items = uniqueStrings(items)
+	formatted := make([]string, 0, len(items))
+	for _, item := range items {
+		formatted = append(formatted, mdCode(item))
+	}
+	return strings.Join(formatted, ", ")
 }
 
 func writeMarkdownRefs(b *strings.Builder, label string, values []string) {
