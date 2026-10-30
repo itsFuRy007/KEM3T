@@ -1,6 +1,7 @@
 package evidence
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -118,4 +119,61 @@ func TestSQLiteRegistryRejectsDuplicateRecords(t *testing.T) {
 	if err := registry.AddObservation(o); !errors.Is(err, ErrObservationExists) {
 		t.Fatalf("expected ErrObservationExists, got %v", err)
 	}
+}
+
+func TestSQLiteSaveBatchPersistsEvidenceAndObservations(t *testing.T) {
+	store,err:=OpenSQLiteStore(filepath.Join(t.TempDir(),"batch.db"));if err!=nil{t.Fatal(err)};defer store.Close()
+	first:=validEvidence()
+	second:=validEvidence();second.ID="dns-address:example.com:192.0.2.11";second.Value="192.0.2.11"
+	firstObservation:=validObservation()
+	secondObservation:=validObservation();secondObservation.ID="batch-observation-2";secondObservation.EvidenceID=second.ID
+	if err:=store.SaveBatch(context.Background(),[]Evidence{first,second},[]Observation{firstObservation,secondObservation});err!=nil{t.Fatal(err)}
+	records,observations,err:=store.LoadAll(context.Background());if err!=nil{t.Fatal(err)}
+	if len(records)!=2||len(observations)!=2{t.Fatalf("batch persisted %d evidence and %d observations, want 2 each",len(records),len(observations))}
+}
+
+func TestSQLiteSaveBatchRollsBackEvidenceWhenObservationInsertFails(t *testing.T) {
+	store,err:=OpenSQLiteStore(filepath.Join(t.TempDir(),"rollback.db"));if err!=nil{t.Fatal(err)};defer store.Close()
+	existing:=validEvidence()
+	if err:=store.SaveEvidence(context.Background(),existing);err!=nil{t.Fatal(err)}
+	existingObservation:=validObservation()
+	if err:=store.SaveObservation(context.Background(),existingObservation);err!=nil{t.Fatal(err)}
+	newItem:=validEvidence();newItem.ID="new-evidence"
+	duplicateObservation:=validObservation();duplicateObservation.EvidenceID=newItem.ID
+	if err:=store.SaveBatch(context.Background(),[]Evidence{newItem},[]Observation{duplicateObservation});!errors.Is(err,ErrObservationExists){t.Fatalf("expected ErrObservationExists, got %v",err)}
+	records,observations,err:=store.LoadAll(context.Background());if err!=nil{t.Fatal(err)}
+	if len(records)!=1||records[0].ID!=existing.ID||len(observations)!=1{t.Fatalf("failed batch was not rolled back: evidence=%+v observations=%+v",records,observations)}
+}
+
+func TestSQLiteSaveBatchRollsBackOnMissingEvidenceReference(t *testing.T) {
+	store,err:=OpenSQLiteStore(filepath.Join(t.TempDir(),"missing-reference.db"));if err!=nil{t.Fatal(err)};defer store.Close()
+	newItem:=validEvidence()
+	observation:=validObservation();observation.EvidenceID="not-in-batch-or-database"
+	if err:=store.SaveBatch(context.Background(),[]Evidence{newItem},[]Observation{observation});!errors.Is(err,ErrEvidenceNotFound){t.Fatalf("expected ErrEvidenceNotFound, got %v",err)}
+	records,observations,err:=store.LoadAll(context.Background());if err!=nil{t.Fatal(err)}
+	if len(records)!=0||len(observations)!=0{t.Fatalf("foreign-key failure did not roll back batch: evidence=%+v observations=%+v",records,observations)}
+}
+
+func TestSQLiteRegistryAddBatchSurvivesReopen(t *testing.T) {
+	path:=filepath.Join(t.TempDir(),"registry-batch.db")
+	registry,err:=OpenRegistry(path);if err!=nil{t.Fatal(err)}
+	first:=validEvidence()
+	second:=validEvidence();second.ID="dns-address:example.com:192.0.2.12";second.Value="192.0.2.12"
+	firstObservation:=validObservation()
+	secondObservation:=validObservation();secondObservation.ID="registry-batch-observation-2";secondObservation.EvidenceID=second.ID
+	if err:=registry.AddBatch(context.Background(),[]Evidence{first,second},[]Observation{firstObservation,secondObservation});err!=nil{_ = registry.Close();t.Fatal(err)}
+	if err:=registry.Close();err!=nil{t.Fatal(err)}
+	reopened,err:=OpenRegistry(path);if err!=nil{t.Fatal(err)};defer reopened.Close()
+	if len(reopened.AllEvidence())!=2||len(reopened.AllObservations())!=2{t.Fatalf("reopened registry lost batch records")}
+	if _,err:=reopened.ObservationsForEvidence(second.ID);err!=nil{t.Fatalf("reopened batch evidence history unavailable: %v",err)}
+}
+
+func TestSQLiteSaveBatchRollsBackOnDuplicateEvidence(t *testing.T) {
+	store,err:=OpenSQLiteStore(filepath.Join(t.TempDir(),"duplicate-evidence.db"));if err!=nil{t.Fatal(err)};defer store.Close()
+	existing:=validEvidence()
+	if err:=store.SaveEvidence(context.Background(),existing);err!=nil{t.Fatal(err)}
+	newItem:=validEvidence();newItem.ID="new-evidence-before-duplicate"
+	if err:=store.SaveBatch(context.Background(),[]Evidence{newItem,existing},nil);!errors.Is(err,ErrEvidenceExists){t.Fatalf("expected ErrEvidenceExists, got %v",err)}
+	records,observations,err:=store.LoadAll(context.Background());if err!=nil{t.Fatal(err)}
+	if len(records)!=1||records[0].ID!=existing.ID||len(observations)!=0{t.Fatalf("duplicate evidence batch was not rolled back: evidence=%+v observations=%+v",records,observations)}
 }
