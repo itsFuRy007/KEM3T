@@ -57,6 +57,8 @@ Target
 
 The repository separates collection, evidence, graph, intelligence, and orchestration so that new collectors and relationship types can be added incrementally.
 
+Core extension points, lifecycle rules, scope guarantees, evidence invariants, and compatibility policy are documented in [Core Contracts](docs/core-contracts.md).
+
 ## Requirements
 
 - Go **1.26.10**, as declared in go.mod
@@ -235,7 +237,7 @@ The roadmap tracks implemented foundations and remaining validation work; checke
 ### Foundation
 - [x] Collection events, core pipeline, evidence registration, validation, and persistence
 - [x] Initial evidence-backed infrastructure graph and pipeline integration
-- [ ] Finalize and document stable core interfaces
+- [x] Finalize and document stable core interfaces
 
 ### Deep collection
 - [x] DNS, TCP, TLS, and bounded HTTP/HTTPS collection
