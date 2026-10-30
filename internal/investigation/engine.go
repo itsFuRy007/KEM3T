@@ -203,13 +203,15 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 	for _, outcome := range result.Stages {
 		run.EventCount += outcome.Result.Events
 		if outcome.Error != "" {
-			run.ErrorMessage = strings.TrimSpace(run.ErrorMessage + "; " + outcome.Name + ": " + outcome.Error)
+			message := outcome.Name + ": " + outcome.Error
+			if run.ErrorMessage == "" { run.ErrorMessage = message } else { run.ErrorMessage += "; " + message }
 		}
 	}
 	for _, item := range e.Registry.AllEvidence() {
 		if _, existed := evidenceBefore[item.ID]; existed { continue }
 		if item.Type == evidence.TypeDNSAddress { run.AddressCount++ }
 	}
+	if retErr != nil && run.ErrorMessage == "" { run.ErrorMessage = retErr.Error() }
 	if result.Partial || retErr != nil {
 		run.Status = evidence.CollectionRunFailed
 	} else {
