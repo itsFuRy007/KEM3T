@@ -895,270 +895,209 @@ func printInfrastructureGraph(g graph.Graph) {
 }
 
 func runCT(target, snapshotDir string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
+	return runExternalCollection(target, snapshotDir, "ct", 20*time.Second,
+		func(ctx context.Context, registry *evidence.Registry, target string) error {
+			report, err := (&externalintel.CTClient{}).LookupDomain(ctx, target)
+			if err != nil {
+				return err
+			}
+			added, err := externalintel.RegisterCTReport(registry, report)
+			if err != nil {
+				return err
+			}
+			infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
+			if err != nil {
+				return fmt.Errorf("build CT infrastructure graph: %w", err)
+			}
 
-	report, err := (&externalintel.CTClient{}).LookupDomain(ctx, target)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(snapshotDir) == "" {
-		return fmt.Errorf("snapshot directory is required")
-	}
-	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
-		return fmt.Errorf("create snapshot directory: %w", err)
-	}
-	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
-	if err != nil {
-		return fmt.Errorf("open evidence registry: %w", err)
-	}
-	defer registry.Close()
-	added, err := externalintel.RegisterCTReport(registry, report)
-	if err != nil {
-		return err
-	}
-	infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
-	if err != nil {
-		return fmt.Errorf("build CT infrastructure graph: %w", err)
-	}
-
-	fmt.Println("[CERTIFICATE TRANSPARENCY INTELLIGENCE]")
-	fmt.Printf("Target: %s\n", report.Target)
-	fmt.Printf("Source: %s\n", report.Source)
-	fmt.Printf("Retrieved: %s\n", report.RetrievedAt.Format(time.RFC3339))
-	fmt.Printf("Certificate records: %d\n", report.CertificateRecords)
-	fmt.Printf("Unique in-scope DNS names: %d\n", report.UniqueDNSNames)
-	fmt.Printf("Distinct issuer labels: %d\n", report.UniqueIssuers)
-	for _, name := range report.DNSNames {
-		fmt.Printf("[CT NAME] %s\n", name)
-	}
-	fmt.Println("\n[INTERPRETATION LIMITS]")
-	for _, limitation := range report.Limitations {
-		fmt.Printf("- %s\n", limitation)
-	}
-	fmt.Printf("Evidence records added: %d\n", added)
-	printInfrastructureGraph(infrastructureGraph)
-	return nil
+			fmt.Println("[CERTIFICATE TRANSPARENCY INTELLIGENCE]")
+			fmt.Printf("Target: %s\n", report.Target)
+			fmt.Printf("Source: %s\n", report.Source)
+			fmt.Printf("Retrieved: %s\n", report.RetrievedAt.Format(time.RFC3339))
+			fmt.Printf("Certificate records: %d\n", report.CertificateRecords)
+			fmt.Printf("Unique in-scope DNS names: %d\n", report.UniqueDNSNames)
+			fmt.Printf("Distinct issuer labels: %d\n", report.UniqueIssuers)
+			for _, name := range report.DNSNames {
+				fmt.Printf("[CT NAME] %s\n", name)
+			}
+			fmt.Println("\n[INTERPRETATION LIMITS]")
+			for _, limitation := range report.Limitations {
+				fmt.Printf("- %s\n", limitation)
+			}
+			fmt.Printf("New observations: %d\n", added)
+			printInfrastructureGraph(infrastructureGraph)
+			return nil
+		})
 }
 
 func runRDAP(target, snapshotDir string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
-	defer cancel()
-	report, err := (&externalintel.RDAPClient{}).LookupDomain(ctx, target)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(snapshotDir) == "" {
-		return fmt.Errorf("snapshot directory is required")
-	}
-	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
-		return fmt.Errorf("create snapshot directory: %w", err)
-	}
-	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
-	if err != nil {
-		return fmt.Errorf("open evidence registry: %w", err)
-	}
-	defer registry.Close()
-	added, err := externalintel.RegisterRDAPReport(registry, report)
-	if err != nil {
-		return err
-	}
-	infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
-	if err != nil {
-		return fmt.Errorf("build RDAP infrastructure graph: %w", err)
-	}
-	fmt.Println("[DOMAIN REGISTRATION INTELLIGENCE]")
-	fmt.Printf("Target: %s\nSource: %s\nRetrieved: %s\n", report.Target, report.Source, report.RetrievedAt.Format(time.RFC3339))
-	if report.Handle != "" {
-		fmt.Printf("Registry handle: %s\n", report.Handle)
-	}
-	if report.Registrar != "" {
-		fmt.Printf("Registrar label: %s\n", report.Registrar)
-	}
-	fmt.Printf("Status values: %s\n", strings.Join(report.Status, ", "))
-	for _, ns := range report.NameServers {
-		fmt.Printf("[NAMESERVER] %s\n", ns)
-	}
-	for _, event := range report.Events {
-		fmt.Printf("[REGISTRATION EVENT] %s: %s\n", event.Action, event.Date)
-	}
-	fmt.Println("\n[INTERPRETATION LIMITS]")
-	for _, limitation := range report.Limitations {
-		fmt.Printf("- %s\n", limitation)
-	}
-	fmt.Printf("New observation: %t\n", added)
-	printInfrastructureGraph(infrastructureGraph)
-	return nil
+	return runExternalCollection(target, snapshotDir, "rdap", 25*time.Second,
+		func(ctx context.Context, registry *evidence.Registry, target string) error {
+			report, err := (&externalintel.RDAPClient{}).LookupDomain(ctx, target)
+			if err != nil {
+				return err
+			}
+			added, err := externalintel.RegisterRDAPReport(registry, report)
+			if err != nil {
+				return err
+			}
+			infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
+			if err != nil {
+				return fmt.Errorf("build RDAP infrastructure graph: %w", err)
+			}
+			fmt.Println("[DOMAIN REGISTRATION INTELLIGENCE]")
+			fmt.Printf("Target: %s\nSource: %s\nRetrieved: %s\n", report.Target, report.Source, report.RetrievedAt.Format(time.RFC3339))
+			if report.Handle != "" {
+				fmt.Printf("Registry handle: %s\n", report.Handle)
+			}
+			if report.Registrar != "" {
+				fmt.Printf("Registrar label: %s\n", report.Registrar)
+			}
+			fmt.Printf("Status values: %s\n", strings.Join(report.Status, ", "))
+			for _, ns := range report.NameServers {
+				fmt.Printf("[NAMESERVER] %s\n", ns)
+			}
+			for _, event := range report.Events {
+				fmt.Printf("[REGISTRATION EVENT] %s: %s\n", event.Action, event.Date)
+			}
+			fmt.Println("\n[INTERPRETATION LIMITS]")
+			for _, limitation := range report.Limitations {
+				fmt.Printf("- %s\n", limitation)
+			}
+			fmt.Printf("New observation: %t\n", added)
+			printInfrastructureGraph(infrastructureGraph)
+			return nil
+		})
 }
 
 func runASN(target, snapshotDir string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	report, err := (&externalintel.ASNClient{}).LookupIP(ctx, target)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(snapshotDir) == "" {
-		return fmt.Errorf("snapshot directory is required")
-	}
-	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
-		return fmt.Errorf("create snapshot directory: %w", err)
-	}
-	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
-	if err != nil {
-		return fmt.Errorf("open evidence registry: %w", err)
-	}
-	defer registry.Close()
-	added, err := externalintel.RegisterASNReport(registry, report)
-	if err != nil {
-		return err
-	}
-	infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
-	if err != nil {
-		return fmt.Errorf("build ASN infrastructure graph: %w", err)
-	}
-	fmt.Println("[ORIGIN ASN INTELLIGENCE]")
-	fmt.Printf("Target IP: %s\nRetrieved: %s\n", report.Target, report.RetrievedAt.Format(time.RFC3339))
-	for _, record := range report.Records {
-		fmt.Printf("[ORIGIN] AS%d | Prefix: %s | Network label: %s | Country: %s | Registry: %s | Allocated: %s\n", record.ASN, record.Prefix, record.NetworkName, record.Country, record.Registry, record.Allocated)
-		fmt.Printf("  Mapping source: %s\n  RDAP source: %s\n", record.MappingSource, record.RDAPSource)
-	}
-	fmt.Println("\n[INTERPRETATION LIMITS]")
-	for _, limitation := range report.Limitations {
-		fmt.Printf("- %s\n", limitation)
-	}
-	fmt.Printf("New observation: %t\n", added)
-	printInfrastructureGraph(infrastructureGraph)
-	return nil
+	return runExternalCollection(target, snapshotDir, "asn", 30*time.Second,
+		func(ctx context.Context, registry *evidence.Registry, target string) error {
+			report, err := (&externalintel.ASNClient{}).LookupIP(ctx, target)
+			if err != nil {
+				return err
+			}
+			added, err := externalintel.RegisterASNReport(registry, report)
+			if err != nil {
+				return err
+			}
+			infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
+			if err != nil {
+				return fmt.Errorf("build ASN infrastructure graph: %w", err)
+			}
+			fmt.Println("[ORIGIN ASN INTELLIGENCE]")
+			fmt.Printf("Target IP: %s\nRetrieved: %s\n", report.Target, report.RetrievedAt.Format(time.RFC3339))
+			for _, record := range report.Records {
+				fmt.Printf("[ORIGIN] AS%d | Prefix: %s | Network label: %s | Country: %s | Registry: %s | Allocated: %s\n", record.ASN, record.Prefix, record.NetworkName, record.Country, record.Registry, record.Allocated)
+				fmt.Printf("  Mapping source: %s\n  RDAP source: %s\n", record.MappingSource, record.RDAPSource)
+			}
+			fmt.Println("\n[INTERPRETATION LIMITS]")
+			for _, limitation := range report.Limitations {
+				fmt.Printf("- %s\n", limitation)
+			}
+			fmt.Printf("New observation: %t\n", added)
+			printInfrastructureGraph(infrastructureGraph)
+			return nil
+		})
 }
 
 func runPassiveDNS(target, snapshotDir string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	client := &externalintel.PassiveDNSClient{APIKey: strings.TrimSpace(os.Getenv("OTX_API_KEY"))}
-	report, err := client.LookupDomain(ctx, target)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(snapshotDir) == "" {
-		return fmt.Errorf("snapshot directory is required")
-	}
-	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
-		return fmt.Errorf("create snapshot directory: %w", err)
-	}
-	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
-	if err != nil {
-		return fmt.Errorf("open evidence registry: %w", err)
-	}
-	defer registry.Close()
-	added, err := externalintel.RegisterPassiveDNSReport(registry, report)
-	if err != nil {
-		return err
-	}
-	infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
-	if err != nil {
-		return fmt.Errorf("build passive-DNS infrastructure graph: %w", err)
-	}
-	fmt.Println("[PASSIVE DNS INTELLIGENCE]")
-	fmt.Printf("Target: %s\nSource: %s\nRetrieved: %s\nProvider records: %d\nScoped unique observations: %d\n", report.Target, report.Source, report.RetrievedAt.Format(time.RFC3339), report.SourceRecordCount, len(report.Records))
-	for _, record := range report.Records {
-		fmt.Printf("[HISTORICAL DNS] %s %s %s | first: %s | last: %s | ASN: %s\n", record.Hostname, record.RecordType, record.Address, record.FirstSeen, record.LastSeen, record.ASN)
-	}
-	if report.Truncated {
-		fmt.Println("Warning: provider response may be truncated; treat this as a partial historical view.")
-	}
-	fmt.Println("\n[INTERPRETATION LIMITS]")
-	for _, limitation := range report.Limitations {
-		fmt.Printf("- %s\n", limitation)
-	}
-	fmt.Printf("New observations: %d\n", added)
-	printInfrastructureGraph(infrastructureGraph)
-	return nil
+	return runExternalCollection(target, snapshotDir, "pdns", 20*time.Second,
+		func(ctx context.Context, registry *evidence.Registry, target string) error {
+			client := &externalintel.PassiveDNSClient{APIKey: strings.TrimSpace(os.Getenv("OTX_API_KEY"))}
+			report, err := client.LookupDomain(ctx, target)
+			if err != nil {
+				return err
+			}
+			added, err := externalintel.RegisterPassiveDNSReport(registry, report)
+			if err != nil {
+				return err
+			}
+			infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
+			if err != nil {
+				return fmt.Errorf("build passive-DNS infrastructure graph: %w", err)
+			}
+			fmt.Println("[PASSIVE DNS INTELLIGENCE]")
+			fmt.Printf("Target: %s\nSource: %s\nRetrieved: %s\nProvider records: %d\nScoped unique observations: %d\n", report.Target, report.Source, report.RetrievedAt.Format(time.RFC3339), report.SourceRecordCount, len(report.Records))
+			for _, record := range report.Records {
+				fmt.Printf("[HISTORICAL DNS] %s %s %s | first: %s | last: %s | ASN: %s\n", record.Hostname, record.RecordType, record.Address, record.FirstSeen, record.LastSeen, record.ASN)
+			}
+			if report.Truncated {
+				fmt.Println("Warning: provider response may be truncated; treat this as a partial historical view.")
+			}
+			fmt.Println("\n[INTERPRETATION LIMITS]")
+			for _, limitation := range report.Limitations {
+				fmt.Printf("- %s\n", limitation)
+			}
+			fmt.Printf("New observations: %d\n", added)
+			printInfrastructureGraph(infrastructureGraph)
+			return nil
+		})
 }
 
 func runThreatIntel(target, snapshotDir string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	client := &externalintel.ThreatIntelClient{APIKey: strings.TrimSpace(os.Getenv("OTX_API_KEY"))}
-	report, err := client.Lookup(ctx, target)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(snapshotDir) == "" {
-		return fmt.Errorf("snapshot directory is required")
-	}
-	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
-		return fmt.Errorf("create snapshot directory: %w", err)
-	}
-	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
-	if err != nil {
-		return fmt.Errorf("open evidence registry: %w", err)
-	}
-	defer registry.Close()
-	added, err := externalintel.RegisterThreatIntelReport(registry, report)
-	if err != nil {
-		return err
-	}
-	infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
-	if err != nil {
-		return fmt.Errorf("build threat-intelligence graph: %w", err)
-	}
-	fmt.Println("[THREAT INTELLIGENCE CONTEXT]")
-	fmt.Printf("Indicator: %s (%s)\nSource: %s\nRetrieved: %s\nCommunity pulse count: %d\nReturned pulse records: %d\n", report.Target, report.IndicatorType, report.Source, report.RetrievedAt.Format(time.RFC3339), report.PulseCount, len(report.Pulses))
-	for _, pulse := range report.Pulses {
-		fmt.Printf("[COMMUNITY REPORT] %s | ID: %s | Tags: %s | Created: %s | Modified: %s\n", pulse.Name, pulse.ID, strings.Join(pulse.Tags, ", "), pulse.Created, pulse.Modified)
-	}
-	if len(report.Pulses) == 0 {
-		fmt.Println("No pulse records were returned; this is not proof that the indicator is benign.")
-	}
-	if report.Truncated {
-		fmt.Println("Warning: provider reports more pulses than returned records; this is a partial view.")
-	}
-	fmt.Println("\n[INTERPRETATION LIMITS]")
-	for _, limitation := range report.Limitations {
-		fmt.Printf("- %s\n", limitation)
-	}
-	fmt.Printf("New observation: %t\n", added)
-	printInfrastructureGraph(infrastructureGraph)
-	return nil
+	return runExternalCollection(target, snapshotDir, "threat", 20*time.Second,
+		func(ctx context.Context, registry *evidence.Registry, target string) error {
+			client := &externalintel.ThreatIntelClient{APIKey: strings.TrimSpace(os.Getenv("OTX_API_KEY"))}
+			report, err := client.Lookup(ctx, target)
+			if err != nil {
+				return err
+			}
+			added, err := externalintel.RegisterThreatIntelReport(registry, report)
+			if err != nil {
+				return err
+			}
+			infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
+			if err != nil {
+				return fmt.Errorf("build threat-intelligence graph: %w", err)
+			}
+			fmt.Println("[THREAT INTELLIGENCE CONTEXT]")
+			fmt.Printf("Indicator: %s (%s)\nSource: %s\nRetrieved: %s\nCommunity pulse count: %d\nReturned pulse records: %d\n", report.Target, report.IndicatorType, report.Source, report.RetrievedAt.Format(time.RFC3339), report.PulseCount, len(report.Pulses))
+			for _, pulse := range report.Pulses {
+				fmt.Printf("[COMMUNITY REPORT] %s | ID: %s | Tags: %s | Created: %s | Modified: %s\n", pulse.Name, pulse.ID, strings.Join(pulse.Tags, ", "), pulse.Created, pulse.Modified)
+			}
+			if len(report.Pulses) == 0 {
+				fmt.Println("No pulse records were returned; this is not proof that the indicator is benign.")
+			}
+			if report.Truncated {
+				fmt.Println("Warning: provider reports more pulses than returned records; this is a partial view.")
+			}
+			fmt.Println("\n[INTERPRETATION LIMITS]")
+			for _, limitation := range report.Limitations {
+				fmt.Printf("- %s\n", limitation)
+			}
+			fmt.Printf("New observation: %t\n", added)
+			printInfrastructureGraph(infrastructureGraph)
+			return nil
+		})
 }
 
 func runIPRDAP(target, snapshotDir string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
-	defer cancel()
-	report, err := (&externalintel.RDAPClient{}).LookupIP(ctx, target)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(snapshotDir) == "" {
-		return fmt.Errorf("snapshot directory is required")
-	}
-	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
-		return fmt.Errorf("create snapshot directory: %w", err)
-	}
-	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
-	if err != nil {
-		return fmt.Errorf("open evidence registry: %w", err)
-	}
-	defer registry.Close()
-	added, err := externalintel.RegisterIPRDAPReport(registry, report)
-	if err != nil {
-		return err
-	}
-	infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
-	if err != nil {
-		return fmt.Errorf("build IP RDAP graph: %w", err)
-	}
-	fmt.Println("[IP NETWORK REGISTRATION INTELLIGENCE]")
-	fmt.Printf("Target IP: %s\nSource: %s\nRetrieved: %s\n", report.Target, report.Source, report.RetrievedAt.Format(time.RFC3339))
-	fmt.Printf("Network handle: %s\nNetwork label: %s\nRange: %s - %s\nCountry label: %s\nNetwork type: %s\nStatus: %s\n", report.Handle, report.Name, report.StartAddress, report.EndAddress, report.Country, report.NetworkType, strings.Join(report.Status, ", "))
-	fmt.Println("\n[INTERPRETATION LIMITS]")
-	for _, limitation := range report.Limitations {
-		fmt.Printf("- %s\n", limitation)
-	}
-	fmt.Printf("New observation: %t\n", added)
-	printInfrastructureGraph(infrastructureGraph)
-	return nil
+	return runExternalCollection(target, snapshotDir, "rdap", 25*time.Second,
+		func(ctx context.Context, registry *evidence.Registry, target string) error {
+			report, err := (&externalintel.RDAPClient{}).LookupIP(ctx, target)
+			if err != nil {
+				return err
+			}
+			added, err := externalintel.RegisterIPRDAPReport(registry, report)
+			if err != nil {
+				return err
+			}
+			infrastructureGraph, err := graph.BuildFromRegistryForTarget(registry, target)
+			if err != nil {
+				return fmt.Errorf("build IP RDAP graph: %w", err)
+			}
+			fmt.Println("[IP NETWORK REGISTRATION INTELLIGENCE]")
+			fmt.Printf("Target IP: %s\nSource: %s\nRetrieved: %s\n", report.Target, report.Source, report.RetrievedAt.Format(time.RFC3339))
+			fmt.Printf("Network handle: %s\nNetwork label: %s\nRange: %s - %s\nCountry label: %s\nNetwork type: %s\nStatus: %s\n", report.Handle, report.Name, report.StartAddress, report.EndAddress, report.Country, report.NetworkType, strings.Join(report.Status, ", "))
+			fmt.Println("\n[INTERPRETATION LIMITS]")
+			for _, limitation := range report.Limitations {
+				fmt.Printf("- %s\n", limitation)
+			}
+			fmt.Printf("New observation: %t\n", added)
+			printInfrastructureGraph(infrastructureGraph)
+			return nil
+		})
 }
 
 func runBatchDNS(targetsFile, snapshotDir string, workers int) error {
