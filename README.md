@@ -57,7 +57,7 @@ Target
 
 The repository separates collection, evidence, graph, intelligence, and orchestration so that new collectors and relationship types can be added incrementally.
 
-Core extension points, lifecycle rules, scope guarantees, evidence invariants, and compatibility policy are documented in [Core Contracts](docs/core-contracts.md).
+Core extension points, lifecycle rules, scope guarantees, evidence invariants, and compatibility policy are documented in [Core Contracts](docs/core-contracts.md). Security boundaries and release gates are documented in [Security Review](docs/security-review.md).
 
 ## Requirements
 
@@ -231,13 +231,18 @@ gofmt -l .
 go test -count=1 ./...
 go test -race -p 1 -count=1 ./...
 go test -run '^$' -fuzz=FuzzCoreInputValidation -fuzztime=3s ./internal/integration
+go mod tidy -diff
+go mod verify
+go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 go vet ./...
 go build ./...
-go mod verify
+go build -trimpath -buildvcs=false -o /tmp/kem3t-first ./cmd/kem3t
+go build -trimpath -buildvcs=false -o /tmp/kem3t-second ./cmd/kem3t
+cmp /tmp/kem3t-first /tmp/kem3t-second
 git diff --check
 ~~~
 
-The race-detector command uses -p 1 to run package tests serially. CI runs the full test suite, race detector, a bounded fuzz smoke test, performance benchmarks, vet, and build checks. Formatting is reviewed separately with gofmt.
+CI checks gofmt on changed Go files. The repository still contains legacy files with formatting debt, so a full-tree `gofmt -l .` is informational until those files are normalized. The race-detector command uses -p 1 to run package tests serially. CI also runs the full test suite, race detector, a bounded fuzz smoke test, performance benchmarks, vulnerability analysis, module verification, reproducible-build checks, vet, and build.
 
 ## Development roadmap
 
