@@ -80,9 +80,11 @@ Run one unified investigation. DNS, CT, and RDAP use the shared evidence registr
 
 ~~~bash
 go run ./cmd/kem3t -mode investigate -target example.com
+# Save a researcher-oriented Markdown dossier with linked evidence references
+go run ./cmd/kem3t -mode investigate -target example.com -export-markdown ./reports/example.com.md
 ~~~
 
-Active TCP/TLS/HTTP checks are deliberately disabled by default. Enable them only when you are authorized to assess the supplied target; the TCP range applies only to that target and is never expanded to DNS-discovered addresses:
+The Markdown dossier organizes the executive summary, signals, correlations, discoveries, multi-hop paths, recurring pivots, hypotheses, conflicting verification evidence, intelligence gaps, and next steps. It preserves report/evidence references and writes the file atomically with owner-only permissions.\n\nActive TCP/TLS/HTTP checks are deliberately disabled by default. Enable them only when you are authorized to assess the supplied target; the TCP range applies only to that target and is never expanded to DNS-discovered addresses:
 
 ~~~bash
 go run ./cmd/kem3t -mode investigate -target example.com -enable-active -start-port 1 -end-port 1024 -port 443 -http-scheme auto

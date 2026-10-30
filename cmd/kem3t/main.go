@@ -40,6 +40,7 @@ func run() error {
 
 	mode := flags.String("mode", "demo", "Mode: demo, dns, plan-feedback, tls, tcp, http, investigate, history, batch-dns, ct, rdap, iprdap, asn, pdns, or threat")
 	exportJSON := flags.String("export-json", "", "Write the target-scoped DNS intelligence report as versioned JSON (DNS mode only)")
+	exportMarkdown := flags.String("export-markdown", "", "Write a researcher-oriented Markdown intelligence dossier (investigate mode only)")
 	planStatePath := flags.String("plan-state", "", "Load and update adaptive investigation feedback state (DNS and plan-feedback modes)")
 	planFeedbackItem := flags.String("plan-feedback-item", "", "Saved plan task ID to update (plan-feedback mode)")
 	planFeedbackOutcome := flags.String("plan-feedback-outcome", "", "Feedback outcome: COMPLETED, INCONCLUSIVE, BLOCKED, or NOT_APPLICABLE")
@@ -68,6 +69,9 @@ func run() error {
 	if strings.TrimSpace(*exportJSON) != "" && selectedMode != "dns" {
 		return fmt.Errorf("-export-json is supported only in DNS mode")
 	}
+	if strings.TrimSpace(*exportMarkdown) != "" && selectedMode != "investigate" {
+		return fmt.Errorf("-export-markdown is supported only in investigate mode")
+	}
 	if strings.TrimSpace(*planStatePath) != "" && selectedMode != "dns" && selectedMode != "plan-feedback" {
 		return fmt.Errorf("-plan-state is supported only in DNS and plan-feedback modes")
 	}
@@ -80,7 +84,7 @@ func run() error {
 		return runPlanFeedback(*planStatePath, *planFeedbackItem, *planFeedbackOutcome, *planFeedbackEvidence, *planFeedbackNote)
 	case "investigate":
 		if strings.TrimSpace(*target) == "" { return fmt.Errorf("-target is required in investigate mode") }
-		return runInvestigation(strings.TrimSpace(*target), *snapshotDir, *enableActive, *startPort, *endPort, *port, *httpScheme, *httpPort)
+		return runInvestigation(strings.TrimSpace(*target), *snapshotDir, *enableActive, *startPort, *endPort, *port, *httpScheme, *httpPort, *exportMarkdown)
 	case "history":
 		return runHistory(*target, *snapshotDir)
 	case "batch-dns":
@@ -138,7 +142,7 @@ func run() error {
 }
 
 
-func runInvestigation(target, snapshotDir string, enableActive bool, startPort, endPort, tlsPort int, httpScheme string, httpPort int) (retErr error) {
+func runInvestigation(target, snapshotDir string, enableActive bool, startPort, endPort, tlsPort int, httpScheme string, httpPort int, exportMarkdown string) (retErr error) {
 	if strings.TrimSpace(snapshotDir) == "" { return fmt.Errorf("snapshot directory is required") }
 	if enableActive && (startPort < 1 || endPort > 65535 || startPort > endPort) {
 		return fmt.Errorf("invalid authorized TCP port range %d-%d", startPort, endPort)
@@ -177,6 +181,12 @@ func runInvestigation(target, snapshotDir string, enableActive bool, startPort, 
 
 	fmt.Println("[UNIFIED INVESTIGATION]")
 	fmt.Printf("Target: %s\nRun ID: %s\nPartial: %t\n", result.Target, result.RunID, result.Partial)
+	if path := strings.TrimSpace(exportMarkdown); path != "" {
+		markdown, err := intelligence.RenderMarkdownReport(result.Report)
+		if err != nil { return fmt.Errorf("render Markdown intelligence dossier: %w", err) }
+		if err := writeFileAtomic(path, []byte(markdown)); err != nil { return fmt.Errorf("write Markdown intelligence dossier: %w", err) }
+		fmt.Printf("[MARKDOWN DOSSIER] %s\n", path)
+	}
 	for _, stage := range result.Stages {
 		state := "completed"
 		if stage.Error != "" { state = "failed/partial" }
@@ -343,7 +353,7 @@ func runPlanFeedback(statePath, itemID, outcome, evidenceList, note string) erro
 	if err != nil {
 		return fmt.Errorf("encode investigation plan state: %w", err)
 	}
-	if err := writeJSONAtomic(statePath, updated); err != nil {
+	if err := writeFileAtomic(statePath, updated); err != nil {
 		return fmt.Errorf("save plan feedback: %w", err)
 	}
 	fmt.Printf("[PLAN FEEDBACK QUEUED] %s -> %s\n", itemID, outcome)
@@ -392,7 +402,7 @@ func runDNSWithPlanState(target, snapshotDir, exportJSON, planStatePath string) 
 		state.Feedback = []intelligence.InvestigationFeedback{}
 		stateData, err := json.MarshalIndent(state, "", "  ")
 		if err != nil { return fmt.Errorf("encode investigation plan state: %w", err) }
-		if err := writeJSONAtomic(planStatePath, stateData); err != nil { return fmt.Errorf("write investigation plan state: %w", err) }
+		if err := writeFileAtomic(planStatePath, stateData); err != nil { return fmt.Errorf("write investigation plan state: %w", err) }
 		fmt.Printf("[ADAPTIVE PLAN STATE] %s\n", planStatePath)
 	}
 	printInfrastructureGraph(result.Graph)
@@ -448,13 +458,14 @@ func runDNSWithPlanState(target, snapshotDir, exportJSON, planStatePath string) 
 func writeInvestigationExport(path string, export intelligence.InvestigationExport) error {
 	data, err := json.MarshalIndent(export, "", "  ")
 	if err != nil { return fmt.Errorf("encode scoped report: %w", err) }
-	return writeJSONAtomic(path, data)
+	return writeFileAtomic(path, data)
 }
 
-func writeJSONAtomic(path string, data []byte) error {
+func writeFileAtomic(path string, data []byte) error {
 	path = strings.TrimSpace(path)
 	if path == "" { return fmt.Errorf("output path is required") }
-	data = append(append([]byte(nil), data...), '\n')
+	data = append([]byte(nil), data...)
+	if len(data) == 0 || data[len(data)-1] != '\n' { data = append(data, '\n') }
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0750); err != nil { return fmt.Errorf("create output directory: %w", err) }
 	file, err := os.CreateTemp(dir, ".kem3t-export-*.tmp")
