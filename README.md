@@ -230,7 +230,8 @@ Run these checks before proposing a change:
 gofmt -l .
 go test -count=1 ./...
 go test -race -p 1 -count=1 ./...
-go test -run '^
+go test -run '^$' -fuzz=FuzzCoreInputValidation -fuzztime=3s ./internal/integration
+go vet ./...
 go build ./...
 go mod verify
 git diff --check
@@ -296,88 +297,6 @@ The roadmap tracks implemented foundations and remaining validation work; checke
 - [x] Initial HTTP collection bounds and redirect scope checks
 - [x] Broader malformed-input and failure-mode testing across event, evidence, observation, and report boundaries
 - [x] Core fuzz smoke tests, race-detector CI, and measured performance benchmarks
-- [ ] Security review and reproducible release checks
-
-### Real-world validation
-- [ ] Test against authorized real-world environments
-- [ ] Gather feedback and document limitations
-- [ ] Fix edge cases and optimize measured bottlenecks
-- [ ] Prepare a release after validation
-
-## Responsible use
-
-Use KEM3T only for infrastructure you own or are authorized to assess. Collection results can be incomplete or change with time; a missing observation does not by itself prove that an asset has disappeared. Correlations and hypotheses are not proof of ownership, compromise, or malicious activity.
-
-## License
-
-KEM3T is licensed under the [MIT License](LICENSE).
- -fuzz=FuzzCoreInputValidation -fuzztime=3s ./internal/integration
-go vet ./...
-go build ./...
-go mod verify
-git diff --check
-~~~
-
-The race-detector command uses -p 1 to run package tests serially, which has been more reliable in the current development environment. The CI workflow currently runs the full test suite, go vet, and build checks; formatting is reviewed separately with gofmt.
-
-## Development roadmap
-
-The roadmap tracks implemented foundations and remaining validation work; checked items do not imply release readiness.
-
-### Foundation
-- [x] Collection events, core pipeline, evidence registration, validation, and persistence
-- [x] Initial evidence-backed infrastructure graph and pipeline integration
-- [x] Finalize and document stable core interfaces
-
-### Deep collection
-- [x] DNS, TCP, TLS, and bounded HTTP/HTTPS collection
-- [x] Shared normalized observations and unified discovered-service model
-- [x] Evidence-backed service relationships and collector integration tests
-- [x] DNS/TLS edge-case coverage and cross-collector normalization
-
-### Infrastructure graph
-- [x] Evidence-backed entities, relationships, and provenance
-- [x] Cross-collector infrastructure relationships and deterministic pivots
-- [x] Entity lookup and copy-safe evidence/observation provenance
-
-### History
-- [x] Evidence-backed snapshots and collection-run history
-- [x] Chronological timelines, change comparison, and provenance
-- [x] High-change-volume review signals with conservative interpretation
-
-### Intelligence
-- [x] Target-scoped correlations, hypotheses, alternatives, and verification
-- [x] Convergent discoveries, multi-hop paths, and recurring infrastructure pivots
-- [x] Researcher narratives with evidence-linked signals and next steps
-- [x] Evidence-gap detection and explicit unresolved questions
-- [x] Adaptive investigation planning with ranked actions and investigator feedback
-- [x] Preserve conflicting verification evidence and qualitative confidence limits
-
-### External intelligence
-- [x] Certificate Transparency and domain/IP RDAP
-- [x] Origin ASN and network-prefix context
-- [x] Historical passive DNS and community threat-report references
-- [x] Persist external observations and connect them to evidence-backed graph relationships
-- [x] Preserve provider attribution, timestamps, truncation, and interpretation limits
-
-### Scale
-- [x] Bounded, cancellation-aware worker pools and target-list scheduling
-- [x] Provider-aware request limits, retries, and backoff
-- [x] Performance benchmarks and measured graph-allocation optimization
-- [x] Storage optimization audit: retain only measured improvements; reject speculative schema/index changes ([audit](docs/phase7-storage-audit.md))
-
-### Usability and investigation workflow
-- [x] CLI collection modes and console graph/intelligence output
-- [x] Versioned, scope-validated JSON investigation exports with temporal context
-- [x] DNS workflow from collection through evidence, report, adaptive plan, and export
-- [x] Unified investigation orchestration across DNS, TCP, TLS, HTTP, and external-intelligence stages with shared evidence, graph/report output, and multi-source history
-- [ ] Researcher-facing plan feedback workflow refinements and richer report formats
-
-### Hardening
-- [x] Unit and integration tests for implemented workflows
-- [x] Initial HTTP collection bounds and redirect scope checks
-- [ ] Broader malformed-input and failure-mode testing
-- [ ] Fuzzing, race-focused regression coverage, and measured performance testing
 - [ ] Security review and reproducible release checks
 
 ### Real-world validation
