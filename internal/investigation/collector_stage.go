@@ -96,8 +96,18 @@ func NewDNSStage(target string) *CollectorStage { return NewDNSStageWithResolver
 // NewDNSStageWithResolver allows deterministic resolver injection in tests and
 // controlled deployments while retaining the production DNS collector.
 func NewDNSStageWithResolver(target string, resolver collectors.DNSResolver) *CollectorStage {
+	return newDNSStage("dns", target, resolver)
+}
+
+// NewDNSSubdomainStage resolves one explicitly discovered in-scope subdomain.
+func NewDNSSubdomainStage(target string) *CollectorStage {
+	name := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(target)), ".")
+	return newDNSStage("dns-subdomain:"+name, name, nil)
+}
+
+func newDNSStage(name, target string, resolver collectors.DNSResolver) *CollectorStage {
 	return &CollectorStage{
-		StageName: "dns",
+		StageName: name,
 		Collector: &collectors.DNS{Target: target, Resolver: resolver},
 		Accept: func(event events.Event) bool { return event.Type == events.EventDNSRecordFound },
 		Convert: evidence.FromDNSEvent,
