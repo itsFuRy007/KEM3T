@@ -83,10 +83,10 @@ func (n ResearchNarrative) Validate() error {
 }
 
 type narrativeStepGroup struct {
-	action string
-	kind string
+	action  string
+	kind    string
 	reasons map[string]struct{}
-	refs map[string]struct{}
+	refs    map[string]struct{}
 }
 
 // BuildResearchNarrative organizes report results into a stable investigation
@@ -99,7 +99,7 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 	}
 
 	n := ResearchNarrative{
-		Signals: []NarrativeSignal{},
+		Signals:   []NarrativeSignal{},
 		NextSteps: []NarrativeNextStep{},
 		Limitations: []string{
 			"This narrative reorganizes existing report results; it does not independently verify them or increase their confidence.",
@@ -190,6 +190,21 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 		addSteps("pivot", pivot.ID, pivot.WhyItMatters, pivot.Verification)
 	}
 
+	for _, surface := range report.ServiceSurfaces {
+		refs := []string{"service-surface:" + surface.ID}
+		refs = appendPrefixed(refs, "evidence", surface.EvidenceIDs)
+		refs = appendPrefixed(refs, "observation", surface.ObservationIDs)
+		n.Signals = append(n.Signals, NarrativeSignal{
+			ID: "service-surface:" + surface.ID, Kind: "SERVICE_SURFACE",
+			Summary: surface.Summary, Confidence: "OBSERVED_ENDPOINT_ASSOCIATION",
+			AlternativeExplanations: strings.Join(surface.Limitations, " "),
+			References:              stableUnique(refs),
+		})
+		addSteps("service-surface", surface.ID,
+			"Review the endpoint-level evidence together; the grouping does not prove a shared backend or process.",
+			surface.NextSteps)
+	}
+
 	for _, hypothesis := range report.Hypotheses {
 		refs := appendPrefixed([]string{"hypothesis:" + hypothesis.ID}, "evidence", hypothesis.SupportingIDs)
 		n.Signals = append(n.Signals, NarrativeSignal{
@@ -214,7 +229,7 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 		}
 		n.Signals = append(n.Signals, NarrativeSignal{
 			ID: "finding:" + strings.Join(stableUnique(append([]string(nil), refs...)), ";"), Kind: "FINDING", Summary: summary,
-			Confidence: "SOURCE_PRIORITY:" + string(finding.Priority),
+			Confidence:              "SOURCE_PRIORITY:" + string(finding.Priority),
 			AlternativeExplanations: finding.PossibleSignificance, References: stableUnique(refs),
 		})
 		addSteps("finding", finding.Title, "The source finding recommends these checks.", finding.NextSteps)
@@ -227,8 +242,8 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 		refs = appendPrefixed(refs, "evidence", assessment.ExcludedEvidenceIDs)
 		n.Signals = append(n.Signals, NarrativeSignal{
 			ID: "assessment:" + assessment.HypothesisID, Kind: "VERIFICATION_ASSESSMENT",
-			Summary: string(assessment.Status) + ": " + assessment.Explanation,
-			Confidence: "ASSESSMENT_STATUS:" + string(assessment.Status),
+			Summary:                 string(assessment.Status) + ": " + assessment.Explanation,
+			Confidence:              "ASSESSMENT_STATUS:" + string(assessment.Status),
 			AlternativeExplanations: assessment.Limitations, References: stableUnique(refs),
 		})
 		if assessment.Status == VerificationMixed || assessment.Status == VerificationContradicted {
@@ -242,10 +257,10 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 		refs := append([]string{gap.ID}, gap.References...)
 		n.Signals = append(n.Signals, NarrativeSignal{
 			ID: gap.ID, Kind: "INTELLIGENCE_GAP",
-			Summary: gap.Unknown + " " + gap.WhyItMatters,
-			Confidence: "UNRESOLVED_QUESTION:" + gap.Priority,
+			Summary:                 gap.Unknown + " " + gap.WhyItMatters,
+			Confidence:              "UNRESOLVED_QUESTION:" + gap.Priority,
 			AlternativeExplanations: gap.AlternativeExplanations,
-			References: stableUnique(refs),
+			References:              stableUnique(refs),
 		})
 		addSteps("intelligence-gap", gap.ID, gap.WhyItMatters, []string{gap.SuggestedAction})
 	}
