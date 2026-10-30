@@ -183,3 +183,11 @@ func TestCountTCPStatesRejectsInvalidState(t *testing.T) {
 		t.Fatal("expected unsupported TCP state to be rejected")
 	}
 }
+
+func TestCountTCPStatesHandlesEmptyCollection(t *testing.T) {
+	got, err := countTCPStates(nil)
+	if err != nil { t.Fatalf("countTCPStates() error = %v", err) }
+	if got["open"] != 0 || got["closed"] != 0 || got["unknown"] != 0 {
+		t.Fatalf("empty collection counts = %#v", got)
+	}
+}
