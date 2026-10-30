@@ -204,9 +204,22 @@ def main() -> int:
             ),
         ]
 
+        ground_truth_path = ROOT / "docs/validation-lab/ground-truth.json"
+        source_commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False, timeout=15,
+        ).stdout.strip()
+        worktree_status = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=ROOT, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False, timeout=15,
+        ).stdout.strip()
         summary = {
             "schema_version": 1,
             "environment": "local-loopback-only",
+            "source_commit": source_commit,
+            "worktree_dirty": bool(worktree_status),
             "target": TARGET,
             "started_at": started_at,
             "finished_at": datetime.now(timezone.utc).isoformat(),
@@ -226,6 +239,7 @@ def main() -> int:
             "authorization": "The fixture and all targets are created locally by this process.",
             "scope": [TARGET],
             "ground_truth": "docs/validation-lab/ground-truth.json",
+            "ground_truth_sha256": sha256_file(ground_truth_path),
             "cases": cases,
             "passed": sum(1 for case in cases if case["passed"]),
             "failed": sum(1 for case in cases if not case["passed"]),
@@ -240,10 +254,10 @@ def main() -> int:
         http_server.shutdown()
         http_server.server_close()
         if tls_server is not None:
-            tls_server.shutdown()
+            if tls_thread is not None:
+                tls_server.shutdown()
+                tls_thread.join(timeout=2)
             tls_server.server_close()
-        if tls_thread is not None:
-            tls_thread.join(timeout=2)
         http_thread.join(timeout=2)
 
 
