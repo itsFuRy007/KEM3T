@@ -2,7 +2,7 @@ module github.com/itsFuRy007/kem3t
 
 go 1.26.10
 
-require modernc.org/sqlite v1.50.1
+require modernc.org/sqlite v1.61.0
 
 require (
 	github.com/dustin/go-humanize v1.1.0 // indirect
