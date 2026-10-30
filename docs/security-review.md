@@ -47,6 +47,9 @@ The CI workflow runs:
 6. Module graph consistency and checksum verification.
 7. Formatting, vet, and build checks.
 8. Two clean, trimpath-enabled CLI builds whose outputs must be byte-identical.
+9. The controlled loopback validation lab for known-open/closed TCP, HTTP metadata, and TLS certificate extraction.
+
+The loopback lab is a narrow controlled baseline. It does not validate external provider coverage, public infrastructure attribution, multi-host relationships, or real-world intelligence quality.
 
 A successful vulnerability scan means no known, reachable Go vulnerability was reported for that analyzed source/build configuration at scan time. It does not cover every operating-system package, runtime environment, configuration, or vulnerability class.
 
