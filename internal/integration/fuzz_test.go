@@ -22,29 +22,47 @@ func FuzzCoreInputValidation(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, id, eventType, target, source, recordType, value, evidenceType, port, scheme string) {
 		event := events.Event{
-			ID: id, Type: events.EventType(eventType), Timestamp: time.Unix(1, 0).UTC(),
-			Target: target, Source: source,
+			ID:        id,
+			Type:      events.EventType(eventType),
+			Timestamp: time.Unix(1, 0).UTC(),
+			Target:    target,
+			Source:    source,
 			Data: map[string]string{
-				"record_type": recordType, "value": value, "port": port,
-				"scheme": scheme, "protocol": "tcp", "state": "open",
-				"sha256_fingerprint": value, "status_code": value,
+				"record_type":        recordType,
+				"value":              value,
+				"port":               port,
+				"scheme":              scheme,
+				"protocol":            "tcp",
+				"state":               "open",
+				"sha256_fingerprint": value,
+				"status_code":         value,
 			},
 		}
 		_ = event.Validate()
 		_, _ = observations.Normalize(event)
 
-		item := evidence.Evidence{ID: id, EntityID: target, Type: evidence.Type(evidenceType), Value: value}
+		item := evidence.Evidence{
+			ID:       id,
+			EntityID: target,
+			Type:     evidence.Type(evidenceType),
+			Value:    value,
+		}
 		_ = item.Validate()
 
 		observation := evidence.Observation{
-			ID: id, EvidenceID: id, Source: source, ObservedAt: time.Unix(1, 0).UTC(),
-			EventIDs: []string{id},
+			ID:         id,
+			EvidenceID: id,
+			Source:     source,
+			ObservedAt: time.Unix(1, 0).UTC(),
+			EventIDs:   []string{id},
 		}
 		_ = observation.Validate()
 
 		report := intelligence.IntelligenceReport{
 			Target: target,
-			Narrative: intelligence.ResearchNarrative{Summary: value},
+			Narrative: intelligence.ResearchNarrative{
+				Summary: value,
+			},
 		}
 		_, _ = intelligence.RenderMarkdownReport(report)
 	})
