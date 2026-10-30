@@ -250,13 +250,30 @@ func runTCP(target string, startPort, endPort int, snapshotDir string) error {
 		return err
 	}
 
-	fmt.Printf("[TCP PORT SCAN] %s (%d-%d)\n", target, startPort, endPort)
+	counts := map[string]int{"open": 0, "closed": 0, "unknown": 0}
 	for _, event := range result.Events {
-		fmt.Printf("[OPEN] %s/tcp\n", event.Data["port"])
+		state := strings.ToLower(strings.TrimSpace(event.Data["state"]))
+		if _, ok := counts[state]; !ok {
+			return fmt.Errorf("TCP pipeline returned unsupported state %q for port %s", state, event.Data["port"])
+		}
+		counts[state]++
+		reason := strings.TrimSpace(event.Data["reason"])
+		if reason != "" {
+			fmt.Printf("[%s] %s/tcp — %s\n", strings.ToUpper(state), event.Data["port"], reason)
+		} else {
+			fmt.Printf("[%s] %s/tcp\n", strings.ToUpper(state), event.Data["port"])
+		}
 	}
-	fmt.Printf("Open ports: %d\n", len(result.Events))
+	fmt.Printf("TCP states: OPEN=%d | CLOSED=%d | UNKNOWN=%d | TOTAL=%d\n",
+		counts["open"], counts["closed"], counts["unknown"], len(result.Events))
 	fmt.Printf("Evidence records: %d | Graph nodes: %d | Graph edges: %d\n",
 		len(result.Evidence), len(result.Graph.Nodes), len(result.Graph.Edges))
+	for _, finding := range result.Findings {
+		printFinding(finding)
+	}
+	fmt.Println("\n[INTELLIGENCE REPORT]")
+	printIntelligenceReport(result.Report)
+	printInfrastructureGraph(result.Graph)
 	return nil
 }
 
