@@ -6,6 +6,7 @@ import (
 	"net"
 	"path/filepath"
 	"testing"
+	"strings"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/history"
@@ -95,5 +96,42 @@ func TestRunTCPStoresEvidenceAndBuildsGraph(t *testing.T) {
 	}
 	if len(snapshots) != 1 || snapshots[0].Collector != "tcp" || len(snapshots[0].Records) != 1 {
 		t.Fatalf("successful TCP run did not persist an evidence-backed history snapshot: %+v", snapshots)
+	}
+}
+
+func TestRunTCPPersistsClosedStateWithoutCreatingOpenPortRelationship(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil { t.Fatal(err) }
+	port := listener.Addr().(*net.TCPAddr).Port
+	if err := listener.Close(); err != nil { t.Fatal(err) }
+
+	dir := t.TempDir()
+	result, err := RunTCP(context.Background(), "127.0.0.1", port, port, dir)
+	if err != nil { t.Fatalf("RunTCP() error = %v", err) }
+	if len(result.Events) != 1 || result.Events[0].Data["state"] != "closed" {
+		t.Fatalf("events = %+v, want one closed event", result.Events)
+	}
+	if len(result.Evidence) != 1 || result.Evidence[0].Type != evidence.TypeTCPPortObservation {
+		t.Fatalf("evidence = %+v, want one durable TCP state observation", result.Evidence)
+	}
+	if len(result.Observations) != 1 { t.Fatalf("observations = %d, want 1", len(result.Observations)) }
+	if len(result.Graph.Edges) != 0 { t.Fatalf("closed port created graph relationships: %+v", result.Graph.Edges) }
+	if len(result.Normalized.Services) != 1 || result.Normalized.Services[0].State != "closed" {
+		t.Fatalf("normalized services = %+v, want closed state", result.Normalized.Services)
+	}
+	if len(result.Findings) != 1 || !strings.Contains(result.Findings[0].Title, "Closed") {
+		t.Fatalf("findings = %+v, want closed-state intelligence", result.Findings)
+	}
+
+	registry, err := evidence.OpenRegistry(filepath.Join(dir, "evidence.db"))
+	if err != nil { t.Fatalf("reopen evidence registry: %v", err) }
+	defer registry.Close()
+	if len(registry.AllEvidence()) != 1 || len(registry.AllObservations()) != 1 {
+		t.Fatalf("durable registry did not retain closed state: evidence=%d observations=%d", len(registry.AllEvidence()), len(registry.AllObservations()))
+	}
+	snapshots, err := history.NewStore(filepath.Join(dir, "history")).List()
+	if err != nil { t.Fatalf("read TCP history: %v", err) }
+	if len(snapshots) != 1 || len(snapshots[0].Records) != 1 {
+		t.Fatalf("closed state missing from history snapshot: %+v", snapshots)
 	}
 }
