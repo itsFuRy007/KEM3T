@@ -22,7 +22,6 @@ type CollectorStage struct {
 	Collector   eventCollector
 	Convert     func(events.Event) (evidence.Evidence, evidence.Observation, error)
 	Accept      func(events.Event) bool
-	ObserveOnly func(events.Event) bool
 	Analyze     func(events.Event) (*intelligence.Finding, error)
 }
 
@@ -89,10 +88,6 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 		}
 
 		result.Events++
-		if s.ObserveOnly != nil && s.ObserveOnly(event) {
-			continue
-		}
-
 		item, observation, err := s.Convert(event)
 		if err != nil {
 			registrationErr = fmt.Errorf("convert %s event: %w", s.Name(), err)
@@ -159,7 +154,6 @@ func NewTCPStage(target string, startPort, endPort int) *CollectorStage {
 		Accept: func(event events.Event) bool {
 			return event.Type == events.EventPortDiscovered || event.Type == events.EventTCPPortStateObserved
 		},
-		ObserveOnly: func(event events.Event) bool { return event.Type == events.EventTCPPortStateObserved },
 		Convert:     evidence.FromTCPEvent,
 		Analyze:     (&intelligence.Engine{}).Analyze,
 	}
