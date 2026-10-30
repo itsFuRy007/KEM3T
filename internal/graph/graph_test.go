@@ -566,8 +566,8 @@ func TestBuildCreatesTCPPortGraph(t *testing.T) {
 
 func TestAttachServicesDoesNotCreateHostedServiceForClosedOrUnknownTCP(t *testing.T) {
 	services := []observations.Service{
-		{ID:"closed", Target:"127.0.0.1", Port:80, Transport:"tcp", State:"closed", EvidenceIDs:[]string{"closed-evidence"}},
-		{ID:"unknown", Target:"127.0.0.1", Port:81, Transport:"tcp", State:"unknown", EvidenceIDs:[]string{"unknown-evidence"}},
+		{ID: "closed", Target: "127.0.0.1", Port: 80, Transport: "tcp", State: "closed", EvidenceIDs: []string{"closed-evidence"}},
+		{ID: "unknown", Target: "127.0.0.1", Port: 81, Transport: "tcp", State: "unknown", EvidenceIDs: []string{"unknown-evidence"}},
 	}
 	got, err := AttachServices(Graph{}, services)
 	if err != nil {
