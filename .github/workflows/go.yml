@@ -44,6 +44,19 @@ jobs:
       - name: Run performance benchmarks (single sample)
         run: go test -run '^$' -bench 'Benchmark(BuildDNS|MarshalDNS|SQLite)' -benchtime=1x -benchmem ./internal/batch ./internal/evidence
 
+      - name: Verify module graph and checksums
+        run: |
+          go mod tidy -diff
+          go mod verify
+
+      - name: Scan known Go vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+      - name: Verify reproducible CLI build
+        run: |
+          go build -trimpath -buildvcs=false -o "$RUNNER_TEMP/kem3t-first" ./cmd/kem3t
+          go build -trimpath -buildvcs=false -o "$RUNNER_TEMP/kem3t-second" ./cmd/kem3t
+          cmp "$RUNNER_TEMP/kem3t-first" "$RUNNER_TEMP/kem3t-second"
       - name: Run go vet
         run: go vet ./...
 
