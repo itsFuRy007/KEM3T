@@ -71,7 +71,7 @@ func CollectorForEvidence(kind evidence.Type) string {
 	switch kind {
 	case evidence.TypeDNSAddress:
 		return "dns"
-	case evidence.TypeTCPPort:
+	case evidence.TypeTCPPort, evidence.TypeTCPPortObservation:
 		return "tcp"
 	case evidence.TypeTLSCertificate:
 		return "tls"
@@ -238,7 +238,9 @@ func recordKey(item evidence.Evidence)(string,error){
 	case evidence.TypeDNSAddress:
 		ip:=net.ParseIP(strings.TrimSpace(item.Value));if ip==nil{return "",fmt.Errorf("invalid DNS address")};return string(item.Type)+"|"+NormalizeTarget(item.EntityID)+"|"+ip.String(),nil
 	case evidence.TypeTCPPort:
-		var d evidence.TCPPortDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("%s|%s|%05d",item.Type,NormalizeTarget(item.EntityID),d.Port),nil
+		var d evidence.TCPPortDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("TCP_PORT_STATE|%s|%05d",NormalizeTarget(item.EntityID),d.Port),nil
+	case evidence.TypeTCPPortObservation:
+		var d evidence.TCPPortObservationDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("TCP_PORT_STATE|%s|%05d",NormalizeTarget(item.EntityID),d.Port),nil
 	case evidence.TypeTLSCertificate:
 		var d evidence.TLSCertificateDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("%s|%s|%05d",item.Type,NormalizeTarget(item.EntityID),d.Port),nil
 	case evidence.TypeHTTPService:
