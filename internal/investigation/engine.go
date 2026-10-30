@@ -51,8 +51,10 @@ type Result struct {
 type PlanningState struct {
 	Target       string
 	Evidence     []evidence.Evidence
+	NewEvidence  []evidence.Evidence
 	Observations []evidence.Observation
 	Completed    []StageOutcome
+	Scheduled    []string
 }
 
 // Planner schedules additional bounded stages from newly collected evidence.
@@ -138,10 +140,15 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		}
 		result.Stages = append(result.Stages, outcome)
 		if e.Planner != nil && ctx.Err() == nil {
+			allEvidence := e.Registry.AllEvidence()
+			newEvidence := make([]evidence.Evidence, 0, len(allEvidence))
+			for _, item := range allEvidence { if _, existed := evidenceBefore[item.ID]; !existed { newEvidence = append(newEvidence, item) } }
+			scheduled := make([]string, 0, len(queue)-index-1)
+			for _, pending := range queue[index+1:] { scheduled = append(scheduled, strings.TrimSpace(pending.Name())) }
 			next, planErr := e.Planner.Next(ctx, PlanningState{
-				Target: target, Evidence: e.Registry.AllEvidence(),
+				Target: target, Evidence: allEvidence, NewEvidence: newEvidence,
 				Observations: e.Registry.AllObservations(),
-				Completed: append([]StageOutcome(nil), result.Stages...),
+				Completed: append([]StageOutcome(nil), result.Stages...), Scheduled: scheduled,
 			})
 			if planErr != nil {
 				retErr = fmt.Errorf("plan next investigation stages: %w", planErr)
