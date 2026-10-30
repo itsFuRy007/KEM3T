@@ -167,3 +167,13 @@ func TestSQLiteRegistryAddBatchSurvivesReopen(t *testing.T) {
 	if len(reopened.AllEvidence())!=2||len(reopened.AllObservations())!=2{t.Fatalf("reopened registry lost batch records")}
 	if _,err:=reopened.ObservationsForEvidence(second.ID);err!=nil{t.Fatalf("reopened batch evidence history unavailable: %v",err)}
 }
+
+func TestSQLiteSaveBatchRollsBackOnDuplicateEvidence(t *testing.T) {
+	store,err:=OpenSQLiteStore(filepath.Join(t.TempDir(),"duplicate-evidence.db"));if err!=nil{t.Fatal(err)};defer store.Close()
+	existing:=validEvidence()
+	if err:=store.SaveEvidence(context.Background(),existing);err!=nil{t.Fatal(err)}
+	newItem:=validEvidence();newItem.ID="new-evidence-before-duplicate"
+	if err:=store.SaveBatch(context.Background(),[]Evidence{newItem,existing},nil);!errors.Is(err,ErrEvidenceExists){t.Fatalf("expected ErrEvidenceExists, got %v",err)}
+	records,observations,err:=store.LoadAll(context.Background());if err!=nil{t.Fatal(err)}
+	if len(records)!=1||records[0].ID!=existing.ID||len(observations)!=0{t.Fatalf("duplicate evidence batch was not rolled back: evidence=%+v observations=%+v",records,observations)}
+}
