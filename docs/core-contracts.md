@@ -67,7 +67,7 @@ Run(context.Context, chan<- events.Event) error
 Collectors must:
 
 - Validate events before emission.
-- Close the output channel when the run ends.
+- Do not close the output channel; the investigation adapter owns that channel and closes it after the collector returns.
 - Stop sending when the context is canceled.
 - Return meaningful errors instead of encoding failures as successful empty output.
 - Emit observations about what was actually measured; do not infer software identity, ownership, or vulnerability from a port number or response header.
