@@ -185,12 +185,14 @@ func (s *SQLiteStore) SaveBatch(ctx context.Context, records []Evidence, observa
 	if s == nil || s.db == nil {
 		return errors.New("SQLite store is required")
 	}
+	if err := ctx.Err(); err != nil { return err }
 	if len(records) == 0 && len(observations) == 0 {
 		return nil
 	}
 
 	seenEvidence := make(map[string]struct{}, len(records))
 	for _, item := range records {
+		if err := ctx.Err(); err != nil { return err }
 		if err := item.Validate(); err != nil {
 			return fmt.Errorf("validate evidence batch item %q: %w", item.ID, err)
 		}
@@ -203,6 +205,7 @@ func (s *SQLiteStore) SaveBatch(ctx context.Context, records []Evidence, observa
 	seenObservations := make(map[string]struct{}, len(observations))
 	encoded := make([]encodedBatchObservation, 0, len(observations))
 	for _, item := range observations {
+		if err := ctx.Err(); err != nil { return err }
 		if err := item.Validate(); err != nil {
 			return fmt.Errorf("validate observation batch item %q: %w", item.ID, err)
 		}
