@@ -116,6 +116,8 @@ func TestEngineRejectsAdaptivePlanThatExceedsStageLimit(t *testing.T) {
 	result,err:=(&Engine{Registry:registry,Stages:[]Stage{testStage{name:"dns"}},Planner:planner,MaxStages:2}).Run(context.Background(),"example.com")
 	if err==nil {t.Fatal("expected adaptive stage limit error")}
 	if !result.Partial {t.Fatal("stage limit error should be marked partial")}
+	runs,loadErr:=registry.CollectionRuns("example.com")
+	if loadErr!=nil||len(runs)!=1||runs[0].ErrorMessage=="" {t.Fatalf("planner failure missing from collection history: %+v, %v",runs,loadErr)}
 }
 
 func TestEngineGraphExcludesUnrelatedTargetsFromSharedRegistry(t *testing.T) {
