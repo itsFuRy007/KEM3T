@@ -30,7 +30,11 @@ func IdentifyService(observation Observation, evidenceIDs ...string) (Service, e
 		return Service{}, fmt.Errorf("observation kind %q does not describe a service", observation.Kind)
 	}
 
-	service := Service{Target: observation.Target, Port: observation.Port, Transport: "tcp", State: "observed", EvidenceIDs: uniqueSorted(evidenceIDs), Sources: []string{observation.Source}, ObservedAt: observation.ObservedAt, Indicators: make(map[string]string)}
+	service := Service{
+		Target: observation.Target, Port: observation.Port, Transport: "tcp", State: "observed",
+		EvidenceIDs: uniqueSorted(evidenceIDs), Sources: []string{observation.Source}, ObservedAt: observation.ObservedAt,
+		Indicators: make(map[string]string),
+	}
 	switch observation.Kind {
 	case KindTCPPort:
 		state := strings.ToLower(strings.TrimSpace(observation.Value))
@@ -52,9 +56,10 @@ func IdentifyService(observation Observation, evidenceIDs ...string) (Service, e
 			service.Indicators[key] = value
 		}
 	}
-	service.ID = fmt.Sprintf("service:%s:%d:%s", service.Target, service.Port, service.Application)
 	if service.Application == "" {
-		service.ID = fmt.Sprintf("service:%s:%d:%s", service.Target, service.Port, service.State)
+		service.ID = fmt.Sprintf("service:%s:%d:unknown", service.Target, service.Port)
+	} else {
+		service.ID = fmt.Sprintf("service:%s:%d:%s", service.Target, service.Port, service.Application)
 	}
 	return service, nil
 }
