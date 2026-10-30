@@ -129,7 +129,7 @@ func run() error {
 }
 
 
-func runInvestigation(target, snapshotDir string, enableActive bool, startPort, endPort, tlsPort int, httpScheme string, httpPort int) error {
+func runInvestigation(target, snapshotDir string, enableActive bool, startPort, endPort, tlsPort int, httpScheme string, httpPort int) (retErr error) {
 	if strings.TrimSpace(snapshotDir) == "" { return fmt.Errorf("snapshot directory is required") }
 	if enableActive && (startPort < 1 || endPort > 65535 || startPort > endPort) {
 		return fmt.Errorf("invalid authorized TCP port range %d-%d", startPort, endPort)
@@ -137,7 +137,11 @@ func runInvestigation(target, snapshotDir string, enableActive bool, startPort, 
 	if enableActive && (tlsPort < 1 || tlsPort > 65535) { return fmt.Errorf("TLS port must be between 1 and 65535") }
 	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
 	if err != nil { return fmt.Errorf("open shared evidence registry: %w", err) }
-	defer registry.Close()
+	defer func() {
+		if closeErr := registry.Close(); closeErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close shared evidence registry: %w", closeErr))
+		}
+	}()
 
 	var stages []investigation.Stage
 	if net.ParseIP(target) != nil {
