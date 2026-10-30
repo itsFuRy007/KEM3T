@@ -181,7 +181,7 @@ def main() -> int:
                 binary, output_dir, "tcp-open",
                 ["-mode", "tcp", "-target", TARGET,
                  "-start-port", str(http_port), "-end-port", str(http_port)],
-                [f"[OPEN] {http_port}/tcp", "Open ports: 1",
+                [f"[OPEN] {http_port}/tcp", "TCP states: OPEN=1",
                  "Open TCP port observed", "[INTELLIGENCE REPORT]"],
             ),
             run_case(
