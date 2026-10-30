@@ -302,13 +302,36 @@ The roadmap tracks implemented foundations and remaining validation work; checke
 - [x] Initial HTTP collection bounds and redirect scope checks
 - [x] Broader malformed-input and failure-mode testing across event, evidence, observation, and report boundaries
 - [x] Core fuzz smoke tests, race-detector CI, and measured performance benchmarks
-- [ ] Security review and reproducible release checks
+- [x] Security review and reproducible release checks (PR #57)
 
 ### Real-world validation
-- [ ] Test against authorized real-world environments
-- [ ] Gather feedback and document limitations
-- [ ] Fix edge cases and optimize measured bottlenecks
-- [ ] Prepare a release after validation
+- [ ] Define a repeatable validation plan covering authorized environments, target types, collection scope, and expected observations
+- [ ] Test against authorized real-world environments with different DNS, hosting, TLS, HTTP, and network configurations
+- [ ] Record collection coverage, source availability, execution behavior, and reproducible findings
+- [ ] Gather researcher feedback and document known limitations, blind spots, and provider-dependent behavior
+
+### Intelligence quality and ground-truth evaluation
+- [ ] Build a benchmark corpus of controlled or otherwise authorized targets with independently documented ground-truth relationships
+- [ ] Compare discovered relationships with expected relationships and measure true discoveries, missed relationships, and false positives
+- [ ] Verify that every ownership, hosting, or infrastructure attribution is backed by sufficient, traceable evidence
+- [ ] Evaluate multi-hop discoveries against known paths and confirm that each edge in a path has supporting evidence
+- [ ] Assess whether discovery explanations identify their evidence, relevance, alternatives, and verification steps
+- [ ] Test insufficient-evidence cases and confirm KEM3T reports uncertainty instead of inventing relationships or conclusions
+- [ ] Document benchmark methodology, dataset scope, limitations, and results so evaluations can be repeated
+
+### Edge-case remediation
+- [ ] Triage issues found during real-world and ground-truth testing
+- [ ] Fix correctness, reliability, scope-control, and reporting issues revealed by validation
+- [ ] Re-run relevant tests, race checks, fuzz checks, and benchmarks after fixes
+- [ ] Optimize only bottlenecks demonstrated by representative measurements
+
+### Release engineering and v1.0
+- [ ] Run all release gates on the exact release commit
+- [ ] Build and test release artifacts for explicitly supported OS/architecture targets
+- [ ] Record toolchain version, source commit, artifact names, and SHA-256 checksums
+- [ ] Verify release artifacts in authorized environments and publish checksums
+- [ ] Prepare release notes with examples, supported platforms, validation scope, and known limitations
+- [ ] Publish the first v1.0 release only after real-world and intelligence-quality validation
 
 ## Responsible use
 
