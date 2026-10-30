@@ -133,21 +133,27 @@ Persist an adaptive investigation plan between DNS runs:
 go run ./cmd/kem3t -mode dns -target example.com -plan-state .kem3t/plan-state.json -export-json ./reports/example.com.json
 ~~~
 
-The plan-state file stores the previous plan and an initially empty `feedback` array. After reviewing the printed plan, add investigator feedback using a task ID from that plan. For example, mark an action complete only when you can attach the evidence IDs that support the work:
+After reviewing the printed plan, queue an outcome directly through the CLI using the task ID shown in the plan. For example, mark a task complete only when you can attach the evidence IDs that support the work:
 
-~~~json
-{
-  "feedback": [
-    {
-      "item_id": "task:REPLACE_WITH_PRINTED_ID",
-      "outcome": "COMPLETED",
-      "evidence_ids": ["your-existing-evidence-id"]
-    }
-  ]
-}
+~~~bash
+go run ./cmd/kem3t -mode plan-feedback \
+  -plan-state .kem3t/plan-state.json \
+  -plan-feedback-item task:REPLACE_WITH_PRINTED_ID \
+  -plan-feedback-outcome COMPLETED \
+  -plan-feedback-evidence-ids evidence-id-1,evidence-id-2
 ~~~
 
-Accepted outcomes are `COMPLETED` (requires evidence IDs), `INCONCLUSIVE`, `BLOCKED`, and `NOT_APPLICABLE` (each requires a note). Run the same command again; KEM3T will apply the feedback, retain task history, and rebuild the plan against the newly collected report. The state file is written atomically with owner-only permissions. Feedback is investigator-supplied and is not independently verified by KEM3T.
+For an inconclusive, blocked, or not-applicable action, provide an explanatory note:
+
+~~~bash
+go run ./cmd/kem3t -mode plan-feedback \
+  -plan-state .kem3t/plan-state.json \
+  -plan-feedback-item task:REPLACE_WITH_PRINTED_ID \
+  -plan-feedback-outcome BLOCKED \
+  -plan-feedback-note "Waiting for explicit authorization."
+~~~
+
+Accepted outcomes are `COMPLETED` (requires evidence IDs), `INCONCLUSIVE`, `BLOCKED`, and `NOT_APPLICABLE` (each requires a note). Feedback is validated against the saved plan, duplicate or unknown task IDs are rejected, and state updates are written atomically with owner-only permissions. Run the DNS command again with the same `-plan-state` path to apply queued feedback, retain task history, and rebuild the plan against the new report. Feedback is investigator-supplied and is not independently verified by KEM3T.
 
 Run bounded DNS investigations from a target file (one hostname/IP per line; blank lines and `#` comments are ignored):
 
@@ -274,7 +280,7 @@ The roadmap tracks implemented foundations and remaining validation work; checke
 - [x] Bounded, cancellation-aware worker pools and target-list scheduling
 - [x] Provider-aware request limits, retries, and backoff
 - [x] Performance benchmarks and measured graph-allocation optimization
-- [ ] Further storage optimization (retain only changes with demonstrated benefit)
+- [x] Storage optimization audit: retain only measured improvements; reject speculative schema/index changes ([audit](docs/phase7-storage-audit.md))
 
 ### Usability and investigation workflow
 - [x] CLI collection modes and console graph/intelligence output

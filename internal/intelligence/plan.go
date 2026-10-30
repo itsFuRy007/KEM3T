@@ -279,6 +279,38 @@ func planRevision(plan InvestigationPlan) string {
  
 // InvestigationPlanState persists the previous plan and feedback between runs.
 type InvestigationPlanState struct {
-	PreviousPlan *InvestigationPlan `json:"previous_plan,omitempty"`
-	Feedback []InvestigationFeedback `json:"feedback"`
+	PreviousPlan *InvestigationPlan       `json:"previous_plan,omitempty"`
+	Feedback     []InvestigationFeedback `json:"feedback"`
+}
+
+// Validate ensures queued feedback can be applied to the saved plan without
+// guessing task identities or accepting incomplete investigator outcomes.
+func (s InvestigationPlanState) Validate() error {
+	if s.PreviousPlan == nil {
+		if len(s.Feedback) != 0 {
+			return fmt.Errorf("feedback cannot be queued without a previous investigation plan")
+		}
+		return nil
+	}
+	if err := s.PreviousPlan.Validate(); err != nil {
+		return fmt.Errorf("previous investigation plan: %w", err)
+	}
+	known := make(map[string]struct{}, len(s.PreviousPlan.Items))
+	for _, item := range s.PreviousPlan.Items {
+		known[item.ID] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(s.Feedback))
+	for i, feedback := range s.Feedback {
+		if _, ok := known[feedback.ItemID]; !ok {
+			return fmt.Errorf("feedback %d refers to unknown plan item %q", i, feedback.ItemID)
+		}
+		if _, duplicate := seen[feedback.ItemID]; duplicate {
+			return fmt.Errorf("duplicate feedback for plan item %q", feedback.ItemID)
+		}
+		seen[feedback.ItemID] = struct{}{}
+		if err := validateFeedback(feedback); err != nil {
+			return fmt.Errorf("feedback for plan item %q: %w", feedback.ItemID, err)
+		}
+	}
+	return nil
 }
