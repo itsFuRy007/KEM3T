@@ -7,13 +7,13 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/itsFuRy007/kem3t/internal/events"
 )
 
-// TCP scans an explicit range of TCP ports on one authorized target.
 type TCP struct {
 	Target      string
 	StartPort   int
@@ -109,9 +109,6 @@ func (c *TCP) Run(ctx context.Context, output chan<- events.Event) error {
 			return ctx.Err()
 		case item, ok := <-results:
 			if !ok {
-				if received == portCount {
-					return nil
-				}
 				return fmt.Errorf("TCP workers stopped before all ports were classified: received %d of %d", received, portCount)
 			}
 			received++
@@ -159,7 +156,6 @@ func dialTCP(ctx context.Context, target string, port int, timeout time.Duration
 		_ = conn.Close()
 		return "open", ""
 	}
-
 	if errors.Is(err, syscall.ECONNREFUSED) {
 		return "closed", "connection refused"
 	}
