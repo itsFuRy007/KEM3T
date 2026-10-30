@@ -31,11 +31,11 @@ func FuzzCoreInputValidation(f *testing.F) {
 				"record_type":        recordType,
 				"value":              value,
 				"port":               port,
-				"scheme":              scheme,
-				"protocol":            "tcp",
-				"state":               "open",
+				"scheme":             scheme,
+				"protocol":           "tcp",
+				"state":              "open",
 				"sha256_fingerprint": value,
-				"status_code":         value,
+				"status_code":        value,
 			},
 		}
 		_ = event.Validate()
