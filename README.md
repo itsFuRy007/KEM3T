@@ -278,7 +278,7 @@ The roadmap tracks implemented foundations and remaining validation work; checke
 - [x] CLI collection modes and console graph/intelligence output
 - [x] Versioned, scope-validated JSON investigation exports with temporal context
 - [x] DNS workflow from collection through evidence, report, adaptive plan, and export
-- [ ] Unified end-to-end investigation workflow across all collectors and external-intelligence sources
+- [x] Unified investigation orchestration across DNS, TCP, TLS, HTTP, and external-intelligence stages with shared evidence, graph/report output, and multi-source history
 - [ ] Researcher-facing plan feedback workflow refinements and richer report formats
 
 ### Hardening
