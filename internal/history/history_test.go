@@ -20,8 +20,8 @@ func TestBuildSnapshotAndCompareAcrossCollectionTypes(t *testing.T) {
 	}
 	first,err:=BuildSnapshot(run1,[]evidence.Evidence{e1,e2},obs);if err!=nil{t.Fatal(err)}
 	second,err:=BuildSnapshot(run2,[]evidence.Evidence{e1,e2},obs);if err!=nil{t.Fatal(err)}
-	if len(first.Records)!=1||first.Records[0].Key!= "TCP_PORT|api.example.test|00443"{t.Fatalf("unexpected first snapshot: %+v",first)}
-	if len(second.Records)!=1||second.Records[0].Key!="TCP_PORT|api.example.test|08443"{t.Fatalf("unexpected second snapshot: %+v",second)}
+	if len(first.Records)!=1||first.Records[0].Key!= "TCP_PORT_STATE|api.example.test|00443"{t.Fatalf("unexpected first snapshot: %+v",first)}
+	if len(second.Records)!=1||second.Records[0].Key!="TCP_PORT_STATE|api.example.test|08443"{t.Fatalf("unexpected second snapshot: %+v",second)}
 	changes,err:=Compare(first,second);if err!=nil{t.Fatal(err)}
 	if len(changes)!=2{t.Fatalf("got %d changes, want port add and remove: %+v",len(changes),changes)}
 }
