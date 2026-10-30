@@ -59,3 +59,10 @@ func TestCollectorStageRejectsOutOfScopeEventsAndCancelsCollector(t *testing.T) 
 	if len(registry.AllEvidence())!=0 {t.Fatal("out-of-scope evidence was registered")}
 	if errors.Is(err,context.Canceled) {t.Fatalf("expected scope validation error, got %v",err)}
 }
+
+func TestEventTargetScopeAllowsSubdomainsButNotSiblingDomains(t *testing.T) {
+	if !eventTargetInScope("api.example.com.","example.com") {t.Fatal("in-scope subdomain was rejected")}
+	if eventTargetInScope("example.com.attacker.test","example.com") {t.Fatal("suffix-confusion target was accepted")}
+	if eventTargetInScope("other-example.com","example.com") {t.Fatal("sibling domain was accepted")}
+	if eventTargetInScope("203.0.113.5","203.0.113.4") {t.Fatal("different IP was accepted")}
+}
