@@ -172,7 +172,7 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 		for i, item := range items {
 			fmt.Fprintf(&b, "%d. **%s**\n   - Why: %s\n", i+1, mdText(item.Action), mdText(item.Reason))
 			if len(item.References) > 0 {
-				fmt.Fprintf(&b, "   - References: %s\\n", markdownRefValues(item.References))
+				fmt.Fprintf(&b, "   - References: %s\n", markdownRefValues(item.References))
 			}
 		}
 		b.WriteString("\n")
