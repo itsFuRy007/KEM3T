@@ -20,6 +20,7 @@ const (
 	TypeDNSAddress     Type = "DNS_ADDRESS"
 	TypeTLSCertificate Type = "TLS_CERTIFICATE"
 	TypeTCPPort        Type = "TCP_PORT"
+	TypeTCPPortObservation Type = "TCP_PORT_OBSERVATION"
 	TypeHTTPService    Type = "HTTP_SERVICE"
 	TypeCTDNSName      Type = "CT_DNS_NAME"
 	TypeRDAPRegistration Type = "RDAP_REGISTRATION"
@@ -136,6 +137,15 @@ type TCPPortDetails struct {
 }
 
 // HTTPServiceDetails records a bounded HTTP response observation.
+type TCPPortObservationDetails struct {
+	Target   string `json:"target"`
+	Protocol string `json:"protocol"`
+	Port     int    `json:"port"`
+	State    string `json:"state"`
+	Reason   string `json:"reason"`
+}
+
+// HTTPServiceDetails records a bounded HTTP response observation.
 type HTTPServiceDetails struct {
 	Target        string `json:"target"`
 	Scheme        string `json:"scheme"`
@@ -191,6 +201,9 @@ func (e Evidence) Validate() error {
 
 	case TypeTCPPort:
 		return validateTCPPortEvidence(e)
+
+	case TypeTCPPortObservation:
+		return validateTCPPortObservationEvidence(e)
 
 	case TypeHTTPService:
 		return validateHTTPServiceEvidence(e)
@@ -291,6 +304,34 @@ func validateTCPPortEvidence(e Evidence) error {
 	}
 	if strings.ToLower(strings.TrimSpace(details.State)) != "open" {
 		return errors.New("TCP port state must be open")
+	}
+	return nil
+}
+
+func validateTCPPortObservationEvidence(e Evidence) error {
+	target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(e.EntityID)), ".")
+	if !IsValidDomain(target) && net.ParseIP(target) == nil {
+		return errors.New("TCP observation entity ID must be a valid domain or IP address")
+	}
+	var details TCPPortObservationDetails
+	if err := json.Unmarshal([]byte(e.Value), &details); err != nil {
+		return fmt.Errorf("TCP observation value must be valid JSON: %w", err)
+	}
+	if strings.TrimSuffix(strings.ToLower(strings.TrimSpace(details.Target)), ".") != target {
+		return errors.New("TCP observation target must match evidence entity ID")
+	}
+	if !strings.EqualFold(strings.TrimSpace(details.Protocol), "tcp") {
+		return errors.New("TCP observation protocol must be tcp")
+	}
+	if details.Port < 1 || details.Port > 65535 {
+		return errors.New("TCP observation port must be between 1 and 65535")
+	}
+	state := strings.ToLower(strings.TrimSpace(details.State))
+	if state != "closed" && state != "unknown" {
+		return errors.New("TCP observation state must be closed or unknown")
+	}
+	if strings.TrimSpace(details.Reason) == "" {
+		return errors.New("TCP observation reason is required")
 	}
 	return nil
 }
