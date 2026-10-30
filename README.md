@@ -305,7 +305,7 @@ The roadmap tracks implemented foundations and remaining validation work; checke
 - [x] Security review and reproducible release checks (PR #57)
 
 ### Real-world validation
-- [ ] Define a repeatable validation plan covering authorized environments, target types, collection scope, and expected observations
+- [x] Define a repeatable validation plan covering authorized environments, target types, collection scope, and expected observations ([plan](docs/real-world-validation.md))
 - [ ] Test against authorized real-world environments with different DNS, hosting, TLS, HTTP, and network configurations
 - [ ] Record collection coverage, source availability, execution behavior, and reproducible findings
 - [ ] Gather researcher feedback and document known limitations, blind spots, and provider-dependent behavior
