@@ -767,9 +767,9 @@ func AttachServices(g Graph, services []observations.Service) (Graph, error) {
 		edges[edge.ID] = edge
 	}
 	for _, service := range services {
-		// A closed or unknown TCP observation is not a hosted network service.
-		// Keep it in evidence and normalized observations, but do not create a
-		// HOSTS_SERVICE relationship unless an application was independently identified.
+		// Closed or unknown TCP states without an independently identified
+		// application are not hosted services. Preserve TLS/HTTP observations
+		// whose service state is "observed", but do not turn negative TCP results into edges.
 		if service.Application == "" && (service.State == "closed" || service.State == "unknown") {
 			continue
 		}
