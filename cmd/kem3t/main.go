@@ -40,7 +40,7 @@ func run() error {
 
 	mode := flags.String("mode", "demo", "Mode: demo, dns, plan-feedback, tls, tcp, http, investigate, history, batch-dns, ct, rdap, iprdap, asn, pdns, or threat")
 	exportJSON := flags.String("export-json", "", "Write the target-scoped DNS intelligence report as versioned JSON (DNS mode only)")
-	planStatePath := flags.String("plan-state", "", "Load and update adaptive investigation feedback state (DNS mode only)")
+	planStatePath := flags.String("plan-state", "", "Load and update adaptive investigation feedback state (DNS and plan-feedback modes)")
 	planFeedbackItem := flags.String("plan-feedback-item", "", "Saved plan task ID to update (plan-feedback mode)")
 	planFeedbackOutcome := flags.String("plan-feedback-outcome", "", "Feedback outcome: COMPLETED, INCONCLUSIVE, BLOCKED, or NOT_APPLICABLE")
 	planFeedbackEvidence := flags.String("plan-feedback-evidence-ids", "", "Comma-separated evidence IDs supporting COMPLETED feedback")
