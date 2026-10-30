@@ -255,8 +255,19 @@ func runTCP(target string, startPort, endPort int, snapshotDir string) error {
 		fmt.Printf("[OPEN] %s/tcp\n", event.Data["port"])
 	}
 	fmt.Printf("Open ports: %d\n", len(result.Events))
-	fmt.Printf("Evidence records: %d | Graph nodes: %d | Graph edges: %d\n",
-		len(result.Evidence), len(result.Graph.Nodes), len(result.Graph.Edges))
+	fmt.Printf("Evidence records: %d\n", len(result.Evidence))
+
+	for _, finding := range result.Findings {
+		printFinding(finding)
+	}
+
+	printIntelligenceReport(result.Report)
+	printInvestigationPlan(result.Report.InvestigationPlan)
+	printInfrastructureGraph(result.Graph)
+
+	fmt.Printf("\n[TCP SCAN SUMMARY]\n")
+	fmt.Printf("Graph nodes: %d | Graph edges: %d\n",
+		len(result.Graph.Nodes), len(result.Graph.Edges))
 	return nil
 }
 

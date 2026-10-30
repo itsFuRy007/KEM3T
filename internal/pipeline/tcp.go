@@ -12,8 +12,9 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/collectors"
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
-	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/graph"
+	"github.com/itsFuRy007/kem3t/internal/history"
+	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/observations"
 )
 
@@ -21,6 +22,8 @@ type TCPResult struct {
 	Events           []events.Event
 	Evidence         []evidence.Evidence
 	Observations     []evidence.Observation
+	Findings         []intelligence.Finding
+	Report           intelligence.IntelligenceReport
 	EvidenceRegistry *evidence.Registry
 	Graph            graph.Graph
 	Normalized       observations.Collection
@@ -84,12 +87,12 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 				retErr = fmt.Errorf("%w; additionally, %v", retErr, updateErr)
 			}
 		}
-			if retErr == nil && run.Status == evidence.CollectionRunCompleted {
+		if retErr == nil && run.Status == evidence.CollectionRunCompleted {
 			if err := history.PersistRunSnapshot(snapshotDir, run, registry, result.Observations); err != nil {
 				retErr = fmt.Errorf("persist history snapshot: %w", err)
 			}
 		}
-}()
+	}()
 
 	collector := &collectors.TCP{
 		Target: target, StartPort: startPort, EndPort: endPort,
@@ -129,6 +132,31 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 		return TCPResult{}, fmt.Errorf("normalize TCP events: %s", result.Normalized.Rejected[0].Reason)
 	}
 
+	intelligenceEngine := &intelligence.Engine{}
+	findings := make([]intelligence.Finding, 0, len(result.Events))
+	for _, event := range result.Events {
+		finding, err := intelligenceEngine.Analyze(event)
+		if err != nil {
+			return TCPResult{}, fmt.Errorf("analyze TCP event %q: %w", event.ID, err)
+		}
+		if finding != nil {
+			findings = append(findings, *finding)
+		}
+	}
+
+	reportEngine := &intelligence.ReportEngine{}
+	report, err := reportEngine.BuildWithInvestigationFeedback(
+		target,
+		findings,
+		registry,
+		nil,
+		nil,
+		nil,
+	)
+	if err != nil {
+		return TCPResult{}, fmt.Errorf("build intelligence report: %w", err)
+	}
+
 	builtGraph, err := graph.Build(result.Evidence, result.Observations)
 	if err != nil {
 		return TCPResult{}, fmt.Errorf("build infrastructure graph: %w", err)
@@ -137,6 +165,8 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 	if err != nil {
 		return TCPResult{}, fmt.Errorf("attach normalized services to graph: %w", err)
 	}
+	result.Findings = findings
+	result.Report = report
 	result.Graph = builtGraph
 	return result, nil
 }
