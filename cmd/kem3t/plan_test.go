@@ -10,6 +10,15 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
 )
 
+func TestRunRejectsMarkdownExportOutsideInvestigationMode(t *testing.T) {
+	oldArgs := os.Args
+	os.Args = []string{"kem3t", "-mode", "dns", "-target", "example.com", "-export-markdown", "report.md"}
+	defer func() { os.Args = oldArgs }()
+	if err := run(); err == nil || !strings.Contains(err.Error(), "-export-markdown is supported only in investigate mode") {
+		t.Fatalf("run() error = %v, want investigate-only Markdown export error", err)
+	}
+}
+
 func TestRunRejectsPlanStateOutsideDNSMode(t *testing.T) {
 	oldArgs := os.Args
 	os.Args = []string{"kem3t", "-mode", "tls", "-target", "example.com", "-plan-state", "plan.json"}
@@ -20,10 +29,10 @@ func TestRunRejectsPlanStateOutsideDNSMode(t *testing.T) {
 	}
 }
 
-func TestWriteJSONAtomicUsesPrivatePermissions(t *testing.T) {
+func TestWriteFileAtomicUsesPrivatePermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state", "plan.json")
-	if err := writeJSONAtomic(path, []byte("{\"ok\":true}")); err != nil {
-		t.Fatalf("writeJSONAtomic() error = %v", err)
+	if err := writeFileAtomic(path, []byte("{\"ok\":true}")); err != nil {
+		t.Fatalf("writeFileAtomic() error = %v", err)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil { t.Fatal(err) }
