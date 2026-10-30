@@ -53,3 +53,16 @@ func TestTCPStateHistoryUsesStablePortKeyAcrossStateTransitions(t *testing.T) {
 		t.Fatalf("state transition keys differ: %q != %q", openKey, closedKey)
 	}
 }
+
+func TestCompareReportsTCPStateTransitionAsUpdate(t *testing.T) {
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	previous := Snapshot{RunID:"tcp-previous", Target:"127.0.0.1", Collector:"tcp", CollectedAt:now,
+		Records:[]Record{{Key:"TCP_PORT_STATE|127.0.0.1|00443", Type:evidence.TypeTCPPort, EntityID:"127.0.0.1", ValueHash:"open-hash", EvidenceIDs:[]string{"open-evidence"}, ObservationIDs:[]string{"open-observation"}, ObservedAt:now}}}
+	current := Snapshot{RunID:"tcp-current", Target:"127.0.0.1", Collector:"tcp", CollectedAt:now.Add(time.Minute),
+		Records:[]Record{{Key:"TCP_PORT_STATE|127.0.0.1|00443", Type:evidence.TypeTCPPortObservation, EntityID:"127.0.0.1", ValueHash:"closed-hash", EvidenceIDs:[]string{"closed-evidence"}, ObservationIDs:[]string{"closed-observation"}, ObservedAt:now.Add(time.Minute)}}}
+	changes, err := Compare(previous, current)
+	if err != nil { t.Fatalf("Compare() error = %v", err) }
+	if len(changes) != 1 || changes[0].Type != ChangeUpdated {
+		t.Fatalf("changes = %+v, want one UPDATED TCP port state transition", changes)
+	}
+}
