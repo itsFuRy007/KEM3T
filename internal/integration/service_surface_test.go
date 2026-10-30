@@ -2,7 +2,6 @@ package integration
 
 import (
 	"context"
-	"crypto/x509"
 	"encoding/pem"
 	"net"
 	"net/http"
