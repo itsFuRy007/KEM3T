@@ -38,9 +38,13 @@ func run() error {
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 
-	mode := flags.String("mode", "demo", "Mode: demo, dns, tls, tcp, http, investigate, history, batch-dns, ct, rdap, iprdap, asn, pdns, or threat")
+	mode := flags.String("mode", "demo", "Mode: demo, dns, plan-feedback, tls, tcp, http, investigate, history, batch-dns, ct, rdap, iprdap, asn, pdns, or threat")
 	exportJSON := flags.String("export-json", "", "Write the target-scoped DNS intelligence report as versioned JSON (DNS mode only)")
 	planStatePath := flags.String("plan-state", "", "Load and update adaptive investigation feedback state (DNS mode only)")
+	planFeedbackItem := flags.String("plan-feedback-item", "", "Saved plan task ID to update (plan-feedback mode)")
+	planFeedbackOutcome := flags.String("plan-feedback-outcome", "", "Feedback outcome: COMPLETED, INCONCLUSIVE, BLOCKED, or NOT_APPLICABLE")
+	planFeedbackEvidence := flags.String("plan-feedback-evidence-ids", "", "Comma-separated evidence IDs supporting COMPLETED feedback")
+	planFeedbackNote := flags.String("plan-feedback-note", "", "Required explanation for INCONCLUSIVE, BLOCKED, or NOT_APPLICABLE feedback")
 	target := flags.String("target", "", "Target hostname or IP address")
 	targetsFile := flags.String("targets-file", "", "File with one hostname/IP per line (batch-dns mode)")
 	workers := flags.Int("workers", 4, "Maximum concurrent targets for batch-dns mode")
@@ -64,11 +68,16 @@ func run() error {
 	if strings.TrimSpace(*exportJSON) != "" && selectedMode != "dns" {
 		return fmt.Errorf("-export-json is supported only in DNS mode")
 	}
-	if strings.TrimSpace(*planStatePath) != "" && selectedMode != "dns" {
-		return fmt.Errorf("-plan-state is supported only in DNS mode")
+	if strings.TrimSpace(*planStatePath) != "" && selectedMode != "dns" && selectedMode != "plan-feedback" {
+		return fmt.Errorf("-plan-state is supported only in DNS and plan-feedback modes")
+	}
+	if selectedMode != "plan-feedback" && (strings.TrimSpace(*planFeedbackItem) != "" || strings.TrimSpace(*planFeedbackOutcome) != "" || strings.TrimSpace(*planFeedbackEvidence) != "" || strings.TrimSpace(*planFeedbackNote) != "") {
+		return fmt.Errorf("plan feedback flags are supported only in plan-feedback mode")
 	}
 
 	switch selectedMode {
+	case "plan-feedback":
+		return runPlanFeedback(*planStatePath, *planFeedbackItem, *planFeedbackOutcome, *planFeedbackEvidence, *planFeedbackNote)
 	case "investigate":
 		if strings.TrimSpace(*target) == "" { return fmt.Errorf("-target is required in investigate mode") }
 		return runInvestigation(strings.TrimSpace(*target), *snapshotDir, *enableActive, *startPort, *endPort, *port, *httpScheme, *httpPort)
@@ -293,6 +302,55 @@ func runDNS(target, snapshotDir, exportJSON string) error {
 	return runDNSWithPlanState(target, snapshotDir, exportJSON, "")
 }
 
+func runPlanFeedback(statePath, itemID, outcome, evidenceList, note string) error {
+	statePath = strings.TrimSpace(statePath)
+	if statePath == "" {
+		return fmt.Errorf("-plan-state is required in plan-feedback mode")
+	}
+	itemID = strings.TrimSpace(itemID)
+	outcome = strings.ToUpper(strings.TrimSpace(outcome))
+	if itemID == "" || outcome == "" {
+		return fmt.Errorf("-plan-feedback-item and -plan-feedback-outcome are required")
+	}
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return fmt.Errorf("read investigation plan state: %w", err)
+	}
+	var state intelligence.InvestigationPlanState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return fmt.Errorf("decode investigation plan state: %w", err)
+	}
+	if err := state.Validate(); err != nil {
+		return fmt.Errorf("validate investigation plan state: %w", err)
+	}
+	if state.PreviousPlan == nil {
+		return fmt.Errorf("no saved investigation plan; run DNS mode with -plan-state first")
+	}
+	evidenceIDs := make([]string, 0)
+	for _, raw := range strings.Split(evidenceList, ",") {
+		if id := strings.TrimSpace(raw); id != "" {
+			evidenceIDs = append(evidenceIDs, id)
+		}
+	}
+	feedback := intelligence.InvestigationFeedback{
+		ItemID: itemID, Outcome: outcome, EvidenceIDs: evidenceIDs, Note: strings.TrimSpace(note),
+	}
+	state.Feedback = append(state.Feedback, feedback)
+	if err := state.Validate(); err != nil {
+		return fmt.Errorf("invalid plan feedback: %w", err)
+	}
+	updated, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode investigation plan state: %w", err)
+	}
+	if err := writeJSONAtomic(statePath, updated); err != nil {
+		return fmt.Errorf("save plan feedback: %w", err)
+	}
+	fmt.Printf("[PLAN FEEDBACK QUEUED] %s -> %s\n", itemID, outcome)
+	fmt.Println("Feedback will be applied to the plan during the next DNS investigation using this -plan-state file.")
+	return nil
+}
+
 func runDNSWithPlanState(target, snapshotDir, exportJSON, planStatePath string) error {
 	if strings.TrimSpace(planStatePath) != "" && filepath.Clean(planStatePath) == filepath.Clean(exportJSON) && strings.TrimSpace(exportJSON) != "" {
 		return fmt.Errorf("-plan-state and -export-json must use different paths")
@@ -303,9 +361,7 @@ func runDNSWithPlanState(target, snapshotDir, exportJSON, planStatePath string) 
 		if err != nil && !os.IsNotExist(err) { return fmt.Errorf("read investigation plan state: %w", err) }
 		if err == nil {
 			if err := json.Unmarshal(data, &state); err != nil { return fmt.Errorf("decode investigation plan state: %w", err) }
-			if state.PreviousPlan != nil {
-				if err := state.PreviousPlan.Validate(); err != nil { return fmt.Errorf("validate previous investigation plan: %w", err) }
-			}
+			if err := state.Validate(); err != nil { return fmt.Errorf("validate investigation plan state: %w", err) }
 		}
 	}
 	result, err := pipeline.RunDNSWithPlanFeedback(
