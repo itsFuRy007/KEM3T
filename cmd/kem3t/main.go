@@ -171,7 +171,9 @@ func runInvestigation(target, snapshotDir string, enableActive bool, startPort, 
 		if stage.Error != "" { fmt.Printf("  Error: %s\n", stage.Error) }
 		for _, limitation := range stage.Result.Limitations { fmt.Printf("  Limitation: %s\n", limitation) }
 	}
-	fmt.Printf("\nEvidence records: %d | Observations: %d\n", len(registry.AllEvidence()), len(registry.AllObservations()))
+	evidenceCount, observationCount := 0, 0
+	for _, stage := range result.Stages { evidenceCount += stage.Result.Evidence; observationCount += stage.Result.Observations }
+	fmt.Printf("\nNew evidence records: %d | New observations: %d\n", evidenceCount, observationCount)
 	printIntelligenceReport(result.Report)
 	printInvestigationPlan(result.Report.InvestigationPlan)
 	printInfrastructureGraph(result.Graph)
