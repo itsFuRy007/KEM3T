@@ -122,6 +122,25 @@ func BuildIntelligenceGaps(report IntelligenceReport) ([]IntelligenceGap, error)
 		}); err != nil { return nil, err }
 	}
 
+	for _, surface := range report.ServiceSurfaces {
+		if !containsString(surface.TCPStates, "OPEN") || len(surface.HTTP) > 0 || len(surface.TLS) > 0 {
+			continue
+		}
+		refs := []string{"service-surface:" + surface.ID}
+		refs = appendPrefixed(refs, "evidence", surface.EvidenceIDs)
+		refs = appendPrefixed(refs, "observation", surface.ObservationIDs)
+		if err := add(IntelligenceGap{
+			ID: "gap:service-identification:" + surface.ID, Kind: "APPLICATION_PROTOCOL_UNIDENTIFIED",
+			Subject: fmt.Sprintf("%s:%d", surface.Target, surface.Port),
+			Unknown: "The TCP endpoint was observed open, but this evidence set does not identify an HTTP or TLS application protocol on the same port.",
+			WhyItMatters: "An open transport endpoint is a useful lead, but protocol and service identity are needed before assessing its expected exposure or configuration.",
+			RequiredEvidence: []string{"bounded application-protocol identification", "service banner or protocol-specific response with collection provenance"},
+			SuggestedAction: "Identify the application protocol on this open TCP port using an authorized, bounded probe; preserve the response and collection timestamp.",
+			AlternativeExplanations: "The port may expose a non-HTTP protocol, a custom service, a filtered application exchange, or a service that did not respond to the collectors used.",
+			Priority: "MEDIUM", References: refs,
+		}); err != nil { return nil, err }
+	}
+
 	for _, a := range report.VerificationAssessments {
 		if a.Status != VerificationMixed && a.Status != VerificationContradicted { continue }
 		refs := []string{"hypothesis:" + a.HypothesisID}
