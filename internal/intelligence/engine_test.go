@@ -32,20 +32,11 @@ func TestRunProcessesSubdomainEvent(t *testing.T) {
 	select {
 	case finding := <-output:
 		if finding.Priority != PriorityInterest {
-			t.Errorf(
-				"expected priority %q, got %q",
-				PriorityInterest,
-				finding.Priority,
-			)
+			t.Errorf("expected priority %q, got %q", PriorityInterest, finding.Priority)
 		}
-
 		if len(finding.Evidence) != 1 {
-			t.Errorf(
-				"expected 1 evidence event, got %d",
-				len(finding.Evidence),
-			)
+			t.Errorf("expected 1 evidence event, got %d", len(finding.Evidence))
 		}
-
 	default:
 		t.Fatal("expected a finding, but output was empty")
 	}
@@ -53,10 +44,8 @@ func TestRunProcessesSubdomainEvent(t *testing.T) {
 
 func TestRunReturnsWhenInputCloses(t *testing.T) {
 	engine := &Engine{}
-
 	input := make(chan events.Event)
 	output := make(chan Finding)
-
 	close(input)
 
 	err := engine.Run(context.Background(), input, output)
@@ -67,11 +56,9 @@ func TestRunReturnsWhenInputCloses(t *testing.T) {
 
 func TestRunStopsWhenContextIsCanceled(t *testing.T) {
 	engine := &Engine{}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	input := make(chan events.Event)
 	output := make(chan Finding)
-
 	cancel()
 
 	err := engine.Run(ctx, input, output)
@@ -82,10 +69,8 @@ func TestRunStopsWhenContextIsCanceled(t *testing.T) {
 
 func TestRunReturnsErrorForInvalidEvent(t *testing.T) {
 	engine := &Engine{}
-
 	input := make(chan events.Event, 1)
 	output := make(chan Finding, 1)
-
 	input <- events.Event{
 		ID:        "invalid-event-001",
 		Type:      events.EventDNSRecordFound,
@@ -103,61 +88,38 @@ func TestRunReturnsErrorForInvalidEvent(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error for invalid DNS event")
 	}
-
 	if !strings.Contains(err.Error(), "invalid-event-001") {
 		t.Fatalf("expected error to include event ID, got: %v", err)
 	}
 }
+
 func TestAnalyzeSubdomainClassification(t *testing.T) {
 	engine := &Engine{}
-
 	tests := []struct {
 		name     string
 		target   string
 		expected Priority
 	}{
-		{
-			name:     "development label",
-			target:   "dev.example.com",
-			expected: PriorityInterest,
-		},
-		{
-			name:     "word containing dev",
-			target:   "device.example.com",
-			expected: PriorityInfo,
-		},
-		{
-			name:     "ordinary hostname",
-			target:   "example.com",
-			expected: PriorityInfo,
-		},
+		{name: "development label", target: "dev.example.com", expected: PriorityInterest},
+		{name: "word containing dev", target: "device.example.com", expected: PriorityInfo},
+		{name: "ordinary hostname", target: "example.com", expected: PriorityInfo},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			event := events.Event{
-				ID:        "classification-test",
-				Type:      events.EventSubdomainDiscovered,
-				Timestamp: time.Now().UTC(),
-				Target:    tt.target,
-				Source:    "test",
+				ID: "classification-test", Type: events.EventSubdomainDiscovered,
+				Timestamp: time.Now().UTC(), Target: tt.target, Source: "test",
 			}
-
 			finding, err := engine.Analyze(event)
 			if err != nil {
 				t.Fatalf("Analyze returned an unexpected error: %v", err)
 			}
-
 			if finding == nil {
 				t.Fatal("expected a finding, got nil")
 			}
-
 			if finding.Priority != tt.expected {
-				t.Errorf(
-					"expected priority %q, got %q",
-					tt.expected,
-					finding.Priority,
-				)
+				t.Errorf("expected priority %q, got %q", tt.expected, finding.Priority)
 			}
 		})
 	}
@@ -165,7 +127,6 @@ func TestAnalyzeSubdomainClassification(t *testing.T) {
 
 func TestAnalyzeTCPPort(t *testing.T) {
 	engine := &Engine{}
-
 	tests := []struct {
 		name        string
 		state       string
@@ -173,7 +134,8 @@ func TestAnalyzeTCPPort(t *testing.T) {
 		wantErr     bool
 	}{
 		{name: "open TCP port", state: "open", wantFinding: true},
-		{name: "closed TCP port", state: "closed", wantFinding: false},
+		{name: "closed TCP port", state: "closed", wantFinding: true},
+		{name: "unknown TCP port", state: "unknown", wantFinding: true},
 		{name: "invalid port", state: "open", wantErr: true},
 	}
 
@@ -183,20 +145,14 @@ func TestAnalyzeTCPPort(t *testing.T) {
 			if tt.name == "invalid port" {
 				port = "invalid"
 			}
-
-			event := events.Event{
-				ID:        "tcp-test",
-				Type:      events.EventPortDiscovered,
-				Timestamp: time.Now().UTC(),
-				Target:    "example.com",
-				Source:    "test",
-				Data: map[string]string{
-					"protocol": "tcp",
-					"state":    tt.state,
-					"port":     port,
-				},
+			eventType := events.EventPortDiscovered
+			if tt.state != "open" {
+				eventType = events.EventTCPPortStateObserved
 			}
-
+			event := events.Event{
+				ID: "tcp-test", Type: eventType, Timestamp: time.Now().UTC(), Target: "example.com", Source: "test",
+				Data: map[string]string{"protocol": "tcp", "state": tt.state, "port": port},
+			}
 			finding, err := engine.Analyze(event)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Analyze error = %v, wantErr %v", err, tt.wantErr)
@@ -217,49 +173,25 @@ func TestAnalyzeTCPPort(t *testing.T) {
 func TestAnalyzeTLSCertificate(t *testing.T) {
 	engine := &Engine{}
 	now := time.Now().UTC()
-
 	tests := []struct {
 		name         string
 		notAfter     time.Time
 		verified     string
 		wantPriority Priority
 	}{
-		{
-			name:         "valid verified certificate",
-			notAfter:     now.Add(24 * time.Hour),
-			verified:     "true",
-			wantPriority: PriorityInfo,
-		},
-		{
-			name:         "expired certificate",
-			notAfter:     now.Add(-24 * time.Hour),
-			verified:     "true",
-			wantPriority: PriorityInterest,
-		},
-		{
-			name:         "verification failed",
-			notAfter:     now.Add(24 * time.Hour),
-			verified:     "false",
-			wantPriority: PriorityInterest,
-		},
+		{name: "valid verified certificate", notAfter: now.Add(24 * time.Hour), verified: "true", wantPriority: PriorityInfo},
+		{name: "expired certificate", notAfter: now.Add(-24 * time.Hour), verified: "true", wantPriority: PriorityInterest},
+		{name: "verification failed", notAfter: now.Add(24 * time.Hour), verified: "false", wantPriority: PriorityInterest},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			event := events.Event{
-				ID:        "tls-test",
-				Type:      events.EventTLSCertificateFound,
-				Timestamp: now,
-				Target:    "example.com",
-				Source:    "test",
+				ID: "tls-test", Type: events.EventTLSCertificateFound, Timestamp: now, Target: "example.com", Source: "test",
 				Data: map[string]string{
-					"port":        "443",
-					"not_after":   tt.notAfter.Format(time.RFC3339),
-					"verified":    tt.verified,
-					"tls_version": "TLS 1.3",
+					"port": "443", "not_after": tt.notAfter.Format(time.RFC3339), "verified": tt.verified, "tls_version": "TLS 1.3",
 				},
 			}
-
 			finding, err := engine.Analyze(event)
 			if err != nil {
 				t.Fatalf("Analyze returned unexpected error: %v", err)
