@@ -302,10 +302,10 @@ func runTCP(target string, startPort, endPort int, snapshotDir string) error {
 	}
 	fmt.Println("\n[INTELLIGENCE REPORT]")
 	printIntelligenceReport(result.Report)
+	printInvestigationPlan(result.Report.InvestigationPlan)
 	printInfrastructureGraph(result.Graph)
 	return nil
 }
-
 func countTCPStates(eventsIn []events.Event) (map[string]int, error) {
 	counts := map[string]int{"open": 0, "closed": 0, "unknown": 0}
 	for _, event := range eventsIn {

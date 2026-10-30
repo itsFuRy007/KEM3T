@@ -224,6 +224,14 @@ DNS snapshots, generalized run snapshots, and the evidence database use .kem3t/s
 
 ## Validation
 
+Run the deterministic loopback baseline (TCP open/closed, HTTP, and TLS) with:
+
+```bash
+python3 scripts/validation-lab/run.py
+```
+
+See [the controlled validation lab](docs/validation-lab/README.md), its [independent ground-truth dataset](docs/validation-lab/ground-truth.json), and the [full real-world validation plan](docs/real-world-validation.md). The local fixture does not validate external intelligence providers or real-world relationship accuracy.
+
 Run these checks before proposing a change:
 
 ~~~bash
@@ -242,7 +250,7 @@ cmp /tmp/kem3t-first /tmp/kem3t-second
 git diff --check
 ~~~
 
-CI checks gofmt on changed Go files. The repository still contains legacy files with formatting debt, so a full-tree `gofmt -l .` is informational until those files are normalized. The race-detector command uses -p 1 to run package tests serially. CI also runs the full test suite, race detector, a bounded fuzz smoke test, performance benchmarks, vulnerability analysis, module verification, reproducible-build checks, vet, and build.
+CI checks gofmt on changed Go files. The repository still contains legacy files with formatting debt, so a full-tree `gofmt -l .` is informational until those files are normalized. The race-detector command uses -p 1 to run package tests serially. CI also runs the controlled loopback validation lab, full test suite, race detector, a bounded fuzz smoke test, performance benchmarks, vulnerability analysis, module verification, reproducible-build checks, vet, and build.
 
 ## Development roadmap
 
@@ -297,6 +305,7 @@ The roadmap tracks implemented foundations and remaining validation work; checke
 - [x] Unified investigation orchestration across DNS, TCP, TLS, HTTP, and external-intelligence stages with shared evidence, graph/report output, and multi-source history
 - [x] TCP OPEN/CLOSED/UNKNOWN states retained as evidence-backed observations, reflected in temporal history, and reported distinctly by the CLI; only OPEN creates open-port/service graph relationships
 - [x] Researcher-facing plan feedback CLI and evidence-linked Markdown intelligence dossiers
+- [x] TCP scans expose evidence-backed findings, an intelligence report, and the adaptive investigation plan in CLI output
 
 ### Hardening
 - [x] Unit and integration tests for implemented workflows
@@ -307,11 +316,15 @@ The roadmap tracks implemented foundations and remaining validation work; checke
 
 ### Real-world validation
 - [x] Define a repeatable validation plan covering authorized environments, target types, collection scope, and expected observations ([plan](docs/real-world-validation.md))
+- [x] Add a loopback-only validation runner for known TCP open/closed states, HTTP metadata, and TLS certificate extraction ([lab guide](docs/validation-lab/README.md))
+- [x] Define independent expected facts and prohibited inferences for the initial local fixture ([ground truth](docs/validation-lab/ground-truth.json))
+- [ ] Execute and review repeatable local baseline runs on maintainer and CI environments
 - [ ] Test against authorized real-world environments with different DNS, hosting, TLS, HTTP, and network configurations
 - [ ] Record collection coverage, source availability, execution behavior, and reproducible findings
 - [ ] Gather researcher feedback and document known limitations, blind spots, and provider-dependent behavior
 
 ### Intelligence quality and ground-truth evaluation
+- [x] Create an initial independently documented ground-truth dataset for the controlled loopback TCP/HTTP/TLS fixture
 - [ ] Build a benchmark corpus of controlled or otherwise authorized targets with independently documented ground-truth relationships
 - [ ] Compare discovered relationships with expected relationships and measure true discoveries, missed relationships, and false positives
 - [ ] Verify that every ownership, hosting, or infrastructure attribution is backed by sufficient, traceable evidence

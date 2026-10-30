@@ -34,6 +34,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Run controlled loopback validation lab
+        run: python3 scripts/validation-lab/run.py --output-dir "$RUNNER_TEMP/kem3t-validation-lab"
+
       - name: Check changed Go files are formatted
         if: github.event_name == 'pull_request'
         run: |
