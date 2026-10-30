@@ -148,7 +148,7 @@ func runInvestigation(target, snapshotDir string, enableActive bool, startPort, 
 	} else {
 		stages = append(stages, investigation.NewRDAPDomainStage())
 	}
-	if apiKey := strings.TrimSpace(os.Getenv("KEM3T_OTX_API_KEY")); apiKey != "" {
+	if apiKey := strings.TrimSpace(os.Getenv("OTX_API_KEY")); apiKey != "" {
 		stages = append(stages,
 			investigation.NewPassiveDNSStageWithClient(&externalintel.PassiveDNSClient{APIKey: apiKey}),
 			investigation.NewThreatIntelStageWithClient(&externalintel.ThreatIntelClient{APIKey: apiKey}),
