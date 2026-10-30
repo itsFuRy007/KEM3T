@@ -152,7 +152,7 @@ func TestRenderMarkdownReportPreservesFeedbackAndPrioritizesActiveTasks(t *testi
 	if activeAt < 0 || completedAt < 0 || activeAt > completedAt {
 		t.Fatalf("active work should be shown before completed history:\n%s", got)
 	}
-	if !strings.Contains(got, "Investigator note: Evidence was inconclusive after independent review.") {
+	if !strings.Contains(got, "**Investigator note:** Evidence was inconclusive after independent review.") {
 		t.Fatalf("investigator outcome note was omitted:\n%s", got)
 	}
 	if !strings.Contains(got, "`evidence:reviewed`") {
