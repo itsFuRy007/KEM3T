@@ -282,3 +282,19 @@ func TestRegistryAddBatchRejectsMissingReferencesAtomically(t *testing.T) {
 	if !errors.Is(err,ErrEvidenceNotFound){t.Fatalf("expected ErrEvidenceNotFound, got %v",err)}
 	if len(registry.AllEvidence())!=0||len(registry.AllObservations())!=0{t.Fatal("missing reference partially changed registry")}
 }
+
+func TestRegistryAddBatchHonorsCanceledContext(t *testing.T) {
+	registry:=NewRegistry()
+	ctx,cancel:=context.WithCancel(context.Background());cancel()
+	err:=registry.AddBatch(ctx,[]Evidence{validEvidence()},nil)
+	if !errors.Is(err,context.Canceled){t.Fatalf("expected context.Canceled, got %v",err)}
+	if len(registry.AllEvidence())!=0{t.Fatal("canceled batch changed registry")}
+}
+
+func TestRegistryAddBatchRejectsDuplicateIDsWithinBatch(t *testing.T) {
+	registry:=NewRegistry()
+	item:=validEvidence()
+	err:=registry.AddBatch(context.Background(),[]Evidence{item,item},nil)
+	if !errors.Is(err,ErrEvidenceExists){t.Fatalf("expected ErrEvidenceExists, got %v",err)}
+	if len(registry.AllEvidence())!=0{t.Fatal("duplicate batch changed registry")}
+}
