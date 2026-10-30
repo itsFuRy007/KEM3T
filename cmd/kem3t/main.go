@@ -158,7 +158,7 @@ func runInvestigation(target, snapshotDir string, enableActive bool, startPort, 
 			investigation.NewHTTPStage(target, httpScheme, httpPort),
 		)
 	}
-	engine := investigation.Engine{Registry: registry, Stages: stages, SnapshotDir: snapshotDir}
+	engine := investigation.Engine{Registry: registry, Stages: stages, Planner: investigation.NewCTSubdomainDNSPlanner(8), SnapshotDir: snapshotDir}
 	result, err := engine.Run(context.Background(), target)
 	if err != nil { return fmt.Errorf("investigation: %w", err) }
 
