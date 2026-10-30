@@ -300,7 +300,6 @@ func runTCP(target string, startPort, endPort int, snapshotDir string) error {
 	for _, finding := range result.Findings {
 		printFinding(finding)
 	}
-	fmt.Println("\n[INTELLIGENCE REPORT]")
 	printIntelligenceReport(result.Report)
 	printInvestigationPlan(result.Report.InvestigationPlan)
 	printInfrastructureGraph(result.Graph)
@@ -591,6 +590,31 @@ func printIntelligenceReport(report intelligence.IntelligenceReport) {
 	fmt.Printf("Correlations: %d\n", len(report.Correlations))
 	fmt.Printf("Hypotheses: %d\n", len(report.Hypotheses))
 	fmt.Printf("Prioritized findings: %d\n", len(report.PrioritizedFindings))
+
+	if len(report.ServiceSurfaces) > 0 {
+		fmt.Println("\n[SERVICE SURFACES]")
+		for _, surface := range report.ServiceSurfaces {
+			fmt.Printf("%s\n", surface.Summary)
+			fmt.Printf("  Protocols: %s | Evidence: %s\n", strings.Join(surface.Protocols, ", "), strings.Join(surface.EvidenceIDs, ", "))
+			if len(surface.TCPStates) > 0 {
+				fmt.Printf("  TCP states: %s\n", strings.Join(surface.TCPStates, ", "))
+			}
+			for _, http := range surface.HTTP {
+				fmt.Printf("  HTTP: %s status=%d title=%q server=%q final_url=%s\n", strings.ToUpper(http.Scheme), http.StatusCode, http.Title, http.Server, http.FinalURL)
+			}
+			for _, tls := range surface.TLS {
+				fmt.Printf("  TLS: %s verified=%t fingerprint=%s expires=%s\n", tls.TLSVersion, tls.Verified, tls.Fingerprint, tls.NotAfter.UTC().Format(time.RFC3339))
+			}
+			fmt.Printf("  Evidence refs: %s\n", strings.Join(surface.EvidenceIDs, ", "))
+			fmt.Printf("  Observation refs: %s\n", strings.Join(surface.ObservationIDs, ", "))
+			for _, limitation := range surface.Limitations {
+				fmt.Printf("  Limitation: %s\n", limitation)
+			}
+			for _, step := range surface.NextSteps {
+				fmt.Printf("  Research next step: %s\n", step)
+			}
+		}
+	}
 
 	if len(report.PrioritizedFindings) > 0 {
 		fmt.Println("\n[INVESTIGATION PRIORITIES]")
