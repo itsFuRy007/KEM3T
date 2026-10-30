@@ -34,6 +34,21 @@ jobs:
       - name: Run tests
         run: go test -count=1 ./...
 
+      - name: Run race detector
+        run: go test -race -p 1 -count=1 ./...
+
+      - name: Run fuzz smoke test
+        run: go test -run '^
+      - name: Run performance benchmarks (single sample)
+        run: go test -run '^$' -bench 'Benchmark(BuildDNS|MarshalDNS|SQLite)' -benchtime=1x -benchmem ./internal/batch ./internal/evidence
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Build all packages
+        run: go build ./...
+ -fuzz=FuzzCoreInputValidation -fuzztime=3s ./internal/integration
+
       - name: Run performance benchmarks (single sample)
         run: go test -run '^$' -bench 'Benchmark(BuildDNS|MarshalDNS|SQLite)' -benchtime=1x -benchmem ./internal/batch ./internal/evidence
 
