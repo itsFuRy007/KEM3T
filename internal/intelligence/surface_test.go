@@ -130,3 +130,41 @@ func TestGenerateServiceHypothesesDoesNotInferFromPlainHTTP(t *testing.T) {
 		t.Fatalf("plain HTTP without TLS evidence produced a TLS hypothesis: %+v", hypotheses)
 	}
 }
+
+func TestReportEngineIncludesCrossLayerServiceSurfaceAndHypothesis(t *testing.T) {
+	registry := evidence.NewRegistry()
+	fingerprint := strings.Repeat("b", 64)
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	records := []evidence.Evidence{
+		{ID: "tcp-open-report", EntityID: "lab.example", Type: evidence.TypeTCPPort, Value: `{"target":"lab.example","protocol":"tcp","port":443,"state":"open"}`},
+		{ID: "https-report", EntityID: "lab.example", Type: evidence.TypeHTTPService, Value: `{"target":"lab.example","scheme":"https","port":443,"url":"https://lab.example/","final_url":"https://lab.example/","status_code":200,"title":"Lab","redirect_count":0,"tls_verified":false}`},
+		{ID: "tls-report", EntityID: "lab.example", Type: evidence.TypeTLSCertificate, Value: fmt.Sprintf(`{"target":"lab.example","port":443,"subject":"CN=lab.example","issuer":"CN=Test","not_before":%q,"not_after":%q,"sha256_fingerprint":%q,"tls_version":"TLS 1.3","verified":false}`, now.Add(-time.Hour).Format(time.RFC3339), now.Add(time.Hour).Format(time.RFC3339), fingerprint)},
+	}
+	for _, item := range records {
+		if err := registry.AddEvidence(item); err != nil { t.Fatalf("AddEvidence(%s): %v", item.ID, err) }
+		if err := registry.AddObservation(evidence.Observation{
+			ID: "obs-" + item.ID, EvidenceID: item.ID, Source: "controlled-lab",
+			ObservedAt: now, EventIDs: []string{"event-" + item.ID},
+		}); err != nil { t.Fatalf("AddObservation(%s): %v", item.ID, err) }
+	}
+
+	report, err := (&ReportEngine{}).Build("lab.example", nil, registry)
+	if err != nil { t.Fatalf("ReportEngine.Build() error = %v", err) }
+	if len(report.ServiceSurfaces) != 1 {
+		t.Fatalf("service surfaces = %d, want 1: %+v", len(report.ServiceSurfaces), report.ServiceSurfaces)
+	}
+	if len(report.Hypotheses) != 1 || report.Hypotheses[0].Confidence != HypothesisConfidenceLow {
+		t.Fatalf("cross-layer hypothesis missing or overconfident: %+v", report.Hypotheses)
+	}
+	foundSurfaceSignal := false
+	for _, signal := range report.Narrative.Signals {
+		if signal.Kind == "SERVICE_SURFACE" && strings.Contains(signal.Summary, "HTTPS 200") {
+			foundSurfaceSignal = true
+			if len(signal.References) < 4 { t.Fatalf("service-surface narrative lost provenance: %+v", signal) }
+		}
+	}
+	if !foundSurfaceSignal { t.Fatalf("research narrative omitted service surface: %+v", report.Narrative.Signals) }
+	if len(report.InvestigationPlan.Items) == 0 {
+		t.Fatal("investigation plan did not receive service-surface verification steps")
+	}
+}
