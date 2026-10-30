@@ -242,7 +242,7 @@ cmp /tmp/kem3t-first /tmp/kem3t-second
 git diff --check
 ~~~
 
-The race-detector command uses -p 1 to run package tests serially. CI runs the full test suite, race detector, a bounded fuzz smoke test, performance benchmarks, vet, and build checks. Formatting is reviewed separately with gofmt.
+CI checks gofmt on changed Go files. The repository still contains legacy files with formatting debt, so a full-tree `gofmt -l .` is informational until those files are normalized. The race-detector command uses -p 1 to run package tests serially. CI also runs the full test suite, race detector, a bounded fuzz smoke test, performance benchmarks, vulnerability analysis, module verification, reproducible-build checks, vet, and build.
 
 ## Development roadmap
 
