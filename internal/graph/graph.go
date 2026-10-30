@@ -770,7 +770,7 @@ func AttachServices(g Graph, services []observations.Service) (Graph, error) {
 		// A closed or unknown TCP observation is not a hosted network service.
 		// Keep it in evidence and normalized observations, but do not create a
 		// HOSTS_SERVICE relationship unless an application was independently identified.
-		if service.Application == "" && service.State != "open" {
+		if service.Application == "" && (service.State == "closed" || service.State == "unknown") {
 			continue
 		}
 		target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(service.Target)), ".")
