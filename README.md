@@ -318,7 +318,7 @@ go mod verify
 git diff --check
 ~~~
 
-The race-detector command uses -p 1 to run package tests serially. CI runs the full test suite, race detector, a bounded fuzz smoke test, performance benchmarks, vet, and build checks. Formatting is reviewed separately with gofmt.
+The race-detector command uses -p 1 to run package tests serially, which has been more reliable in the current development environment. The CI workflow currently runs the full test suite, go vet, and build checks; formatting is reviewed separately with gofmt.
 
 ## Development roadmap
 
@@ -371,7 +371,7 @@ The roadmap tracks implemented foundations and remaining validation work; checke
 - [x] Versioned, scope-validated JSON investigation exports with temporal context
 - [x] DNS workflow from collection through evidence, report, adaptive plan, and export
 - [x] Unified investigation orchestration across DNS, TCP, TLS, HTTP, and external-intelligence stages with shared evidence, graph/report output, and multi-source history
-- [x] Researcher-facing plan feedback CLI and evidence-linked Markdown intelligence dossiers
+- [ ] Researcher-facing plan feedback workflow refinements and richer report formats
 
 ### Hardening
 - [x] Unit and integration tests for implemented workflows
