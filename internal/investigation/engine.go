@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -82,6 +83,9 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 	target = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(target)), ".")
 	if target == "" {
 		return Result{}, errors.New("target is required")
+	}
+	if net.ParseIP(target) == nil && !evidence.IsValidDomain(target) {
+		return Result{}, fmt.Errorf("target must be a valid hostname or IP address")
 	}
 	if e.Registry == nil {
 		return Result{}, errors.New("shared evidence registry is required")
