@@ -118,7 +118,7 @@ func TestBuildServiceSurfacesPreservesMultipleTCPStates(t *testing.T) {
 func TestGenerateServiceHypothesesDoesNotInferFromPlainHTTP(t *testing.T) {
 	surface := ServiceSurface{
 		ID: "service-surface:lab.example:80", Target: "lab.example", Port: 80,
-		HTTP: []ServiceHTTPObservation{{EvidenceID: "http", Scheme: "http", StatusCode: 200}},
+		HTTP:        []ServiceHTTPObservation{{EvidenceID: "http", Scheme: "http", StatusCode: 200}},
 		EvidenceIDs: []string{"http"}, Protocols: []string{"HTTP"}, Summary: "lab.example:80 | HTTP 200",
 		Limitations: []string{"Endpoint-level only."},
 	}
@@ -141,15 +141,21 @@ func TestReportEngineIncludesCrossLayerServiceSurfaceAndHypothesis(t *testing.T)
 		{ID: "tls-report", EntityID: "lab.example", Type: evidence.TypeTLSCertificate, Value: fmt.Sprintf(`{"target":"lab.example","port":443,"subject":"CN=lab.example","issuer":"CN=Test","not_before":%q,"not_after":%q,"sha256_fingerprint":%q,"tls_version":"TLS 1.3","verified":false}`, now.Add(-time.Hour).Format(time.RFC3339), now.Add(time.Hour).Format(time.RFC3339), fingerprint)},
 	}
 	for _, item := range records {
-		if err := registry.AddEvidence(item); err != nil { t.Fatalf("AddEvidence(%s): %v", item.ID, err) }
+		if err := registry.AddEvidence(item); err != nil {
+			t.Fatalf("AddEvidence(%s): %v", item.ID, err)
+		}
 		if err := registry.AddObservation(evidence.Observation{
 			ID: "obs-" + item.ID, EvidenceID: item.ID, Source: "controlled-lab",
 			ObservedAt: now, EventIDs: []string{"event-" + item.ID},
-		}); err != nil { t.Fatalf("AddObservation(%s): %v", item.ID, err) }
+		}); err != nil {
+			t.Fatalf("AddObservation(%s): %v", item.ID, err)
+		}
 	}
 
 	report, err := (&ReportEngine{}).Build("lab.example", nil, registry)
-	if err != nil { t.Fatalf("ReportEngine.Build() error = %v", err) }
+	if err != nil {
+		t.Fatalf("ReportEngine.Build() error = %v", err)
+	}
 	if len(report.ServiceSurfaces) != 1 {
 		t.Fatalf("service surfaces = %d, want 1: %+v", len(report.ServiceSurfaces), report.ServiceSurfaces)
 	}
@@ -160,10 +166,14 @@ func TestReportEngineIncludesCrossLayerServiceSurfaceAndHypothesis(t *testing.T)
 	for _, signal := range report.Narrative.Signals {
 		if signal.Kind == "SERVICE_SURFACE" && strings.Contains(signal.Summary, "HTTPS 200") {
 			foundSurfaceSignal = true
-			if len(signal.References) < 4 { t.Fatalf("service-surface narrative lost provenance: %+v", signal) }
+			if len(signal.References) < 4 {
+				t.Fatalf("service-surface narrative lost provenance: %+v", signal)
+			}
 		}
 	}
-	if !foundSurfaceSignal { t.Fatalf("research narrative omitted service surface: %+v", report.Narrative.Signals) }
+	if !foundSurfaceSignal {
+		t.Fatalf("research narrative omitted service surface: %+v", report.Narrative.Signals)
+	}
 	if len(report.InvestigationPlan.Items) == 0 {
 		t.Fatal("investigation plan did not receive service-surface verification steps")
 	}
