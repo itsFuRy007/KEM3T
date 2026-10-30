@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/itsFuRy007/kem3t/internal/collectors"
@@ -52,7 +53,7 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 			cancel()
 			break
 		}
-		if !strings.EqualFold(strings.TrimSuffix(strings.TrimSpace(event.Target), "."), strings.TrimSuffix(strings.TrimSpace(target), ".")) {
+		if !eventTargetInScope(event.Target, target) {
 			registrationErr = fmt.Errorf("collector %q emitted out-of-scope target %q", s.Name(), event.Target)
 			cancel()
 			break
@@ -134,4 +135,13 @@ func NewHTTPStage(target, scheme string, port int) *CollectorStage {
 		Accept: func(event events.Event) bool { return event.Type == events.EventHTTPObserved },
 		Convert: evidence.FromHTTPEvent,
 	}
+}
+
+func eventTargetInScope(eventTarget, target string) bool {
+	eventTarget = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(eventTarget)), ".")
+	target = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(target)), ".")
+	if eventTarget == "" || target == "" { return false }
+	if eventTarget == target { return true }
+	if net.ParseIP(target) != nil { return false }
+	return strings.HasSuffix(eventTarget, "."+target)
 }
