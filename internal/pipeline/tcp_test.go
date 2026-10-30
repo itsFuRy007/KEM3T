@@ -129,7 +129,9 @@ func TestRunTCPPersistsClosedStateWithoutCreatingOpenPortRelationship(t *testing
 	if len(registry.AllEvidence()) != 1 || len(registry.AllObservations()) != 1 {
 		t.Fatalf("durable registry did not retain closed state: evidence=%d observations=%d", len(registry.AllEvidence()), len(registry.AllObservations()))
 	}
-	snapshots, err := history.NewStore(filepath.Join(dir, "history")).List()
+	historyStore, err := history.NewStore(filepath.Join(dir, "history"))
+	if err != nil { t.Fatalf("open TCP history: %v", err) }
+	snapshots, err := historyStore.List()
 	if err != nil { t.Fatalf("read TCP history: %v", err) }
 	if len(snapshots) != 1 || len(snapshots[0].Records) != 1 {
 		t.Fatalf("closed state missing from history snapshot: %+v", snapshots)
