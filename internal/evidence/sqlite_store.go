@@ -185,6 +185,7 @@ func (s *SQLiteStore) SaveBatch(ctx context.Context, records []Evidence, observa
 	if s == nil || s.db == nil {
 		return errors.New("SQLite store is required")
 	}
+	if ctx == nil { return errors.New("context is required") }
 	if err := ctx.Err(); err != nil { return err }
 	if len(records) == 0 && len(observations) == 0 {
 		return nil
