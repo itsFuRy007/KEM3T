@@ -4,7 +4,7 @@ on:
     branches:
       - feat/unified-intelligence-backbone
 permissions:
-  contents: read
+  contents: write
 jobs:
   format:
     runs-on: ubuntu-latest
@@ -19,16 +19,11 @@ jobs:
         run: |
           changed=$(git diff --name-only origin/main...HEAD -- '*.go')
           printf '%s\n' "$changed" | xargs -r gofmt -w
-      - name: Upload formatted Go files
-        uses: actions/upload-artifact@v4
-        with:
-          name: formatted-go
-          path: |
-            internal/collectors/tcp_test.go
-            internal/intelligence/engine.go
-            internal/investigation/collector_stage.go
-            internal/investigation/engine.go
-            internal/observations/collection.go
-            internal/observations/observation.go
-            internal/observations/service.go
-            internal/pipeline/tcp.go
+      - name: Commit formatting fixes
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add '*.go'
+          git commit -m "chore: gofmt changed Go files"
+          git push origin HEAD:feat/unified-intelligence-backbone
