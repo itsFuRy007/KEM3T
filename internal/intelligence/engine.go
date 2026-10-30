@@ -83,13 +83,13 @@ func analyzeDNSRecord(event events.Event) (*Finding, error) {
 		return nil, fmt.Errorf("invalid IP address %q in DNS event", value)
 	}
 	return &Finding{
-		Title:    "DNS address resolved",
-		Priority: PriorityInfo,
-		Fact: fmt.Sprintf("The resolver returned IP address %s for hostname %s.", ip.String(), event.Target),
-		Observation: "An IP address was returned by the configured DNS resolver.",
+		Title:                "DNS address resolved",
+		Priority:             PriorityInfo,
+		Fact:                 fmt.Sprintf("The resolver returned IP address %s for hostname %s.", ip.String(), event.Target),
+		Observation:          "An IP address was returned by the configured DNS resolver.",
 		PossibleSignificance: "This associates the hostname with a resolved address at the time of collection; it does not establish that the address is vulnerable.",
-		Evidence:  []events.Event{event},
-		NextSteps: []string{"Verify the address and collect authorized service information."},
+		Evidence:             []events.Event{event},
+		NextSteps:            []string{"Verify the address and collect authorized service information."},
 	}, nil
 }
 
@@ -134,20 +134,20 @@ func analyzeTCPPort(event events.Event) (*Finding, error) {
 	case "open":
 		return &Finding{
 			Title: "Open TCP port observed", Priority: PriorityInfo,
-			Fact: fmt.Sprintf("TCP port %d was observed open on %s.", port, strings.TrimSpace(event.Target)),
-			Observation: "A TCP connection to this port succeeded during collection.",
+			Fact:                 fmt.Sprintf("TCP port %d was observed open on %s.", port, strings.TrimSpace(event.Target)),
+			Observation:          "A TCP connection to this port succeeded during collection.",
 			PossibleSignificance: "The port may expose a network service; an open port alone does not establish that the service is vulnerable.",
-			Evidence: []events.Event{event},
-			NextSteps: []string{"Identify the service and version using authorized collection.", "Determine whether the service is expected to be reachable.", "Review service configuration and access controls before drawing security conclusions."},
+			Evidence:             []events.Event{event},
+			NextSteps:            []string{"Identify the service and version using authorized collection.", "Determine whether the service is expected to be reachable.", "Review service configuration and access controls before drawing security conclusions."},
 		}, nil
 	case "closed":
 		return &Finding{
 			Title: "Closed TCP port observed", Priority: PriorityInfo,
-			Fact: fmt.Sprintf("TCP port %d was observed closed on %s.", port, strings.TrimSpace(event.Target)),
-			Observation: "The TCP connection attempt was actively refused.",
+			Fact:                 fmt.Sprintf("TCP port %d was observed closed on %s.", port, strings.TrimSpace(event.Target)),
+			Observation:          "The TCP connection attempt was actively refused.",
 			PossibleSignificance: "The host appears reachable on this port but no TCP service accepted the connection at collection time.",
-			Evidence: []events.Event{event},
-			NextSteps: []string{"Record the closed state as baseline information.", "Recheck later if service exposure is expected to change."},
+			Evidence:             []events.Event{event},
+			NextSteps:            []string{"Record the closed state as baseline information.", "Recheck later if service exposure is expected to change."},
 		}, nil
 	case "unknown":
 		reason := strings.TrimSpace(event.Data["reason"])
@@ -156,11 +156,11 @@ func analyzeTCPPort(event events.Event) (*Finding, error) {
 		}
 		return &Finding{
 			Title: "TCP port state unknown", Priority: PriorityInterest,
-			Fact: fmt.Sprintf("TCP port %d could not be classified as open or closed on %s.", port, strings.TrimSpace(event.Target)),
-			Observation: fmt.Sprintf("The collector reported an inconclusive connection attempt: %s.", reason),
+			Fact:                 fmt.Sprintf("TCP port %d could not be classified as open or closed on %s.", port, strings.TrimSpace(event.Target)),
+			Observation:          fmt.Sprintf("The collector reported an inconclusive connection attempt: %s.", reason),
 			PossibleSignificance: "The port may be filtered, unreachable, rate-limited, or otherwise inconclusive; UNKNOWN must not be interpreted as CLOSED.",
-			Evidence: []events.Event{event},
-			NextSteps: []string{"Do not infer port closure from this result.", "Recheck with an appropriate authorized probe if the port is important to the investigation."},
+			Evidence:             []events.Event{event},
+			NextSteps:            []string{"Do not infer port closure from this result.", "Recheck with an appropriate authorized probe if the port is important to the investigation."},
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported TCP port state %q", state)

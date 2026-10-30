@@ -66,100 +66,186 @@ type Engine struct {
 }
 
 func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr error) {
-	if ctx == nil { return Result{}, errors.New("context is required") }
-	if err := ctx.Err(); err != nil { return Result{}, err }
+	if ctx == nil {
+		return Result{}, errors.New("context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
 	target = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(target)), ".")
-	if target == "" { return Result{}, errors.New("target is required") }
-	if net.ParseIP(target) == nil && !evidence.IsValidDomain(target) { return Result{}, fmt.Errorf("target must be a valid hostname or IP address") }
-	if e.Registry == nil { return Result{}, errors.New("shared evidence registry is required") }
-	if len(e.Stages) == 0 { return Result{}, errors.New("at least one investigation stage is required") }
+	if target == "" {
+		return Result{}, errors.New("target is required")
+	}
+	if net.ParseIP(target) == nil && !evidence.IsValidDomain(target) {
+		return Result{}, fmt.Errorf("target must be a valid hostname or IP address")
+	}
+	if e.Registry == nil {
+		return Result{}, errors.New("shared evidence registry is required")
+	}
+	if len(e.Stages) == 0 {
+		return Result{}, errors.New("at least one investigation stage is required")
+	}
 	now := e.Now
-	if now == nil { now = time.Now }
+	if now == nil {
+		now = time.Now
+	}
 	seen := make(map[string]struct{}, len(e.Stages))
 	for _, stage := range e.Stages {
-		if stage == nil || strings.TrimSpace(stage.Name()) == "" { return Result{}, errors.New("investigation stages must be non-nil and named") }
+		if stage == nil || strings.TrimSpace(stage.Name()) == "" {
+			return Result{}, errors.New("investigation stages must be non-nil and named")
+		}
 		name := strings.TrimSpace(stage.Name())
-		if _, exists := seen[name]; exists { return Result{}, fmt.Errorf("duplicate investigation stage %q", name) }
+		if _, exists := seen[name]; exists {
+			return Result{}, fmt.Errorf("duplicate investigation stage %q", name)
+		}
 		seen[name] = struct{}{}
 	}
 	maxStages := e.MaxStages
-	if maxStages <= 0 { maxStages = 16 }
-	if len(e.Stages) > maxStages { return Result{}, fmt.Errorf("initial stage count %d exceeds maximum %d", len(e.Stages), maxStages) }
+	if maxStages <= 0 {
+		maxStages = 16
+	}
+	if len(e.Stages) > maxStages {
+		return Result{}, fmt.Errorf("initial stage count %d exceeds maximum %d", len(e.Stages), maxStages)
+	}
 	started := now().UTC()
 	evidenceBefore := make(map[string]struct{})
-	for _, item := range e.Registry.AllEvidence() { evidenceBefore[item.ID] = struct{}{} }
+	for _, item := range e.Registry.AllEvidence() {
+		evidenceBefore[item.ID] = struct{}{}
+	}
 	run := evidence.CollectionRun{ID: fmt.Sprintf("investigation-%d", started.UnixNano()), Target: target, StartedAt: started, Status: evidence.CollectionRunRunning}
-	if err := e.Registry.AddCollectionRun(run); err != nil { return Result{}, fmt.Errorf("start investigation run: %w", err) }
+	if err := e.Registry.AddCollectionRun(run); err != nil {
+		return Result{}, fmt.Errorf("start investigation run: %w", err)
+	}
 	result = Result{Target: target, RunID: run.ID, Stages: make([]StageOutcome, 0, len(e.Stages))}
 	queue := append([]Stage(nil), e.Stages...)
 
 	for index := 0; index < len(queue); index++ {
 		stage := queue[index]
-		if err := ctx.Err(); err != nil { retErr = err; break }
+		if err := ctx.Err(); err != nil {
+			retErr = err
+			break
+		}
 		name := strings.TrimSpace(stage.Name())
 		stageResult, err := stage.Run(ctx, target, e.Registry)
 		outcome := StageOutcome{Name: name, Result: stageResult}
-		if err != nil { outcome.Error = err.Error(); result.Partial = true }
+		if err != nil {
+			outcome.Error = err.Error()
+			result.Partial = true
+		}
 		result.Stages = append(result.Stages, outcome)
 
 		if e.Planner != nil && ctx.Err() == nil {
 			allEvidence := e.Registry.AllEvidence()
 			newEvidence := make([]evidence.Evidence, 0, len(allEvidence))
-			for _, item := range allEvidence { if _, existed := evidenceBefore[item.ID]; !existed { newEvidence = append(newEvidence, item) } }
+			for _, item := range allEvidence {
+				if _, existed := evidenceBefore[item.ID]; !existed {
+					newEvidence = append(newEvidence, item)
+				}
+			}
 			findings := collectFindings(result.Stages)
 			scheduled := make([]string, 0, len(queue)-index-1)
-			for _, pending := range queue[index+1:] { scheduled = append(scheduled, strings.TrimSpace(pending.Name())) }
+			for _, pending := range queue[index+1:] {
+				scheduled = append(scheduled, strings.TrimSpace(pending.Name()))
+			}
 			next, planErr := e.Planner.Next(ctx, PlanningState{
 				Target: target, Evidence: allEvidence, NewEvidence: newEvidence,
 				Observations: e.Registry.AllObservations(), Findings: findings,
 				Completed: append([]StageOutcome(nil), result.Stages...), Scheduled: scheduled,
 			})
-			if planErr != nil { retErr = fmt.Errorf("plan next investigation stages: %w", planErr); result.Partial = true; break }
+			if planErr != nil {
+				retErr = fmt.Errorf("plan next investigation stages: %w", planErr)
+				result.Partial = true
+				break
+			}
 			for _, candidate := range next {
-				if candidate == nil || strings.TrimSpace(candidate.Name()) == "" { retErr = errors.New("planner returned a nil or unnamed stage"); result.Partial = true; break }
+				if candidate == nil || strings.TrimSpace(candidate.Name()) == "" {
+					retErr = errors.New("planner returned a nil or unnamed stage")
+					result.Partial = true
+					break
+				}
 				candidateName := strings.TrimSpace(candidate.Name())
-				if _, exists := seen[candidateName]; exists { retErr = fmt.Errorf("planner returned duplicate investigation stage %q", candidateName); result.Partial = true; break }
+				if _, exists := seen[candidateName]; exists {
+					retErr = fmt.Errorf("planner returned duplicate investigation stage %q", candidateName)
+					result.Partial = true
+					break
+				}
 				seen[candidateName] = struct{}{}
 				queue = append(queue, candidate)
-				if len(queue) > maxStages { retErr = fmt.Errorf("adaptive investigation exceeded maximum of %d stages", maxStages); result.Partial = true; break }
+				if len(queue) > maxStages {
+					retErr = fmt.Errorf("adaptive investigation exceeded maximum of %d stages", maxStages)
+					result.Partial = true
+					break
+				}
 			}
-			if retErr != nil { break }
+			if retErr != nil {
+				break
+			}
 		}
 	}
-	if ctx.Err() != nil && retErr == nil { retErr = ctx.Err() }
+	if ctx.Err() != nil && retErr == nil {
+		retErr = ctx.Err()
+	}
 
 	scopedEvidence, scopedObservations := scopedRegistryRecords(target, e.Registry)
 	built, err := graph.Build(scopedEvidence, scopedObservations)
-	if err != nil { retErr = errors.Join(retErr, fmt.Errorf("build investigation graph: %w", err)) } else { result.Graph = built }
+	if err != nil {
+		retErr = errors.Join(retErr, fmt.Errorf("build investigation graph: %w", err))
+	} else {
+		result.Graph = built
+	}
 
 	findings := collectFindings(result.Stages)
 	report, err := (&intelligence.ReportEngine{}).Build(target, findings, e.Registry)
-	if err != nil { retErr = errors.Join(retErr, fmt.Errorf("build intelligence report: %w", err)) } else { result.Report = report }
+	if err != nil {
+		retErr = errors.Join(retErr, fmt.Errorf("build intelligence report: %w", err))
+	} else {
+		result.Report = report
+	}
 
 	run.FinishedAt = now().UTC()
 	for _, outcome := range result.Stages {
 		run.EventCount += outcome.Result.Events
 		if outcome.Error != "" {
 			message := outcome.Name + ": " + outcome.Error
-			if run.ErrorMessage == "" { run.ErrorMessage = message } else { run.ErrorMessage += "; " + message }
+			if run.ErrorMessage == "" {
+				run.ErrorMessage = message
+			} else {
+				run.ErrorMessage += "; " + message
+			}
 		}
 	}
 	for _, item := range e.Registry.AllEvidence() {
-		if _, existed := evidenceBefore[item.ID]; existed { continue }
-		if item.Type == evidence.TypeDNSAddress { run.AddressCount++ }
+		if _, existed := evidenceBefore[item.ID]; existed {
+			continue
+		}
+		if item.Type == evidence.TypeDNSAddress {
+			run.AddressCount++
+		}
 	}
-	if retErr != nil && run.ErrorMessage == "" { run.ErrorMessage = retErr.Error() }
-	if result.Partial || retErr != nil { run.Status = evidence.CollectionRunFailed } else { run.Status = evidence.CollectionRunCompleted }
-	if err := e.Registry.UpdateCollectionRun(run); err != nil { retErr = errors.Join(retErr, fmt.Errorf("finalize investigation run: %w", err)) }
+	if retErr != nil && run.ErrorMessage == "" {
+		run.ErrorMessage = retErr.Error()
+	}
+	if result.Partial || retErr != nil {
+		run.Status = evidence.CollectionRunFailed
+	} else {
+		run.Status = evidence.CollectionRunCompleted
+	}
+	if err := e.Registry.UpdateCollectionRun(run); err != nil {
+		retErr = errors.Join(retErr, fmt.Errorf("finalize investigation run: %w", err))
+	}
 	if run.Status == evidence.CollectionRunCompleted && strings.TrimSpace(e.SnapshotDir) != "" {
-		if err := history.PersistRunSnapshot(e.SnapshotDir, run, e.Registry); err != nil { retErr = errors.Join(retErr, fmt.Errorf("persist unified investigation history: %w", err)) }
+		if err := history.PersistRunSnapshot(e.SnapshotDir, run, e.Registry); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("persist unified investigation history: %w", err))
+		}
 	}
 	return result, retErr
 }
 
 func collectFindings(stages []StageOutcome) []intelligence.Finding {
 	var findings []intelligence.Finding
-	for _, stage := range stages { findings = append(findings, stage.Result.Findings...) }
+	for _, stage := range stages {
+		findings = append(findings, stage.Result.Findings...)
+	}
 	return findings
 }
 
@@ -168,25 +254,39 @@ func scopedRegistryRecords(target string, registry *evidence.Registry) ([]eviden
 	entities := map[string]struct{}{target: {}}
 	for _, item := range all {
 		entity := normalizeEntity(item.EntityID)
-		if withinDomainScope(entity, target) && item.Type == evidence.TypeDNSAddress { entities[normalizeEntity(item.Value)] = struct{}{} }
+		if withinDomainScope(entity, target) && item.Type == evidence.TypeDNSAddress {
+			entities[normalizeEntity(item.Value)] = struct{}{}
+		}
 	}
 	selected := make([]evidence.Evidence, 0, len(all))
 	selectedIDs := make(map[string]struct{})
 	for _, item := range all {
-		if _, ok := entities[normalizeEntity(item.EntityID)]; !ok && !withinDomainScope(normalizeEntity(item.EntityID), target) { continue }
+		if _, ok := entities[normalizeEntity(item.EntityID)]; !ok && !withinDomainScope(normalizeEntity(item.EntityID), target) {
+			continue
+		}
 		selected = append(selected, item)
 		selectedIDs[item.ID] = struct{}{}
 	}
 	observations := registry.AllObservations()
 	selectedObservations := make([]evidence.Observation, 0, len(observations))
-	for _, observation := range observations { if _, ok := selectedIDs[observation.EvidenceID]; ok { selectedObservations = append(selectedObservations, observation) } }
+	for _, observation := range observations {
+		if _, ok := selectedIDs[observation.EvidenceID]; ok {
+			selectedObservations = append(selectedObservations, observation)
+		}
+	}
 	return selected, selectedObservations
 }
 
-func normalizeEntity(value string) string { return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(value)), ".") }
+func normalizeEntity(value string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(value)), ".")
+}
 
 func withinDomainScope(entity, target string) bool {
-	if entity == target { return true }
-	if net.ParseIP(target) != nil { return false }
+	if entity == target {
+		return true
+	}
+	if net.ParseIP(target) != nil {
+		return false
+	}
 	return strings.HasSuffix(entity, "."+target)
 }

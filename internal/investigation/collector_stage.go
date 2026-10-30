@@ -18,22 +18,32 @@ type eventCollector interface {
 }
 
 type CollectorStage struct {
-	StageName    string
-	Collector    eventCollector
-	Convert      func(events.Event) (evidence.Evidence, evidence.Observation, error)
-	Accept       func(events.Event) bool
-	ObserveOnly  func(events.Event) bool
-	Analyze      func(events.Event) (*intelligence.Finding, error)
+	StageName   string
+	Collector   eventCollector
+	Convert     func(events.Event) (evidence.Evidence, evidence.Observation, error)
+	Accept      func(events.Event) bool
+	ObserveOnly func(events.Event) bool
+	Analyze     func(events.Event) (*intelligence.Finding, error)
 }
 
 func (s *CollectorStage) Name() string { return strings.TrimSpace(s.StageName) }
 
 func (s *CollectorStage) Run(ctx context.Context, target string, registry *evidence.Registry) (StageResult, error) {
-	if ctx == nil { return StageResult{}, fmt.Errorf("context is required") }
-	if registry == nil { return StageResult{}, fmt.Errorf("shared evidence registry is required") }
-	if s == nil || s.Collector == nil { return StageResult{}, fmt.Errorf("collector is required") }
-	if s.Convert == nil { return StageResult{}, fmt.Errorf("event converter is required") }
-	if strings.TrimSpace(target) == "" { return StageResult{}, fmt.Errorf("target is required") }
+	if ctx == nil {
+		return StageResult{}, fmt.Errorf("context is required")
+	}
+	if registry == nil {
+		return StageResult{}, fmt.Errorf("shared evidence registry is required")
+	}
+	if s == nil || s.Collector == nil {
+		return StageResult{}, fmt.Errorf("collector is required")
+	}
+	if s.Convert == nil {
+		return StageResult{}, fmt.Errorf("event converter is required")
+	}
+	if strings.TrimSpace(target) == "" {
+		return StageResult{}, fmt.Errorf("target is required")
+	}
 
 	stageCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -48,7 +58,10 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 	result := StageResult{}
 	var registrationErr error
 	for event := range eventCh {
-		if err := stageCtx.Err(); err != nil { registrationErr = err; break }
+		if err := stageCtx.Err(); err != nil {
+			registrationErr = err
+			break
+		}
 		if err := event.Validate(); err != nil {
 			registrationErr = fmt.Errorf("collector %q emitted invalid event: %w", s.Name(), err)
 			cancel()
@@ -59,7 +72,9 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 			cancel()
 			break
 		}
-		if s.Accept != nil && !s.Accept(event) { continue }
+		if s.Accept != nil && !s.Accept(event) {
+			continue
+		}
 
 		if s.Analyze != nil {
 			finding, err := s.Analyze(event)
@@ -68,7 +83,9 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 				cancel()
 				break
 			}
-			if finding != nil { result.Findings = append(result.Findings, *finding) }
+			if finding != nil {
+				result.Findings = append(result.Findings, *finding)
+			}
 		}
 
 		result.Events++
@@ -94,13 +111,23 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 			cancel()
 			break
 		}
-		if evidenceErr == nil { result.Evidence++ }
-		if observationErr == nil { result.Observations++ }
+		if evidenceErr == nil {
+			result.Evidence++
+		}
+		if observationErr == nil {
+			result.Observations++
+		}
 	}
 	collectorErr := <-done
-	if registrationErr != nil { return result, registrationErr }
-	if err := stageCtx.Err(); err != nil { return result, err }
-	if collectorErr != nil { return result, fmt.Errorf("%s collector: %w", s.Name(), collectorErr) }
+	if registrationErr != nil {
+		return result, registrationErr
+	}
+	if err := stageCtx.Err(); err != nil {
+		return result, err
+	}
+	if collectorErr != nil {
+		return result, fmt.Errorf("%s collector: %w", s.Name(), collectorErr)
+	}
 	return result, nil
 }
 
@@ -119,9 +146,9 @@ func newDNSStage(name, target string, resolver collectors.DNSResolver) *Collecto
 	return &CollectorStage{
 		StageName: name,
 		Collector: &collectors.DNS{Target: target, Resolver: resolver},
-		Accept: func(event events.Event) bool { return event.Type == events.EventDNSRecordFound },
-		Convert: evidence.FromDNSEvent,
-		Analyze: (&intelligence.Engine{}).Analyze,
+		Accept:    func(event events.Event) bool { return event.Type == events.EventDNSRecordFound },
+		Convert:   evidence.FromDNSEvent,
+		Analyze:   (&intelligence.Engine{}).Analyze,
 	}
 }
 
@@ -133,19 +160,21 @@ func NewTCPStage(target string, startPort, endPort int) *CollectorStage {
 			return event.Type == events.EventPortDiscovered || event.Type == events.EventTCPPortStateObserved
 		},
 		ObserveOnly: func(event events.Event) bool { return event.Type == events.EventTCPPortStateObserved },
-		Convert: evidence.FromTCPEvent,
-		Analyze: (&intelligence.Engine{}).Analyze,
+		Convert:     evidence.FromTCPEvent,
+		Analyze:     (&intelligence.Engine{}).Analyze,
 	}
 }
 
 func NewTLSStage(target string, port int) *CollectorStage {
-	if port == 0 { port = 443 }
+	if port == 0 {
+		port = 443
+	}
 	return &CollectorStage{
 		StageName: "tls",
 		Collector: &collectors.TLS{Target: target, Port: port},
-		Accept: func(event events.Event) bool { return event.Type == events.EventTLSCertificateFound },
-		Convert: evidence.FromTLSEvent,
-		Analyze: (&intelligence.Engine{}).Analyze,
+		Accept:    func(event events.Event) bool { return event.Type == events.EventTLSCertificateFound },
+		Convert:   evidence.FromTLSEvent,
+		Analyze:   (&intelligence.Engine{}).Analyze,
 	}
 }
 
@@ -153,17 +182,23 @@ func NewHTTPStage(target, scheme string, port int) *CollectorStage {
 	return &CollectorStage{
 		StageName: "http",
 		Collector: &collectors.HTTP{Target: target, Scheme: scheme, Port: port},
-		Accept: func(event events.Event) bool { return event.Type == events.EventHTTPObserved },
-		Convert: evidence.FromHTTPEvent,
-		Analyze: (&intelligence.Engine{}).Analyze,
+		Accept:    func(event events.Event) bool { return event.Type == events.EventHTTPObserved },
+		Convert:   evidence.FromHTTPEvent,
+		Analyze:   (&intelligence.Engine{}).Analyze,
 	}
 }
 
 func eventTargetInScope(eventTarget, target string) bool {
 	eventTarget = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(eventTarget)), ".")
 	target = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(target)), ".")
-	if eventTarget == "" || target == "" { return false }
-	if eventTarget == target { return true }
-	if net.ParseIP(target) != nil { return false }
+	if eventTarget == "" || target == "" {
+		return false
+	}
+	if eventTarget == target {
+		return true
+	}
+	if net.ParseIP(target) != nil {
+		return false
+	}
 	return strings.HasSuffix(eventTarget, "."+target)
 }
