@@ -224,6 +224,14 @@ DNS snapshots, generalized run snapshots, and the evidence database use .kem3t/s
 
 ## Validation
 
+Run the deterministic loopback baseline (TCP open/closed, HTTP, and TLS) with:
+
+```bash
+python3 scripts/validation-lab/run.py
+```
+
+See [the controlled validation lab](docs/validation-lab/README.md), its [independent ground-truth dataset](docs/validation-lab/ground-truth.json), and the [full real-world validation plan](docs/real-world-validation.md). The local fixture does not validate external intelligence providers or real-world relationship accuracy.
+
 Run these checks before proposing a change:
 
 ~~~bash
