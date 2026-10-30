@@ -31,7 +31,7 @@ func NewCTStageWithClient(client *externalintel.CTClient) Stage {
 	if client == nil { client = &externalintel.CTClient{} }
 	return FuncStage{StageName:"certificate-transparency", Lookup:func(ctx context.Context,target string,registry *evidence.Registry)(StageResult,error){
 		report,err:=client.LookupDomain(ctx,target); if err!=nil{return StageResult{},err}
-		count,err:=externalintel.RegisterCTReport(registry,report); return StageResult{Evidence:count,Observations:count},err
+		count,err:=externalintel.RegisterCTReport(registry,report); return StageResult{Evidence:count,Observations:count,Limitations:append([]string(nil),report.Limitations...)},err
 	}}
 }
 
