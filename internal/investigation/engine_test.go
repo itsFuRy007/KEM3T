@@ -117,3 +117,16 @@ func TestEngineRejectsAdaptivePlanThatExceedsStageLimit(t *testing.T) {
 	if err==nil {t.Fatal("expected adaptive stage limit error")}
 	if !result.Partial {t.Fatal("stage limit error should be marked partial")}
 }
+
+func TestEngineGraphExcludesUnrelatedTargetsFromSharedRegistry(t *testing.T) {
+	registry:=evidence.NewRegistry()
+	unrelated:=evidence.Evidence{ID:"dns-address:other.example:198.51.100.9",EntityID:"other.example",Type:evidence.TypeDNSAddress,Value:"198.51.100.9"}
+	if err:=registry.AddEvidence(unrelated);err!=nil {t.Fatal(err)}
+	if err:=registry.AddObservation(evidence.Observation{ID:"other-observation",EvidenceID:unrelated.ID,Source:"test",ObservedAt:time.Date(2026,1,1,0,0,0,0,time.UTC),EventIDs:[]string{"other-event"}});err!=nil {t.Fatal(err)}
+	result,err:=(&Engine{Registry:registry,Stages:[]Stage{testStage{name:"dns"}}}).Run(context.Background(),"example.com")
+	if err!=nil {t.Fatal(err)}
+	for _,node:=range result.Graph.Nodes {
+		if node.Value=="other.example"||node.Value=="198.51.100.9" {t.Fatalf("unrelated target leaked into investigation graph: %+v",node)}
+	}
+	if len(result.Graph.Nodes)!=2 {t.Fatalf("expected only target domain and linked IP, got %+v",result.Graph.Nodes)}
+}
