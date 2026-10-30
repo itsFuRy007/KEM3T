@@ -49,6 +49,21 @@ func TestRunTCPStoresEvidenceAndBuildsGraph(t *testing.T) {
 	if len(result.Evidence) == 0 {
 		t.Fatal("expected evidence for the open TCP port")
 	}
+	if len(result.Findings) != 1 {
+		t.Fatalf("expected 1 intelligence finding for the open TCP port, got %d", len(result.Findings))
+	}
+	if result.Findings[0].Title != "Open TCP port observed" {
+		t.Fatalf("unexpected TCP finding title: %q", result.Findings[0].Title)
+	}
+	if result.Findings[0].Priority != "INFO" {
+		t.Fatalf("unexpected TCP finding priority: %q", result.Findings[0].Priority)
+	}
+	if len(result.Report.Findings) != 1 {
+		t.Fatalf("expected 1 finding in intelligence report, got %d", len(result.Report.Findings))
+	}
+	if len(result.Report.PrioritizedFindings) != 1 {
+		t.Fatalf("expected 1 prioritized finding in intelligence report, got %d", len(result.Report.PrioritizedFindings))
+	}
 	if len(result.Graph.Nodes) < 2 {
 		t.Fatalf("expected target and TCP-port nodes, got %d", len(result.Graph.Nodes))
 	}
