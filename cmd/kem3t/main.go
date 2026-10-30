@@ -139,14 +139,11 @@ func runInvestigation(target, snapshotDir string, enableActive bool, startPort, 
 	if err != nil { return fmt.Errorf("open shared evidence registry: %w", err) }
 	defer registry.Close()
 
-	stages := []investigation.Stage{
-		investigation.NewDNSStage(target),
-		investigation.NewCTStage(),
-	}
+	var stages []investigation.Stage
 	if net.ParseIP(target) != nil {
 		stages = append(stages, investigation.NewIPRDAPStage(), investigation.NewASNStage())
 	} else {
-		stages = append(stages, investigation.NewRDAPDomainStage())
+		stages = append(stages, investigation.NewDNSStage(target), investigation.NewCTStage(), investigation.NewRDAPDomainStage())
 	}
 	if apiKey := strings.TrimSpace(os.Getenv("OTX_API_KEY")); apiKey != "" {
 		stages = append(stages,
