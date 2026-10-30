@@ -153,3 +153,17 @@ func TestSQLiteSaveBatchRollsBackOnMissingEvidenceReference(t *testing.T) {
 	records,observations,err:=store.LoadAll(context.Background());if err!=nil{t.Fatal(err)}
 	if len(records)!=0||len(observations)!=0{t.Fatalf("foreign-key failure did not roll back batch: evidence=%+v observations=%+v",records,observations)}
 }
+
+func TestSQLiteRegistryAddBatchSurvivesReopen(t *testing.T) {
+	path:=filepath.Join(t.TempDir(),"registry-batch.db")
+	registry,err:=OpenRegistry(path);if err!=nil{t.Fatal(err)}
+	first:=validEvidence()
+	second:=validEvidence();second.ID="dns-address:example.com:192.0.2.12";second.Value="192.0.2.12"
+	firstObservation:=validObservation()
+	secondObservation:=validObservation();secondObservation.ID="registry-batch-observation-2";secondObservation.EvidenceID=second.ID
+	if err:=registry.AddBatch(context.Background(),[]Evidence{first,second},[]Observation{firstObservation,secondObservation});err!=nil{_ = registry.Close();t.Fatal(err)}
+	if err:=registry.Close();err!=nil{t.Fatal(err)}
+	reopened,err:=OpenRegistry(path);if err!=nil{t.Fatal(err)};defer reopened.Close()
+	if len(reopened.AllEvidence())!=2||len(reopened.AllObservations())!=2{t.Fatalf("reopened registry lost batch records")}
+	if _,err:=reopened.ObservationsForEvidence(second.ID);err!=nil{t.Fatalf("reopened batch evidence history unavailable: %v",err)}
+}
