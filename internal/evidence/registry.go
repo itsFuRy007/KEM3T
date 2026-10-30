@@ -225,6 +225,7 @@ func (r *Registry) AddObservation(o Observation) error {
 	normalizedEvidence := make([]Evidence, len(records))
 	batchEvidenceIDs := make(map[string]struct{}, len(records))
 	for i, item := range records {
+		if err := ctx.Err(); err != nil { return err }
 		item.ID = strings.TrimSpace(item.ID)
 		item.EntityID = strings.ToLower(strings.TrimSpace(item.EntityID))
 		item.Value = strings.TrimSpace(item.Value)
@@ -240,6 +241,7 @@ func (r *Registry) AddObservation(o Observation) error {
 	normalizedObservations := make([]Observation, len(observations))
 	batchObservationIDs := make(map[string]struct{}, len(observations))
 	for i, item := range observations {
+		if err := ctx.Err(); err != nil { return err }
 		item.ID = strings.TrimSpace(item.ID)
 		item.EvidenceID = strings.TrimSpace(item.EvidenceID)
 		item.Source = strings.TrimSpace(item.Source)
