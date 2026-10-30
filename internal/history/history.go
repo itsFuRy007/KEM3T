@@ -117,11 +117,25 @@ func BuildSnapshot(run evidence.CollectionRun, records []evidence.Evidence, obse
 	evidenceByID := make(map[string]evidence.Evidence, len(records))
 	for _, item := range records { evidenceByID[item.ID] = item }
 
+	allowedEntities := map[string]struct{}{target: {}}
+	if collector == "investigation" {
+		for _, item := range records {
+			entity := NormalizeTarget(item.EntityID)
+			if entity == target || (net.ParseIP(target) == nil && strings.HasSuffix(entity, "."+target)) {
+				allowedEntities[entity] = struct{}{}
+				if item.Type == evidence.TypeDNSAddress { allowedEntities[NormalizeTarget(item.Value)] = struct{}{} }
+			}
+		}
+	}
 	byKey := make(map[string]*Record)
 	for _, observation := range observations {
 		if observation.ObservedAt.Before(run.StartedAt) || observation.ObservedAt.After(run.FinishedAt) { continue }
 		item, ok := evidenceByID[observation.EvidenceID]
-		if !ok || NormalizeTarget(item.EntityID) != target { continue }
+		if !ok { continue }
+		entity := NormalizeTarget(item.EntityID)
+		if collector == "investigation" {
+			if _, inScope := allowedEntities[entity]; !inScope { continue }
+		} else if entity != target { continue }
 		if collector != "investigation" && CollectorForEvidence(item.Type) != collector { continue }
 		if collector == "investigation" && CollectorForEvidence(item.Type) == "unknown" { continue }
 		key, err := recordKey(item)
