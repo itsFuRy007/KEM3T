@@ -39,7 +39,7 @@ jobs:
         run: go test -race -p 1 -count=1 ./...
 
       - name: Run fuzz smoke test
-        run: go test -run="^$" -fuzz=FuzzCoreInputValidation -fuzztime=3s ./internal/integration
+        run: go test -run="^$" -fuzz=FuzzCoreInputValidation -fuzztime=3s -parallel=1 ./internal/integration
 
       - name: Run performance benchmarks (single sample)
         run: go test -run '^$' -bench 'Benchmark(BuildDNS|MarshalDNS|SQLite)' -benchtime=1x -benchmem ./internal/batch ./internal/evidence
