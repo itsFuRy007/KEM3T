@@ -230,13 +230,14 @@ Run these checks before proposing a change:
 gofmt -l .
 go test -count=1 ./...
 go test -race -p 1 -count=1 ./...
+go test -run '^$' -fuzz=FuzzCoreInputValidation -fuzztime=3s ./internal/integration
 go vet ./...
 go build ./...
 go mod verify
 git diff --check
 ~~~
 
-The race-detector command uses -p 1 to run package tests serially, which has been more reliable in the current development environment. The CI workflow currently runs the full test suite, go vet, and build checks; formatting is reviewed separately with gofmt.
+The race-detector command uses -p 1 to run package tests serially. CI runs the full test suite, race detector, a bounded fuzz smoke test, performance benchmarks, vet, and build checks. Formatting is reviewed separately with gofmt.
 
 ## Development roadmap
 
@@ -289,13 +290,13 @@ The roadmap tracks implemented foundations and remaining validation work; checke
 - [x] Versioned, scope-validated JSON investigation exports with temporal context
 - [x] DNS workflow from collection through evidence, report, adaptive plan, and export
 - [x] Unified investigation orchestration across DNS, TCP, TLS, HTTP, and external-intelligence stages with shared evidence, graph/report output, and multi-source history
-- [ ] Researcher-facing plan feedback workflow refinements and richer report formats
+- [x] Researcher-facing plan feedback CLI and evidence-linked Markdown intelligence dossiers
 
 ### Hardening
 - [x] Unit and integration tests for implemented workflows
 - [x] Initial HTTP collection bounds and redirect scope checks
-- [ ] Broader malformed-input and failure-mode testing
-- [ ] Fuzzing, race-focused regression coverage, and measured performance testing
+- [x] Broader malformed-input and failure-mode testing across event, evidence, observation, and report boundaries
+- [x] Core fuzz smoke tests, race-detector CI, and measured performance benchmarks
 - [ ] Security review and reproducible release checks
 
 ### Real-world validation

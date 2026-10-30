@@ -11,6 +11,7 @@ on:
       - phase8-researcher-narrative
       - phase8-intelligence-gap-detection
       - phase8-adaptive-investigation-workflow
+      - phase9-malformed-fuzz-race-hardening
   pull_request:
     branches:
       - main
@@ -33,6 +34,12 @@ jobs:
 
       - name: Run tests
         run: go test -count=1 ./...
+
+      - name: Run race detector
+        run: go test -race -p 1 -count=1 ./...
+
+      - name: Run fuzz smoke test
+        run: go test -run="^$" -fuzz=FuzzCoreInputValidation -fuzztime=3s ./internal/integration
 
       - name: Run performance benchmarks (single sample)
         run: go test -run '^$' -bench 'Benchmark(BuildDNS|MarshalDNS|SQLite)' -benchtime=1x -benchmem ./internal/batch ./internal/evidence
