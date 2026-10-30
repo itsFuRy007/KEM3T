@@ -587,7 +587,9 @@ func printIntelligenceReport(report intelligence.IntelligenceReport) {
 	fmt.Println("\n[INTELLIGENCE REPORT]")
 	fmt.Printf("Target: %s\n", report.Target)
 	fmt.Printf("Findings: %d\n", len(report.Findings))
+	fmt.Printf("Service surfaces: %d\n", len(report.ServiceSurfaces))
 	fmt.Printf("Correlations: %d\n", len(report.Correlations))
+	fmt.Printf("Intelligence gaps: %d\n", len(report.IntelligenceGaps))
 	fmt.Printf("Hypotheses: %d\n", len(report.Hypotheses))
 	fmt.Printf("Prioritized findings: %d\n", len(report.PrioritizedFindings))
 
@@ -621,6 +623,22 @@ func printIntelligenceReport(report intelligence.IntelligenceReport) {
 		for _, item := range report.PrioritizedFindings {
 			fmt.Printf("[%s] %s\n", item.Priority, item.Finding.Title)
 			fmt.Printf("  Reason: %s\n", item.Reason)
+		}
+	}
+
+	if strings.TrimSpace(report.Narrative.Summary) != "" {
+		fmt.Println("\n[RESEARCH SUMMARY]")
+		fmt.Println(report.Narrative.Summary)
+	}
+
+	if len(report.IntelligenceGaps) > 0 {
+		fmt.Println("\n[INTELLIGENCE GAPS]")
+		for _, gap := range report.IntelligenceGaps {
+			fmt.Printf("[%s] %s — %s\n", gap.Priority, gap.Subject, gap.Unknown)
+			fmt.Printf("  Why it matters: %s\n", gap.WhyItMatters)
+			fmt.Printf("  Required evidence: %s\n", strings.Join(gap.RequiredEvidence, "; "))
+			fmt.Printf("  Suggested action: %s\n", gap.SuggestedAction)
+			fmt.Printf("  Evidence references: %s\n", strings.Join(gap.References, ", "))
 		}
 	}
 
