@@ -3,6 +3,7 @@ package intelligence
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/itsFuRy007/kem3t/internal/events"
 )
