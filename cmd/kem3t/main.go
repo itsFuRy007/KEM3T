@@ -250,13 +250,12 @@ func runTCP(target string, startPort, endPort int, snapshotDir string) error {
 		return err
 	}
 
-	counts := map[string]int{"open": 0, "closed": 0, "unknown": 0}
+	counts, err := countTCPStates(result.Events)
+	if err != nil {
+		return err
+	}
 	for _, event := range result.Events {
 		state := strings.ToLower(strings.TrimSpace(event.Data["state"]))
-		if _, ok := counts[state]; !ok {
-			return fmt.Errorf("TCP pipeline returned unsupported state %q for port %s", state, event.Data["port"])
-		}
-		counts[state]++
 		reason := strings.TrimSpace(event.Data["reason"])
 		if reason != "" {
 			fmt.Printf("[%s] %s/tcp — %s\n", strings.ToUpper(state), event.Data["port"], reason)
@@ -275,6 +274,19 @@ func runTCP(target string, startPort, endPort int, snapshotDir string) error {
 	printIntelligenceReport(result.Report)
 	printInfrastructureGraph(result.Graph)
 	return nil
+}
+
+
+func countTCPStates(eventsIn []events.Event) (map[string]int, error) {
+	counts := map[string]int{"open": 0, "closed": 0, "unknown": 0}
+	for _, event := range eventsIn {
+		state := strings.ToLower(strings.TrimSpace(event.Data["state"]))
+		if _, ok := counts[state]; !ok {
+			return nil, fmt.Errorf("unsupported TCP state %q for port %s", state, event.Data["port"])
+		}
+		counts[state]++
+	}
+	return counts, nil
 }
 
 func runTLS(target string, port int, snapshotDir string) error {
