@@ -36,36 +36,8 @@ jobs:
 
       - name: Fuzz evidence validation boundaries
         run: |
-          go test -run '^        run: go test -run '^$' -bench 'Benchmark(BuildDNS|MarshalDNS|SQLite)' -benchtime=1x -benchmem ./internal/batch ./internal/evidence
-
-      - name: Run go vet
-        run: go vet ./...
-
-      - name: Build all packages
-        run: go build ./...
- -fuzz '^FuzzEvidenceValidate        run: go test -run '^$' -bench 'Benchmark(BuildDNS|MarshalDNS|SQLite)' -benchtime=1x -benchmem ./internal/batch ./internal/evidence
-
-      - name: Run go vet
-        run: go vet ./...
-
-      - name: Build all packages
-        run: go build ./...
- -fuzztime=5s ./internal/evidence
-          go test -run '^        run: go test -run '^$' -bench 'Benchmark(BuildDNS|MarshalDNS|SQLite)' -benchtime=1x -benchmem ./internal/batch ./internal/evidence
-
-      - name: Run go vet
-        run: go vet ./...
-
-      - name: Build all packages
-        run: go build ./...
- -fuzz '^FuzzObservationValidate        run: go test -run '^$' -bench 'Benchmark(BuildDNS|MarshalDNS|SQLite)' -benchtime=1x -benchmem ./internal/batch ./internal/evidence
-
-      - name: Run go vet
-        run: go vet ./...
-
-      - name: Build all packages
-        run: go build ./...
- -fuzztime=5s ./internal/evidence
+          go test -run '^$' -fuzz '^FuzzEvidenceValidate$' -fuzztime=5s ./internal/evidence
+          go test -run '^$' -fuzz '^FuzzObservationValidate$' -fuzztime=5s ./internal/evidence
 
       - name: Run race detector
         run: go test -race -p 1 -count=1 ./...
