@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/observations"
 )
 
 func TestBuildCreatesDNSGraph(t *testing.T) {
@@ -560,5 +561,19 @@ func TestBuildCreatesTCPPortGraph(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("missing HAS_OPEN_PORT edge for example.com:443")
+	}
+}
+
+func TestAttachServicesDoesNotCreateHostedServiceForClosedOrUnknownTCP(t *testing.T) {
+	services := []observations.Service{
+		{ID:"closed", Target:"127.0.0.1", Port:80, Transport:"tcp", State:"closed", EvidenceIDs:[]string{"closed-evidence"}},
+		{ID:"unknown", Target:"127.0.0.1", Port:81, Transport:"tcp", State:"unknown", EvidenceIDs:[]string{"unknown-evidence"}},
+	}
+	got, err := AttachServices(Graph{}, services)
+	if err != nil {
+		t.Fatalf("AttachServices() error = %v", err)
+	}
+	if len(got.Nodes) != 0 || len(got.Edges) != 0 {
+		t.Fatalf("non-open TCP states created graph services: nodes=%+v edges=%+v", got.Nodes, got.Edges)
 	}
 }
