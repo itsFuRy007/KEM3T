@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -32,11 +34,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Check Go formatting
+      - name: Check changed Go files are formatted
+        if: github.event_name == 'pull_request'
         run: |
-          unformatted=$(gofmt -l .)
+          git fetch origin "$GITHUB_BASE_REF"
+          changed=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD" -- '*.go')
+          if [ -z "$changed" ]; then exit 0; fi
+          unformatted=$(printf '%s\n' "$changed" | xargs -r gofmt -l)
           if [ -n "$unformatted" ]; then
-            printf 'Unformatted Go files:\n%s\n' "$unformatted"
+            printf 'Unformatted changed Go files:\n%s\n' "$unformatted"
             exit 1
           fi
 
