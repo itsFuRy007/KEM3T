@@ -107,10 +107,6 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 			result.Findings = append(result.Findings, *finding)
 		}
 		result.Events = append(result.Events, event)
-		if event.Type == events.EventTCPPortStateObserved {
-			continue
-		}
-
 		item, observation, err := evidence.FromTCPEvent(event)
 		if err != nil {
 			return TCPResult{}, fmt.Errorf("convert TCP event to evidence: %w", err)

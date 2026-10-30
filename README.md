@@ -295,6 +295,7 @@ The roadmap tracks implemented foundations and remaining validation work; checke
 - [x] Versioned, scope-validated JSON investigation exports with temporal context
 - [x] DNS workflow from collection through evidence, report, adaptive plan, and export
 - [x] Unified investigation orchestration across DNS, TCP, TLS, HTTP, and external-intelligence stages with shared evidence, graph/report output, and multi-source history
+- [x] TCP OPEN/CLOSED/UNKNOWN states retained as evidence-backed observations, reflected in temporal history, and reported distinctly by the CLI; only OPEN creates open-port/service graph relationships
 - [x] Researcher-facing plan feedback CLI and evidence-linked Markdown intelligence dossiers
 
 ### Hardening

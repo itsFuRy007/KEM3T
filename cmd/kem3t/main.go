@@ -18,8 +18,8 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/externalintel"
 	"github.com/itsFuRy007/kem3t/internal/graph"
-	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/history"
+	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/investigation"
 	"github.com/itsFuRy007/kem3t/internal/pipeline"
 )
@@ -83,7 +83,9 @@ func run() error {
 	case "plan-feedback":
 		return runPlanFeedback(*planStatePath, *planFeedbackItem, *planFeedbackOutcome, *planFeedbackEvidence, *planFeedbackNote)
 	case "investigate":
-		if strings.TrimSpace(*target) == "" { return fmt.Errorf("-target is required in investigate mode") }
+		if strings.TrimSpace(*target) == "" {
+			return fmt.Errorf("-target is required in investigate mode")
+		}
 		return runInvestigation(strings.TrimSpace(*target), *snapshotDir, *enableActive, *startPort, *endPort, *port, *httpScheme, *httpPort, *exportMarkdown)
 	case "history":
 		return runHistory(*target, *snapshotDir)
@@ -103,16 +105,24 @@ func run() error {
 		}
 		return runRDAP(strings.TrimSpace(*target), *snapshotDir)
 	case "iprdap":
-		if strings.TrimSpace(*target)=="" { return fmt.Errorf("-target is required in IP RDAP mode") }
-		return runIPRDAP(strings.TrimSpace(*target),*snapshotDir)
+		if strings.TrimSpace(*target) == "" {
+			return fmt.Errorf("-target is required in IP RDAP mode")
+		}
+		return runIPRDAP(strings.TrimSpace(*target), *snapshotDir)
 	case "asn":
-		if strings.TrimSpace(*target) == "" { return fmt.Errorf("-target is required in ASN mode") }
+		if strings.TrimSpace(*target) == "" {
+			return fmt.Errorf("-target is required in ASN mode")
+		}
 		return runASN(strings.TrimSpace(*target), *snapshotDir)
 	case "pdns":
-		if strings.TrimSpace(*target) == "" { return fmt.Errorf("-target is required in passive-DNS mode") }
+		if strings.TrimSpace(*target) == "" {
+			return fmt.Errorf("-target is required in passive-DNS mode")
+		}
 		return runPassiveDNS(strings.TrimSpace(*target), *snapshotDir)
 	case "threat":
-		if strings.TrimSpace(*target) == "" { return fmt.Errorf("-target is required in threat-intelligence mode") }
+		if strings.TrimSpace(*target) == "" {
+			return fmt.Errorf("-target is required in threat-intelligence mode")
+		}
 		return runThreatIntel(strings.TrimSpace(*target), *snapshotDir)
 	case "demo":
 		return runDemo()
@@ -141,15 +151,20 @@ func run() error {
 	}
 }
 
-
 func runInvestigation(target, snapshotDir string, enableActive bool, startPort, endPort, tlsPort int, httpScheme string, httpPort int, exportMarkdown string) (retErr error) {
-	if strings.TrimSpace(snapshotDir) == "" { return fmt.Errorf("snapshot directory is required") }
+	if strings.TrimSpace(snapshotDir) == "" {
+		return fmt.Errorf("snapshot directory is required")
+	}
 	if enableActive && (startPort < 1 || endPort > 65535 || startPort > endPort) {
 		return fmt.Errorf("invalid authorized TCP port range %d-%d", startPort, endPort)
 	}
-	if enableActive && (tlsPort < 1 || tlsPort > 65535) { return fmt.Errorf("TLS port must be between 1 and 65535") }
+	if enableActive && (tlsPort < 1 || tlsPort > 65535) {
+		return fmt.Errorf("TLS port must be between 1 and 65535")
+	}
 	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
-	if err != nil { return fmt.Errorf("open shared evidence registry: %w", err) }
+	if err != nil {
+		return fmt.Errorf("open shared evidence registry: %w", err)
+	}
 	defer func() {
 		if closeErr := registry.Close(); closeErr != nil {
 			retErr = errors.Join(retErr, fmt.Errorf("close shared evidence registry: %w", closeErr))
@@ -177,25 +192,40 @@ func runInvestigation(target, snapshotDir string, enableActive bool, startPort, 
 	}
 	engine := investigation.Engine{Registry: registry, Stages: stages, Planner: investigation.NewCTSubdomainDNSPlanner(8), SnapshotDir: snapshotDir}
 	result, err := engine.Run(context.Background(), target)
-	if err != nil { return fmt.Errorf("investigation: %w", err) }
+	if err != nil {
+		return fmt.Errorf("investigation: %w", err)
+	}
 
 	fmt.Println("[UNIFIED INVESTIGATION]")
 	fmt.Printf("Target: %s\nRun ID: %s\nPartial: %t\n", result.Target, result.RunID, result.Partial)
 	if path := strings.TrimSpace(exportMarkdown); path != "" {
 		markdown, err := intelligence.RenderMarkdownReport(result.Report)
-		if err != nil { return fmt.Errorf("render Markdown intelligence dossier: %w", err) }
-		if err := writeFileAtomic(path, []byte(markdown)); err != nil { return fmt.Errorf("write Markdown intelligence dossier: %w", err) }
+		if err != nil {
+			return fmt.Errorf("render Markdown intelligence dossier: %w", err)
+		}
+		if err := writeFileAtomic(path, []byte(markdown)); err != nil {
+			return fmt.Errorf("write Markdown intelligence dossier: %w", err)
+		}
 		fmt.Printf("[MARKDOWN DOSSIER] %s\n", path)
 	}
 	for _, stage := range result.Stages {
 		state := "completed"
-		if stage.Error != "" { state = "failed/partial" }
+		if stage.Error != "" {
+			state = "failed/partial"
+		}
 		fmt.Printf("[%s] %s — events: %d, evidence: %d, observations: %d\n", state, stage.Name, stage.Result.Events, stage.Result.Evidence, stage.Result.Observations)
-		if stage.Error != "" { fmt.Printf("  Error: %s\n", stage.Error) }
-		for _, limitation := range stage.Result.Limitations { fmt.Printf("  Limitation: %s\n", limitation) }
+		if stage.Error != "" {
+			fmt.Printf("  Error: %s\n", stage.Error)
+		}
+		for _, limitation := range stage.Result.Limitations {
+			fmt.Printf("  Limitation: %s\n", limitation)
+		}
 	}
 	evidenceCount, observationCount := 0, 0
-	for _, stage := range result.Stages { evidenceCount += stage.Result.Evidence; observationCount += stage.Result.Observations }
+	for _, stage := range result.Stages {
+		evidenceCount += stage.Result.Evidence
+		observationCount += stage.Result.Observations
+	}
 	fmt.Printf("\nNew evidence records: %d | New observations: %d\n", evidenceCount, observationCount)
 	printIntelligenceReport(result.Report)
 	printInvestigationPlan(result.Report.InvestigationPlan)
@@ -250,14 +280,42 @@ func runTCP(target string, startPort, endPort int, snapshotDir string) error {
 		return err
 	}
 
-	fmt.Printf("[TCP PORT SCAN] %s (%d-%d)\n", target, startPort, endPort)
-	for _, event := range result.Events {
-		fmt.Printf("[OPEN] %s/tcp\n", event.Data["port"])
+	counts, err := countTCPStates(result.Events)
+	if err != nil {
+		return err
 	}
-	fmt.Printf("Open ports: %d\n", len(result.Events))
+	for _, event := range result.Events {
+		state := strings.ToLower(strings.TrimSpace(event.Data["state"]))
+		reason := strings.TrimSpace(event.Data["reason"])
+		if reason != "" {
+			fmt.Printf("[%s] %s/tcp — %s\n", strings.ToUpper(state), event.Data["port"], reason)
+		} else {
+			fmt.Printf("[%s] %s/tcp\n", strings.ToUpper(state), event.Data["port"])
+		}
+	}
+	fmt.Printf("TCP states: OPEN=%d | CLOSED=%d | UNKNOWN=%d | TOTAL=%d\n",
+		counts["open"], counts["closed"], counts["unknown"], len(result.Events))
 	fmt.Printf("Evidence records: %d | Graph nodes: %d | Graph edges: %d\n",
 		len(result.Evidence), len(result.Graph.Nodes), len(result.Graph.Edges))
+	for _, finding := range result.Findings {
+		printFinding(finding)
+	}
+	fmt.Println("\n[INTELLIGENCE REPORT]")
+	printIntelligenceReport(result.Report)
+	printInfrastructureGraph(result.Graph)
 	return nil
+}
+
+func countTCPStates(eventsIn []events.Event) (map[string]int, error) {
+	counts := map[string]int{"open": 0, "closed": 0, "unknown": 0}
+	for _, event := range eventsIn {
+		state := strings.ToLower(strings.TrimSpace(event.Data["state"]))
+		if _, ok := counts[state]; !ok {
+			return nil, fmt.Errorf("unsupported TCP state %q for port %s", state, event.Data["port"])
+		}
+		counts[state]++
+	}
+	return counts, nil
 }
 
 func runTLS(target string, port int, snapshotDir string) error {
@@ -368,10 +426,16 @@ func runDNSWithPlanState(target, snapshotDir, exportJSON, planStatePath string) 
 	state := intelligence.InvestigationPlanState{Feedback: []intelligence.InvestigationFeedback{}}
 	if strings.TrimSpace(planStatePath) != "" {
 		data, err := os.ReadFile(planStatePath)
-		if err != nil && !os.IsNotExist(err) { return fmt.Errorf("read investigation plan state: %w", err) }
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("read investigation plan state: %w", err)
+		}
 		if err == nil {
-			if err := json.Unmarshal(data, &state); err != nil { return fmt.Errorf("decode investigation plan state: %w", err) }
-			if err := state.Validate(); err != nil { return fmt.Errorf("validate investigation plan state: %w", err) }
+			if err := json.Unmarshal(data, &state); err != nil {
+				return fmt.Errorf("decode investigation plan state: %w", err)
+			}
+			if err := state.Validate(); err != nil {
+				return fmt.Errorf("validate investigation plan state: %w", err)
+			}
 		}
 	}
 	result, err := pipeline.RunDNSWithPlanFeedback(
@@ -401,8 +465,12 @@ func runDNSWithPlanState(target, snapshotDir, exportJSON, planStatePath string) 
 		state.PreviousPlan = &result.Report.InvestigationPlan
 		state.Feedback = []intelligence.InvestigationFeedback{}
 		stateData, err := json.MarshalIndent(state, "", "  ")
-		if err != nil { return fmt.Errorf("encode investigation plan state: %w", err) }
-		if err := writeFileAtomic(planStatePath, stateData); err != nil { return fmt.Errorf("write investigation plan state: %w", err) }
+		if err != nil {
+			return fmt.Errorf("encode investigation plan state: %w", err)
+		}
+		if err := writeFileAtomic(planStatePath, stateData); err != nil {
+			return fmt.Errorf("write investigation plan state: %w", err)
+		}
 		fmt.Printf("[ADAPTIVE PLAN STATE] %s\n", planStatePath)
 	}
 	printInfrastructureGraph(result.Graph)
@@ -454,29 +522,51 @@ func runDNSWithPlanState(target, snapshotDir, exportJSON, planStatePath string) 
 	return nil
 }
 
-
 func writeInvestigationExport(path string, export intelligence.InvestigationExport) error {
 	data, err := json.MarshalIndent(export, "", "  ")
-	if err != nil { return fmt.Errorf("encode scoped report: %w", err) }
+	if err != nil {
+		return fmt.Errorf("encode scoped report: %w", err)
+	}
 	return writeFileAtomic(path, data)
 }
 
 func writeFileAtomic(path string, data []byte) error {
 	path = strings.TrimSpace(path)
-	if path == "" { return fmt.Errorf("output path is required") }
+	if path == "" {
+		return fmt.Errorf("output path is required")
+	}
 	data = append([]byte(nil), data...)
-	if len(data) == 0 || data[len(data)-1] != '\n' { data = append(data, '\n') }
+	if len(data) == 0 || data[len(data)-1] != '\n' {
+		data = append(data, '\n')
+	}
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0750); err != nil { return fmt.Errorf("create output directory: %w", err) }
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return fmt.Errorf("create output directory: %w", err)
+	}
 	file, err := os.CreateTemp(dir, ".kem3t-export-*.tmp")
-	if err != nil { return fmt.Errorf("create temporary output: %w", err) }
+	if err != nil {
+		return fmt.Errorf("create temporary output: %w", err)
+	}
 	tempPath := file.Name()
 	defer os.Remove(tempPath)
-	if err := file.Chmod(0600); err != nil { file.Close(); return fmt.Errorf("restrict output permissions: %w", err) }
-	if _, err := file.Write(data); err != nil { file.Close(); return fmt.Errorf("write output: %w", err) }
-	if err := file.Sync(); err != nil { file.Close(); return fmt.Errorf("sync output: %w", err) }
-	if err := file.Close(); err != nil { return fmt.Errorf("close output: %w", err) }
-	if err := os.Rename(tempPath, path); err != nil { return fmt.Errorf("atomically replace output: %w", err) }
+	if err := file.Chmod(0600); err != nil {
+		file.Close()
+		return fmt.Errorf("restrict output permissions: %w", err)
+	}
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		return fmt.Errorf("write output: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		file.Close()
+		return fmt.Errorf("sync output: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close output: %w", err)
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		return fmt.Errorf("atomically replace output: %w", err)
+	}
 	return nil
 }
 
@@ -488,7 +578,9 @@ func printInvestigationPlan(plan intelligence.InvestigationPlan) {
 		fmt.Printf("[%s | %s | %s] %s\n", item.Status, item.PriorityLabel, item.ID, item.Action)
 		fmt.Printf("  Why: %s\n", item.Rationale)
 		fmt.Printf("  References: %s\n", strings.Join(item.References, ", "))
-		if len(item.EvidenceIDs) > 0 { fmt.Printf("  Outcome evidence: %s\n", strings.Join(item.EvidenceIDs, ", ")) }
+		if len(item.EvidenceIDs) > 0 {
+			fmt.Printf("  Outcome evidence: %s\n", strings.Join(item.EvidenceIDs, ", "))
+		}
 	}
 }
 
@@ -808,113 +900,224 @@ func runCT(target, snapshotDir string) error {
 }
 
 func runRDAP(target, snapshotDir string) error {
-	ctx,cancel:=context.WithTimeout(context.Background(),25*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
-	report,err:=(&externalintel.RDAPClient{}).LookupDomain(ctx,target)
-	if err!=nil{return err}
-	if strings.TrimSpace(snapshotDir)==""{return fmt.Errorf("snapshot directory is required")}
-	if err:=os.MkdirAll(snapshotDir,0750);err!=nil{return fmt.Errorf("create snapshot directory: %w",err)}
-	registry,err:=evidence.OpenRegistry(filepath.Join(snapshotDir,"evidence.db"))
-	if err!=nil{return fmt.Errorf("open evidence registry: %w",err)}
+	report, err := (&externalintel.RDAPClient{}).LookupDomain(ctx, target)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(snapshotDir) == "" {
+		return fmt.Errorf("snapshot directory is required")
+	}
+	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
+		return fmt.Errorf("create snapshot directory: %w", err)
+	}
+	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
+	if err != nil {
+		return fmt.Errorf("open evidence registry: %w", err)
+	}
 	defer registry.Close()
-	added,err:=externalintel.RegisterRDAPReport(registry,report)
-	if err!=nil{return err}
-	infrastructureGraph,err:=graph.BuildFromRegistry(registry)
-	if err!=nil{return fmt.Errorf("build RDAP infrastructure graph: %w",err)}
+	added, err := externalintel.RegisterRDAPReport(registry, report)
+	if err != nil {
+		return err
+	}
+	infrastructureGraph, err := graph.BuildFromRegistry(registry)
+	if err != nil {
+		return fmt.Errorf("build RDAP infrastructure graph: %w", err)
+	}
 	fmt.Println("[DOMAIN REGISTRATION INTELLIGENCE]")
-	fmt.Printf("Target: %s\nSource: %s\nRetrieved: %s\n",report.Target,report.Source,report.RetrievedAt.Format(time.RFC3339))
-	if report.Handle!=""{fmt.Printf("Registry handle: %s\n",report.Handle)}
-	if report.Registrar!=""{fmt.Printf("Registrar label: %s\n",report.Registrar)}
-	fmt.Printf("Status values: %s\n",strings.Join(report.Status,", "))
-	for _,ns:=range report.NameServers{fmt.Printf("[NAMESERVER] %s\n",ns)}
-	for _,event:=range report.Events{fmt.Printf("[REGISTRATION EVENT] %s: %s\n",event.Action,event.Date)}
+	fmt.Printf("Target: %s\nSource: %s\nRetrieved: %s\n", report.Target, report.Source, report.RetrievedAt.Format(time.RFC3339))
+	if report.Handle != "" {
+		fmt.Printf("Registry handle: %s\n", report.Handle)
+	}
+	if report.Registrar != "" {
+		fmt.Printf("Registrar label: %s\n", report.Registrar)
+	}
+	fmt.Printf("Status values: %s\n", strings.Join(report.Status, ", "))
+	for _, ns := range report.NameServers {
+		fmt.Printf("[NAMESERVER] %s\n", ns)
+	}
+	for _, event := range report.Events {
+		fmt.Printf("[REGISTRATION EVENT] %s: %s\n", event.Action, event.Date)
+	}
 	fmt.Println("\n[INTERPRETATION LIMITS]")
-	for _,limitation:=range report.Limitations{fmt.Printf("- %s\n",limitation)}
-	fmt.Printf("New observation: %t\n",added)
+	for _, limitation := range report.Limitations {
+		fmt.Printf("- %s\n", limitation)
+	}
+	fmt.Printf("New observation: %t\n", added)
 	printInfrastructureGraph(infrastructureGraph)
 	return nil
 }
 
-func runASN(target,snapshotDir string)error{
- ctx,cancel:=context.WithTimeout(context.Background(),30*time.Second);defer cancel()
- report,err:=(&externalintel.ASNClient{}).LookupIP(ctx,target);if err!=nil{return err}
- if strings.TrimSpace(snapshotDir)==""{return fmt.Errorf("snapshot directory is required")}
- if err:=os.MkdirAll(snapshotDir,0750);err!=nil{return fmt.Errorf("create snapshot directory: %w",err)}
- registry,err:=evidence.OpenRegistry(filepath.Join(snapshotDir,"evidence.db"));if err!=nil{return fmt.Errorf("open evidence registry: %w",err)};defer registry.Close()
- added,err:=externalintel.RegisterASNReport(registry,report);if err!=nil{return err}
- infrastructureGraph,err:=graph.BuildFromRegistry(registry);if err!=nil{return fmt.Errorf("build ASN infrastructure graph: %w",err)}
- fmt.Println("[ORIGIN ASN INTELLIGENCE]")
- fmt.Printf("Target IP: %s\nRetrieved: %s\n",report.Target,report.RetrievedAt.Format(time.RFC3339))
- for _,record:=range report.Records{
-  fmt.Printf("[ORIGIN] AS%d | Prefix: %s | Network label: %s | Country: %s | Registry: %s | Allocated: %s\n",record.ASN,record.Prefix,record.NetworkName,record.Country,record.Registry,record.Allocated)
-  fmt.Printf("  Mapping source: %s\n  RDAP source: %s\n",record.MappingSource,record.RDAPSource)
- }
- fmt.Println("\n[INTERPRETATION LIMITS]")
- for _,limitation:=range report.Limitations{fmt.Printf("- %s\n",limitation)}
- fmt.Printf("New observation: %t\n",added)
- printInfrastructureGraph(infrastructureGraph)
- return nil
+func runASN(target, snapshotDir string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	report, err := (&externalintel.ASNClient{}).LookupIP(ctx, target)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(snapshotDir) == "" {
+		return fmt.Errorf("snapshot directory is required")
+	}
+	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
+		return fmt.Errorf("create snapshot directory: %w", err)
+	}
+	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
+	if err != nil {
+		return fmt.Errorf("open evidence registry: %w", err)
+	}
+	defer registry.Close()
+	added, err := externalintel.RegisterASNReport(registry, report)
+	if err != nil {
+		return err
+	}
+	infrastructureGraph, err := graph.BuildFromRegistry(registry)
+	if err != nil {
+		return fmt.Errorf("build ASN infrastructure graph: %w", err)
+	}
+	fmt.Println("[ORIGIN ASN INTELLIGENCE]")
+	fmt.Printf("Target IP: %s\nRetrieved: %s\n", report.Target, report.RetrievedAt.Format(time.RFC3339))
+	for _, record := range report.Records {
+		fmt.Printf("[ORIGIN] AS%d | Prefix: %s | Network label: %s | Country: %s | Registry: %s | Allocated: %s\n", record.ASN, record.Prefix, record.NetworkName, record.Country, record.Registry, record.Allocated)
+		fmt.Printf("  Mapping source: %s\n  RDAP source: %s\n", record.MappingSource, record.RDAPSource)
+	}
+	fmt.Println("\n[INTERPRETATION LIMITS]")
+	for _, limitation := range report.Limitations {
+		fmt.Printf("- %s\n", limitation)
+	}
+	fmt.Printf("New observation: %t\n", added)
+	printInfrastructureGraph(infrastructureGraph)
+	return nil
 }
 
-func runPassiveDNS(target,snapshotDir string)error{
- ctx,cancel:=context.WithTimeout(context.Background(),20*time.Second);defer cancel()
- client:=&externalintel.PassiveDNSClient{APIKey:strings.TrimSpace(os.Getenv("OTX_API_KEY"))}
- report,err:=client.LookupDomain(ctx,target);if err!=nil{return err}
- if strings.TrimSpace(snapshotDir)==""{return fmt.Errorf("snapshot directory is required")}
- if err:=os.MkdirAll(snapshotDir,0750);err!=nil{return fmt.Errorf("create snapshot directory: %w",err)}
- registry,err:=evidence.OpenRegistry(filepath.Join(snapshotDir,"evidence.db"));if err!=nil{return fmt.Errorf("open evidence registry: %w",err)};defer registry.Close()
- added,err:=externalintel.RegisterPassiveDNSReport(registry,report);if err!=nil{return err}
- infrastructureGraph,err:=graph.BuildFromRegistry(registry);if err!=nil{return fmt.Errorf("build passive-DNS infrastructure graph: %w",err)}
- fmt.Println("[PASSIVE DNS INTELLIGENCE]")
- fmt.Printf("Target: %s\nSource: %s\nRetrieved: %s\nProvider records: %d\nScoped unique observations: %d\n",report.Target,report.Source,report.RetrievedAt.Format(time.RFC3339),report.SourceRecordCount,len(report.Records))
- for _,record:=range report.Records{fmt.Printf("[HISTORICAL DNS] %s %s %s | first: %s | last: %s | ASN: %s\n",record.Hostname,record.RecordType,record.Address,record.FirstSeen,record.LastSeen,record.ASN)}
- if report.Truncated{fmt.Println("Warning: provider response may be truncated; treat this as a partial historical view.")}
- fmt.Println("\n[INTERPRETATION LIMITS]")
- for _,limitation:=range report.Limitations{fmt.Printf("- %s\n",limitation)}
- fmt.Printf("New observations: %d\n",added)
- printInfrastructureGraph(infrastructureGraph)
- return nil
+func runPassiveDNS(target, snapshotDir string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	client := &externalintel.PassiveDNSClient{APIKey: strings.TrimSpace(os.Getenv("OTX_API_KEY"))}
+	report, err := client.LookupDomain(ctx, target)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(snapshotDir) == "" {
+		return fmt.Errorf("snapshot directory is required")
+	}
+	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
+		return fmt.Errorf("create snapshot directory: %w", err)
+	}
+	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
+	if err != nil {
+		return fmt.Errorf("open evidence registry: %w", err)
+	}
+	defer registry.Close()
+	added, err := externalintel.RegisterPassiveDNSReport(registry, report)
+	if err != nil {
+		return err
+	}
+	infrastructureGraph, err := graph.BuildFromRegistry(registry)
+	if err != nil {
+		return fmt.Errorf("build passive-DNS infrastructure graph: %w", err)
+	}
+	fmt.Println("[PASSIVE DNS INTELLIGENCE]")
+	fmt.Printf("Target: %s\nSource: %s\nRetrieved: %s\nProvider records: %d\nScoped unique observations: %d\n", report.Target, report.Source, report.RetrievedAt.Format(time.RFC3339), report.SourceRecordCount, len(report.Records))
+	for _, record := range report.Records {
+		fmt.Printf("[HISTORICAL DNS] %s %s %s | first: %s | last: %s | ASN: %s\n", record.Hostname, record.RecordType, record.Address, record.FirstSeen, record.LastSeen, record.ASN)
+	}
+	if report.Truncated {
+		fmt.Println("Warning: provider response may be truncated; treat this as a partial historical view.")
+	}
+	fmt.Println("\n[INTERPRETATION LIMITS]")
+	for _, limitation := range report.Limitations {
+		fmt.Printf("- %s\n", limitation)
+	}
+	fmt.Printf("New observations: %d\n", added)
+	printInfrastructureGraph(infrastructureGraph)
+	return nil
 }
 
-func runThreatIntel(target,snapshotDir string)error{
- ctx,cancel:=context.WithTimeout(context.Background(),20*time.Second);defer cancel()
- client:=&externalintel.ThreatIntelClient{APIKey:strings.TrimSpace(os.Getenv("OTX_API_KEY"))}
- report,err:=client.Lookup(ctx,target);if err!=nil{return err}
- if strings.TrimSpace(snapshotDir)==""{return fmt.Errorf("snapshot directory is required")}
- if err:=os.MkdirAll(snapshotDir,0750);err!=nil{return fmt.Errorf("create snapshot directory: %w",err)}
- registry,err:=evidence.OpenRegistry(filepath.Join(snapshotDir,"evidence.db"));if err!=nil{return fmt.Errorf("open evidence registry: %w",err)};defer registry.Close()
- added,err:=externalintel.RegisterThreatIntelReport(registry,report);if err!=nil{return err}
- infrastructureGraph,err:=graph.BuildFromRegistry(registry);if err!=nil{return fmt.Errorf("build threat-intelligence graph: %w",err)}
- fmt.Println("[THREAT INTELLIGENCE CONTEXT]")
- fmt.Printf("Indicator: %s (%s)\nSource: %s\nRetrieved: %s\nCommunity pulse count: %d\nReturned pulse records: %d\n",report.Target,report.IndicatorType,report.Source,report.RetrievedAt.Format(time.RFC3339),report.PulseCount,len(report.Pulses))
- for _,pulse:=range report.Pulses{fmt.Printf("[COMMUNITY REPORT] %s | ID: %s | Tags: %s | Created: %s | Modified: %s\n",pulse.Name,pulse.ID,strings.Join(pulse.Tags,", "),pulse.Created,pulse.Modified)}
- if len(report.Pulses)==0{fmt.Println("No pulse records were returned; this is not proof that the indicator is benign.")}
- if report.Truncated{fmt.Println("Warning: provider reports more pulses than returned records; this is a partial view.")}
- fmt.Println("\n[INTERPRETATION LIMITS]")
- for _,limitation:=range report.Limitations{fmt.Printf("- %s\n",limitation)}
- fmt.Printf("New observation: %t\n",added)
- printInfrastructureGraph(infrastructureGraph)
- return nil
+func runThreatIntel(target, snapshotDir string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	client := &externalintel.ThreatIntelClient{APIKey: strings.TrimSpace(os.Getenv("OTX_API_KEY"))}
+	report, err := client.Lookup(ctx, target)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(snapshotDir) == "" {
+		return fmt.Errorf("snapshot directory is required")
+	}
+	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
+		return fmt.Errorf("create snapshot directory: %w", err)
+	}
+	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
+	if err != nil {
+		return fmt.Errorf("open evidence registry: %w", err)
+	}
+	defer registry.Close()
+	added, err := externalintel.RegisterThreatIntelReport(registry, report)
+	if err != nil {
+		return err
+	}
+	infrastructureGraph, err := graph.BuildFromRegistry(registry)
+	if err != nil {
+		return fmt.Errorf("build threat-intelligence graph: %w", err)
+	}
+	fmt.Println("[THREAT INTELLIGENCE CONTEXT]")
+	fmt.Printf("Indicator: %s (%s)\nSource: %s\nRetrieved: %s\nCommunity pulse count: %d\nReturned pulse records: %d\n", report.Target, report.IndicatorType, report.Source, report.RetrievedAt.Format(time.RFC3339), report.PulseCount, len(report.Pulses))
+	for _, pulse := range report.Pulses {
+		fmt.Printf("[COMMUNITY REPORT] %s | ID: %s | Tags: %s | Created: %s | Modified: %s\n", pulse.Name, pulse.ID, strings.Join(pulse.Tags, ", "), pulse.Created, pulse.Modified)
+	}
+	if len(report.Pulses) == 0 {
+		fmt.Println("No pulse records were returned; this is not proof that the indicator is benign.")
+	}
+	if report.Truncated {
+		fmt.Println("Warning: provider reports more pulses than returned records; this is a partial view.")
+	}
+	fmt.Println("\n[INTERPRETATION LIMITS]")
+	for _, limitation := range report.Limitations {
+		fmt.Printf("- %s\n", limitation)
+	}
+	fmt.Printf("New observation: %t\n", added)
+	printInfrastructureGraph(infrastructureGraph)
+	return nil
 }
 
-func runIPRDAP(target,snapshotDir string)error{
- ctx,cancel:=context.WithTimeout(context.Background(),25*time.Second);defer cancel()
- report,err:=(&externalintel.RDAPClient{}).LookupIP(ctx,target);if err!=nil{return err}
- if strings.TrimSpace(snapshotDir)==""{return fmt.Errorf("snapshot directory is required")}
- if err:=os.MkdirAll(snapshotDir,0750);err!=nil{return fmt.Errorf("create snapshot directory: %w",err)}
- registry,err:=evidence.OpenRegistry(filepath.Join(snapshotDir,"evidence.db"));if err!=nil{return fmt.Errorf("open evidence registry: %w",err)};defer registry.Close()
- added,err:=externalintel.RegisterIPRDAPReport(registry,report);if err!=nil{return err}
- infrastructureGraph,err:=graph.BuildFromRegistry(registry);if err!=nil{return fmt.Errorf("build IP RDAP graph: %w",err)}
- fmt.Println("[IP NETWORK REGISTRATION INTELLIGENCE]")
- fmt.Printf("Target IP: %s\nSource: %s\nRetrieved: %s\n",report.Target,report.Source,report.RetrievedAt.Format(time.RFC3339))
- fmt.Printf("Network handle: %s\nNetwork label: %s\nRange: %s - %s\nCountry label: %s\nNetwork type: %s\nStatus: %s\n",report.Handle,report.Name,report.StartAddress,report.EndAddress,report.Country,report.NetworkType,strings.Join(report.Status,", "))
- fmt.Println("\n[INTERPRETATION LIMITS]")
- for _,limitation:=range report.Limitations{fmt.Printf("- %s\n",limitation)}
- fmt.Printf("New observation: %t\n",added)
- printInfrastructureGraph(infrastructureGraph)
- return nil
+func runIPRDAP(target, snapshotDir string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	report, err := (&externalintel.RDAPClient{}).LookupIP(ctx, target)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(snapshotDir) == "" {
+		return fmt.Errorf("snapshot directory is required")
+	}
+	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
+		return fmt.Errorf("create snapshot directory: %w", err)
+	}
+	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
+	if err != nil {
+		return fmt.Errorf("open evidence registry: %w", err)
+	}
+	defer registry.Close()
+	added, err := externalintel.RegisterIPRDAPReport(registry, report)
+	if err != nil {
+		return err
+	}
+	infrastructureGraph, err := graph.BuildFromRegistry(registry)
+	if err != nil {
+		return fmt.Errorf("build IP RDAP graph: %w", err)
+	}
+	fmt.Println("[IP NETWORK REGISTRATION INTELLIGENCE]")
+	fmt.Printf("Target IP: %s\nSource: %s\nRetrieved: %s\n", report.Target, report.Source, report.RetrievedAt.Format(time.RFC3339))
+	fmt.Printf("Network handle: %s\nNetwork label: %s\nRange: %s - %s\nCountry label: %s\nNetwork type: %s\nStatus: %s\n", report.Handle, report.Name, report.StartAddress, report.EndAddress, report.Country, report.NetworkType, strings.Join(report.Status, ", "))
+	fmt.Println("\n[INTERPRETATION LIMITS]")
+	for _, limitation := range report.Limitations {
+		fmt.Printf("- %s\n", limitation)
+	}
+	fmt.Printf("New observation: %t\n", added)
+	printInfrastructureGraph(infrastructureGraph)
+	return nil
 }
-
 
 func runBatchDNS(targetsFile, snapshotDir string, workers int) error {
 	targets, err := batch.ReadTargetsFile(targetsFile)
