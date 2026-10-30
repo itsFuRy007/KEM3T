@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
@@ -14,6 +15,7 @@ import (
 type IntelligenceReport struct {
 	Target                  string                   `json:"target"`
 	Findings                []Finding                `json:"findings"`
+	ServiceSurfaces         []ServiceSurface          `json:"service_surfaces"`
 	Correlations            []Correlation            `json:"correlations"`
 	Discoveries              []Discovery              `json:"discoveries"`
 	DiscoveryPaths           []DiscoveryPath          `json:"discovery_paths"`
@@ -90,6 +92,12 @@ func (e *ReportEngine) BuildWithInvestigationFeedback(
 	if err != nil { return IntelligenceReport{}, fmt.Errorf("discover recurring pivots: %w", err) }
 	hypotheses, err := hypothesisEngine.Generate(correlations)
 	if err != nil { return IntelligenceReport{}, fmt.Errorf("generate hypotheses: %w", err) }
+	serviceSurfaces, err := BuildServiceSurfaces(target, registry.AllEvidence(), registry.AllObservations())
+	if err != nil { return IntelligenceReport{}, fmt.Errorf("build endpoint service surfaces: %w", err) }
+	serviceHypotheses, err := GenerateServiceHypotheses(serviceSurfaces)
+	if err != nil { return IntelligenceReport{}, fmt.Errorf("generate service hypotheses: %w", err) }
+	hypotheses = append(hypotheses, serviceHypotheses...)
+	sort.Slice(hypotheses, func(i, j int) bool { return hypotheses[i].ID < hypotheses[j].ID })
 
 	scopedFindings := make([]Finding, 0, len(findings))
 	for i, finding := range findings {
@@ -118,6 +126,7 @@ func (e *ReportEngine) BuildWithInvestigationFeedback(
 	report := IntelligenceReport{
 		Target: strings.TrimSpace(target),
 		Findings: append([]Finding{}, scopedFindings...),
+		ServiceSurfaces: append([]ServiceSurface{}, serviceSurfaces...),
 		Correlations: append([]Correlation{}, correlations...),
 		Discoveries: append([]Discovery{}, discoveries...),
 		DiscoveryPaths: append([]DiscoveryPath{}, discoveryPaths...),
