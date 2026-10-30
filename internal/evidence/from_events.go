@@ -65,45 +65,54 @@ func FromDNSEvent(event events.Event) (Evidence, Observation, error) {
 	return e, o, nil
 }
 
-// FromTCPEvent converts an open TCP port event into evidence and an observation.
+// FromTCPEvent converts a TCP state event into durable evidence and an observation.
 func FromTCPEvent(event events.Event) (Evidence, Observation, error) {
 	if err := event.Validate(); err != nil {
 		return Evidence{}, Observation{}, fmt.Errorf("validate event: %w", err)
 	}
-	if event.Type != events.EventPortDiscovered {
-		return Evidence{}, Observation{}, fmt.Errorf("event is not a port discovery event")
+	if event.Type != events.EventPortDiscovered && event.Type != events.EventTCPPortStateObserved {
+		return Evidence{}, Observation{}, fmt.Errorf("event is not a TCP port state event")
 	}
 	target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(event.Target)), ".")
 	if !IsValidDomain(target) && net.ParseIP(target) == nil {
 		return Evidence{}, Observation{}, fmt.Errorf("invalid TCP target")
 	}
-	if !strings.EqualFold(strings.TrimSpace(event.Data["protocol"]), "tcp") ||
-		!strings.EqualFold(strings.TrimSpace(event.Data["state"]), "open") {
-		return Evidence{}, Observation{}, fmt.Errorf("event must describe an open TCP port")
+	if !strings.EqualFold(strings.TrimSpace(event.Data["protocol"]), "tcp") {
+		return Evidence{}, Observation{}, fmt.Errorf("TCP protocol is required")
 	}
+	state := strings.ToLower(strings.TrimSpace(event.Data["state"]))
 	port, err := strconv.Atoi(strings.TrimSpace(event.Data["port"]))
 	if err != nil || port < 1 || port > 65535 {
 		return Evidence{}, Observation{}, fmt.Errorf("invalid TCP port")
 	}
-	details := TCPPortDetails{Target: target, Protocol: "tcp", Port: port, State: "open"}
-	value, err := json.Marshal(details)
-	if err != nil {
-		return Evidence{}, Observation{}, fmt.Errorf("encode TCP evidence: %w", err)
+	var item Evidence
+	switch state {
+	case "open":
+		if event.Type != events.EventPortDiscovered {
+			return Evidence{}, Observation{}, fmt.Errorf("open TCP state must use PORT_DISCOVERED event")
+		}
+		details := TCPPortDetails{Target: target, Protocol: "tcp", Port: port, State: state}
+		value, err := json.Marshal(details)
+		if err != nil { return Evidence{}, Observation{}, fmt.Errorf("encode TCP evidence: %w", err) }
+		item = Evidence{ID: fmt.Sprintf("tcp-port:%s:%d", target, port), EntityID: target, Type: TypeTCPPort, Value: string(value)}
+	case "closed", "unknown":
+		if event.Type != events.EventTCPPortStateObserved {
+			return Evidence{}, Observation{}, fmt.Errorf("non-open TCP state must use TCP_PORT_STATE_OBSERVED event")
+		}
+		reason := strings.TrimSpace(event.Data["reason"])
+		if reason == "" { return Evidence{}, Observation{}, fmt.Errorf("TCP state reason is required for %s state", state) }
+		details := TCPPortObservationDetails{Target: target, Protocol: "tcp", Port: port, State: state, Reason: reason}
+		value, err := json.Marshal(details)
+		if err != nil { return Evidence{}, Observation{}, fmt.Errorf("encode TCP state observation: %w", err) }
+		sum := sha256.Sum256(value)
+		item = Evidence{ID: "tcp-port-observation:" + hex.EncodeToString(sum[:]), EntityID: target, Type: TypeTCPPortObservation, Value: string(value)}
+	default:
+		return Evidence{}, Observation{}, fmt.Errorf("unsupported TCP state %q", state)
 	}
-	evidenceID := fmt.Sprintf("tcp-port:%s:%d", target, port)
-	e := Evidence{ID: evidenceID, EntityID: target, Type: TypeTCPPort, Value: string(value)}
-	o := Observation{
-		ID: "observation:" + strings.TrimSpace(event.ID), EvidenceID: evidenceID,
-		Source: strings.TrimSpace(event.Source), ObservedAt: event.Timestamp,
-		EventIDs: []string{strings.TrimSpace(event.ID)},
-	}
-	if err := e.Validate(); err != nil {
-		return Evidence{}, Observation{}, fmt.Errorf("validate evidence: %w", err)
-	}
-	if err := o.Validate(); err != nil {
-		return Evidence{}, Observation{}, fmt.Errorf("validate observation: %w", err)
-	}
-	return e, o, nil
+	observation := Observation{ID: "observation:" + strings.TrimSpace(event.ID), EvidenceID: item.ID, Source: strings.TrimSpace(event.Source), ObservedAt: event.Timestamp, EventIDs: []string{strings.TrimSpace(event.ID)}}
+	if err := item.Validate(); err != nil { return Evidence{}, Observation{}, fmt.Errorf("validate evidence: %w", err) }
+	if err := observation.Validate(); err != nil { return Evidence{}, Observation{}, fmt.Errorf("validate observation: %w", err) }
+	return item, observation, nil
 }
 
 // FromTLSEvent converts a TLS certificate event into evidence and an observation.
