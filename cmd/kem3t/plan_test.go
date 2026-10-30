@@ -15,7 +15,7 @@ func TestRunRejectsPlanStateOutsideDNSMode(t *testing.T) {
 	os.Args = []string{"kem3t", "-mode", "tls", "-target", "example.com", "-plan-state", "plan.json"}
 	defer func() { os.Args = oldArgs }()
 	err := run()
-	if err == nil || !strings.Contains(err.Error(), "-plan-state is supported only in DNS mode") {
+	if err == nil || !strings.Contains(err.Error(), "-plan-state is supported only in DNS and plan-feedback modes") {
 		t.Fatalf("run() error = %v, want DNS-only plan-state error", err)
 	}
 }
