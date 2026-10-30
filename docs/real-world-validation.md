@@ -47,6 +47,21 @@ Include representative cases where available:
 
 The baseline should prove what KEM3T can and cannot observe under controlled conditions before testing less predictable external environments.
 
+### Stage 1a — Automated loopback baseline
+
+The repository now includes a deterministic local fixture at [docs/validation-lab/README.md](validation-lab/README.md), a runner at `scripts/validation-lab/run.py`, and an independent expected-facts dataset at [docs/validation-lab/ground-truth.json](validation-lab/ground-truth.json).
+
+Run it from the repository root:
+
+```bash
+python3 scripts/validation-lab/run.py
+```
+
+The runner binds only to `127.0.0.1`, creates HTTP and self-signed TLS services, and checks one known-open and one released/expected-closed TCP port. It records exact commands, output hashes, dynamic ports, toolchain metadata, and per-case results under the ignored `.kem3t/validation-runs/local-baseline/` directory.
+
+This is a controlled network/service baseline, not a complete validation of DNS, CT/RDAP, ASN attribution, passive DNS, external threat intelligence, multi-host correlations, or real-world infrastructure. The self-signed certificate is expected to be extracted but not trusted. A mismatch must be recorded as a fixture deviation or KEM3T defect; do not edit the expected facts merely to make a run pass.
+
+
 ### Stage 2 — Authorized real-world environments
 
 After the controlled baseline, test a small number of owner-approved environments with different configurations, such as:
@@ -133,9 +148,10 @@ Completion of this phase does not by itself establish intelligence quality or re
 
 ## Initial execution checklist
 
-- [ ] Select a controlled lab or dedicated domain under project-owner control.
+- [ ] Run the automated loopback baseline and preserve its run record.
+- [ ] Select an additional controlled lab or dedicated domain under project-owner control for DNS/history and broader relationship tests.
 - [ ] Complete the authorization and scope record.
-- [ ] Write the expected DNS, service, TLS, HTTP, and history facts before running KEM3T.
+- [ ] Write expected DNS, service, TLS, HTTP, and history facts independently before running KEM3T.
 - [ ] Run passive collection and inspect the evidence-backed report.
 - [ ] Enable active checks only for explicitly authorized hosts and ports.
 - [ ] Compare observed output with the independent expected facts.
