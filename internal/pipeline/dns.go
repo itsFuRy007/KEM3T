@@ -216,7 +216,7 @@ func runDNSWithCollectorAndPlan(
 
 	findings := aggregator.Findings()
 
-	dnsGraph, err := graph.BuildFromRegistry(registry)
+	dnsGraph, err := graph.BuildFromRegistryForTarget(registry, target)
 	if err != nil {
 		return DNSResult{}, fmt.Errorf("build DNS graph: %w", err)
 	}
