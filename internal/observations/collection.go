@@ -53,6 +53,7 @@ func NormalizeEvents(input []events.Event) Collection {
 
 func BuildServices(input []Observation) []Service {
 	byID := make(map[string]Service)
+	tcpObservedAt := make(map[string]time.Time)
 	for _, observation := range input {
 		service, err := IdentifyService(observation)
 		if err != nil {
@@ -63,9 +64,12 @@ func BuildServices(input []Observation) []Service {
 		if !exists {
 			current = Service{Target: service.Target, Port: service.Port, Transport: "tcp", State: "observed", Indicators: make(map[string]string)}
 		}
-		if observation.Kind == KindTCPPort && (current.ObservedAt.IsZero() || observation.ObservedAt.After(current.ObservedAt)) {
-			current.State = service.State
-			current.ObservedAt = observation.ObservedAt
+		if observation.Kind == KindTCPPort {
+			lastTCP, seenTCP := tcpObservedAt[key]
+			if !seenTCP || observation.ObservedAt.After(lastTCP) {
+				current.State = service.State
+				tcpObservedAt[key] = observation.ObservedAt
+			}
 		}
 		if service.Application != "" {
 			current.Application = service.Application
@@ -91,7 +95,7 @@ func BuildServices(input []Observation) []Service {
 		sort.Strings(service.Sources)
 		sort.Strings(service.EvidenceIDs)
 		if service.Application == "" {
-			service.ID = fmt.Sprintf("service:%s:%d:%s", service.Target, service.Port, service.State)
+			service.ID = fmt.Sprintf("service:%s:%d:unknown", service.Target, service.Port)
 		} else {
 			service.ID = fmt.Sprintf("service:%s:%d:%s", service.Target, service.Port, service.Application)
 		}
