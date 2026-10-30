@@ -1,9 +1,9 @@
 package evidence
 
 import (
-	"encoding/json"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"strconv"
@@ -93,25 +93,35 @@ func FromTCPEvent(event events.Event) (Evidence, Observation, error) {
 		}
 		details := TCPPortDetails{Target: target, Protocol: "tcp", Port: port, State: state}
 		value, err := json.Marshal(details)
-		if err != nil { return Evidence{}, Observation{}, fmt.Errorf("encode TCP evidence: %w", err) }
+		if err != nil {
+			return Evidence{}, Observation{}, fmt.Errorf("encode TCP evidence: %w", err)
+		}
 		item = Evidence{ID: fmt.Sprintf("tcp-port:%s:%d", target, port), EntityID: target, Type: TypeTCPPort, Value: string(value)}
 	case "closed", "unknown":
 		if event.Type != events.EventTCPPortStateObserved {
 			return Evidence{}, Observation{}, fmt.Errorf("non-open TCP state must use TCP_PORT_STATE_OBSERVED event")
 		}
 		reason := strings.TrimSpace(event.Data["reason"])
-		if reason == "" { return Evidence{}, Observation{}, fmt.Errorf("TCP state reason is required for %s state", state) }
+		if reason == "" {
+			return Evidence{}, Observation{}, fmt.Errorf("TCP state reason is required for %s state", state)
+		}
 		details := TCPPortObservationDetails{Target: target, Protocol: "tcp", Port: port, State: state, Reason: reason}
 		value, err := json.Marshal(details)
-		if err != nil { return Evidence{}, Observation{}, fmt.Errorf("encode TCP state observation: %w", err) }
+		if err != nil {
+			return Evidence{}, Observation{}, fmt.Errorf("encode TCP state observation: %w", err)
+		}
 		sum := sha256.Sum256(value)
 		item = Evidence{ID: "tcp-port-observation:" + hex.EncodeToString(sum[:]), EntityID: target, Type: TypeTCPPortObservation, Value: string(value)}
 	default:
 		return Evidence{}, Observation{}, fmt.Errorf("unsupported TCP state %q", state)
 	}
 	observation := Observation{ID: "observation:" + strings.TrimSpace(event.ID), EvidenceID: item.ID, Source: strings.TrimSpace(event.Source), ObservedAt: event.Timestamp, EventIDs: []string{strings.TrimSpace(event.ID)}}
-	if err := item.Validate(); err != nil { return Evidence{}, Observation{}, fmt.Errorf("validate evidence: %w", err) }
-	if err := observation.Validate(); err != nil { return Evidence{}, Observation{}, fmt.Errorf("validate observation: %w", err) }
+	if err := item.Validate(); err != nil {
+		return Evidence{}, Observation{}, fmt.Errorf("validate evidence: %w", err)
+	}
+	if err := observation.Validate(); err != nil {
+		return Evidence{}, Observation{}, fmt.Errorf("validate observation: %w", err)
+	}
 	return item, observation, nil
 }
 
@@ -214,23 +224,38 @@ func FromTLSEvent(event events.Event) (Evidence, Observation, error) {
 	return e, o, nil
 }
 
- 
 // FromHTTPEvent converts a bounded HTTP response event into evidence and an observation.
 func FromHTTPEvent(event events.Event) (Evidence, Observation, error) {
-	if err := event.Validate(); err != nil { return Evidence{}, Observation{}, fmt.Errorf("validate event: %w", err) }
-	if event.Type != events.EventHTTPObserved { return Evidence{}, Observation{}, fmt.Errorf("event is not an HTTP observation") }
+	if err := event.Validate(); err != nil {
+		return Evidence{}, Observation{}, fmt.Errorf("validate event: %w", err)
+	}
+	if event.Type != events.EventHTTPObserved {
+		return Evidence{}, Observation{}, fmt.Errorf("event is not an HTTP observation")
+	}
 	target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(event.Target)), ".")
-	if !IsValidDomain(target) && net.ParseIP(target) == nil { return Evidence{}, Observation{}, fmt.Errorf("invalid HTTP target") }
+	if !IsValidDomain(target) && net.ParseIP(target) == nil {
+		return Evidence{}, Observation{}, fmt.Errorf("invalid HTTP target")
+	}
 	port, err := strconv.Atoi(strings.TrimSpace(event.Data["port"]))
-	if err != nil || port < 1 || port > 65535 { return Evidence{}, Observation{}, fmt.Errorf("invalid HTTP port") }
+	if err != nil || port < 1 || port > 65535 {
+		return Evidence{}, Observation{}, fmt.Errorf("invalid HTTP port")
+	}
 	status, err := strconv.Atoi(strings.TrimSpace(event.Data["status_code"]))
-	if err != nil || status < 100 || status > 599 { return Evidence{}, Observation{}, fmt.Errorf("invalid HTTP status code") }
+	if err != nil || status < 100 || status > 599 {
+		return Evidence{}, Observation{}, fmt.Errorf("invalid HTTP status code")
+	}
 	redirects, err := strconv.Atoi(strings.TrimSpace(event.Data["redirect_count"]))
-	if err != nil || redirects < 0 { return Evidence{}, Observation{}, fmt.Errorf("invalid HTTP redirect count") }
+	if err != nil || redirects < 0 {
+		return Evidence{}, Observation{}, fmt.Errorf("invalid HTTP redirect count")
+	}
 	truncated, err := strconv.ParseBool(strings.TrimSpace(event.Data["body_truncated"]))
-	if err != nil { return Evidence{}, Observation{}, fmt.Errorf("invalid HTTP body_truncated value: %w", err) }
+	if err != nil {
+		return Evidence{}, Observation{}, fmt.Errorf("invalid HTTP body_truncated value: %w", err)
+	}
 	verified, err := strconv.ParseBool(strings.TrimSpace(event.Data["tls_verified"]))
-	if err != nil { return Evidence{}, Observation{}, fmt.Errorf("invalid HTTP tls_verified value: %w", err) }
+	if err != nil {
+		return Evidence{}, Observation{}, fmt.Errorf("invalid HTTP tls_verified value: %w", err)
+	}
 	details := HTTPServiceDetails{
 		Target: target, Scheme: strings.ToLower(strings.TrimSpace(event.Data["scheme"])), Port: port,
 		URL: strings.TrimSpace(event.Data["url"]), FinalURL: strings.TrimSpace(event.Data["final_url"]),
@@ -240,13 +265,19 @@ func FromHTTPEvent(event events.Event) (Evidence, Observation, error) {
 		TLSVersion: strings.TrimSpace(event.Data["tls_version"]), TLSVerified: verified,
 	}
 	value, err := json.Marshal(details)
-	if err != nil { return Evidence{}, Observation{}, fmt.Errorf("encode HTTP evidence: %w", err) }
+	if err != nil {
+		return Evidence{}, Observation{}, fmt.Errorf("encode HTTP evidence: %w", err)
+	}
 	sum := sha256.Sum256(value)
 	evidenceID := "http-service:" + hex.EncodeToString(sum[:])
 	item := Evidence{ID: evidenceID, EntityID: target, Type: TypeHTTPService, Value: string(value)}
 	observation := Observation{ID: "observation:" + strings.TrimSpace(event.ID), EvidenceID: evidenceID,
 		Source: strings.TrimSpace(event.Source), ObservedAt: event.Timestamp, EventIDs: []string{strings.TrimSpace(event.ID)}}
-	if err := item.Validate(); err != nil { return Evidence{}, Observation{}, fmt.Errorf("validate evidence: %w", err) }
-	if err := observation.Validate(); err != nil { return Evidence{}, Observation{}, fmt.Errorf("validate observation: %w", err) }
+	if err := item.Validate(); err != nil {
+		return Evidence{}, Observation{}, fmt.Errorf("validate evidence: %w", err)
+	}
+	if err := observation.Validate(); err != nil {
+		return Evidence{}, Observation{}, fmt.Errorf("validate observation: %w", err)
+	}
 	return item, observation, nil
 }

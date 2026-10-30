@@ -18,11 +18,11 @@ type eventCollector interface {
 }
 
 type CollectorStage struct {
-	StageName   string
-	Collector   eventCollector
-	Convert     func(events.Event) (evidence.Evidence, evidence.Observation, error)
-	Accept      func(events.Event) bool
-	Analyze     func(events.Event) (*intelligence.Finding, error)
+	StageName string
+	Collector eventCollector
+	Convert   func(events.Event) (evidence.Evidence, evidence.Observation, error)
+	Accept    func(events.Event) bool
+	Analyze   func(events.Event) (*intelligence.Finding, error)
 }
 
 func (s *CollectorStage) Name() string { return strings.TrimSpace(s.StageName) }
@@ -154,8 +154,8 @@ func NewTCPStage(target string, startPort, endPort int) *CollectorStage {
 		Accept: func(event events.Event) bool {
 			return event.Type == events.EventPortDiscovered || event.Type == events.EventTCPPortStateObserved
 		},
-		Convert:     evidence.FromTCPEvent,
-		Analyze:     (&intelligence.Engine{}).Analyze,
+		Convert: evidence.FromTCPEvent,
+		Analyze: (&intelligence.Engine{}).Analyze,
 	}
 }
 
