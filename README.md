@@ -33,7 +33,8 @@ The goal is to move from isolated scan results toward a traceable picture of inf
 - **External infrastructure intelligence:** collect Certificate Transparency (CT), domain RDAP registration metadata, IP RDAP network-range context, origin-ASN mappings, historical passive DNS, and OTX community pulse references. Normalize observations, retain source attribution and retrieval history, and connect CT certificates, registrar/nameserver relationships, IP allocation ranges, ASN/prefix relationships, historical hostname-to-IP mappings, and threat-report references to the evidence-backed graph. External records are investigative leads—not proof of ownership, current hosting, maliciousness, or compromise.
 - **Evidence-traceable intelligence workflow:** scope correlations and findings to the requested target, correlate shared live DNS addresses, shared TLS certificate fingerprints, shared Certificate Transparency record IDs across target scopes, and shared historical passive-DNS addresses. Keep historical DNS relationships distinct from current resolution, normalize comparable entities and values, retain evidence and observation references, and expose the exact scope of qualitative confidence. Generate hypotheses with explicit alternatives, limitations, and actionable verification steps. The verification API accepts investigator-classified independent evidence, preserves both supporting and contradicting facts, reports mixed outcomes instead of hiding conflicts, and excludes reused/non-independent evidence from assessment. Qualitative confidence is not silently converted into a probability or verdict.
 - **Batch DNS investigations:** validate and deduplicate target lists, run DNS investigations through a bounded worker pool, isolate each target's history/evidence store, preserve input-order output, and report partial failures without discarding successful results.
-- **CLI:** run demo, DNS, TCP, TLS, HTTP, history, batch DNS, CT, domain RDAP, IP RDAP, origin ASN, passive DNS, and threat-intelligence modes.
+- **Unified investigation orchestration:** run DNS and external-intelligence stages against one shared evidence registry, then build one evidence-backed graph, target-scoped intelligence report, and mixed-source history snapshot. A bounded adaptive planner can schedule DNS follow-up for up to eight newly discovered, in-scope CT subdomains. Their observations and directly linked IP evidence join the same graph and history snapshot. Active TCP/TLS/HTTP checks never fan out to discovered subdomains or IPs automatically. Partial source failures remain visible without discarding successful results.
+- **CLI:** run demo, DNS, TCP, TLS, HTTP, unified investigation, history, batch DNS, CT, domain RDAP, IP RDAP, origin ASN, passive DNS, and threat-intelligence modes.
 
 ### HTTP/HTTPS safety boundaries
 
@@ -72,6 +73,18 @@ go run ./cmd/kem3t -h
 ~~~
 
 ### Examples
+
+Run one unified investigation. DNS, CT, and RDAP use the shared evidence registry; OTX passive-DNS and threat context are added when `OTX_API_KEY` is configured:
+
+~~~bash
+go run ./cmd/kem3t -mode investigate -target example.com
+~~~
+
+Active TCP/TLS/HTTP checks are deliberately disabled by default. Enable them only when you are authorized to assess the supplied target; the TCP range applies only to that target and is never expanded to DNS-discovered addresses:
+
+~~~bash
+go run ./cmd/kem3t -mode investigate -target example.com -enable-active -start-port 1 -end-port 1024 -port 443 -http-scheme auto
+~~~
 
 Run the demonstration pipeline:
 
@@ -192,7 +205,8 @@ DNS snapshots, generalized run snapshots, and the evidence database use .kem3t/s
 - internal/changes/ — DNS-specific change detection
 - internal/snapshots/ — DNS snapshot handling
 - internal/history/ — generalized run snapshots, cross-run comparisons, timelines, and anomaly review signals
-- internal/pipeline/ — collection and analysis orchestration
+- internal/pipeline/ — existing collector-specific collection and analysis pipelines
+- internal/investigation/ — shared-registry, multi-source investigation orchestration and bounded adaptive stage planning
 - internal/scale/ — bounded, cancellation-aware scheduling primitives for large investigation batches
 - internal/batch/ — validated target lists and isolated batch DNS orchestration
 - internal/intelligence/ — correlation, hypotheses, prioritization, and reports
@@ -264,7 +278,7 @@ The roadmap tracks implemented foundations and remaining validation work; checke
 - [x] CLI collection modes and console graph/intelligence output
 - [x] Versioned, scope-validated JSON investigation exports with temporal context
 - [x] DNS workflow from collection through evidence, report, adaptive plan, and export
-- [ ] Unified end-to-end investigation workflow across all collectors and external-intelligence sources
+- [x] Unified investigation orchestration across DNS, TCP, TLS, HTTP, and external-intelligence stages with shared evidence, graph/report output, and multi-source history
 - [ ] Researcher-facing plan feedback workflow refinements and richer report formats
 
 ### Hardening

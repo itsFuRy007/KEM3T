@@ -77,6 +77,16 @@ func CollectorForEvidence(kind evidence.Type) string {
 		return "tls"
 	case evidence.TypeHTTPService:
 		return "http"
+	case evidence.TypeCTDNSName:
+		return "ct"
+	case evidence.TypeRDAPRegistration, evidence.TypeIPRDAPNetwork:
+		return "rdap"
+	case evidence.TypeASNOrigin:
+		return "asn"
+	case evidence.TypePassiveDNS:
+		return "pdns"
+	case evidence.TypeThreatIntel:
+		return "threat"
 	default:
 		return "unknown"
 	}
@@ -86,8 +96,10 @@ func CollectorForRun(runID string) string {
 	prefix, _, ok := strings.Cut(strings.ToLower(strings.TrimSpace(runID)), "-")
 	if !ok { return "unknown" }
 	switch prefix {
-	case "dns", "tcp", "tls", "http":
+	case "dns", "tcp", "tls", "http", "ct", "rdap", "asn", "pdns", "threat":
 		return prefix
+	case "investigation":
+		return "investigation"
 	default:
 		return "unknown"
 	}
@@ -105,11 +117,27 @@ func BuildSnapshot(run evidence.CollectionRun, records []evidence.Evidence, obse
 	evidenceByID := make(map[string]evidence.Evidence, len(records))
 	for _, item := range records { evidenceByID[item.ID] = item }
 
+	allowedEntities := map[string]struct{}{target: {}}
+	if collector == "investigation" {
+		for _, item := range records {
+			entity := NormalizeTarget(item.EntityID)
+			if entity == target || (net.ParseIP(target) == nil && strings.HasSuffix(entity, "."+target)) {
+				allowedEntities[entity] = struct{}{}
+				if item.Type == evidence.TypeDNSAddress { allowedEntities[NormalizeTarget(item.Value)] = struct{}{} }
+			}
+		}
+	}
 	byKey := make(map[string]*Record)
 	for _, observation := range observations {
 		if observation.ObservedAt.Before(run.StartedAt) || observation.ObservedAt.After(run.FinishedAt) { continue }
 		item, ok := evidenceByID[observation.EvidenceID]
-		if !ok || NormalizeTarget(item.EntityID) != target || CollectorForEvidence(item.Type) != collector { continue }
+		if !ok { continue }
+		entity := NormalizeTarget(item.EntityID)
+		if collector == "investigation" {
+			if _, inScope := allowedEntities[entity]; !inScope { continue }
+		} else if entity != target { continue }
+		if collector != "investigation" && CollectorForEvidence(item.Type) != collector { continue }
+		if collector == "investigation" && CollectorForEvidence(item.Type) == "unknown" { continue }
 		key, err := recordKey(item)
 		if err != nil { return Snapshot{}, fmt.Errorf("build history key for evidence %q: %w", item.ID, err) }
 		record, exists := byKey[key]
@@ -137,7 +165,7 @@ func BuildSnapshot(run evidence.CollectionRun, records []evidence.Evidence, obse
 
 func (s Snapshot) Validate() error {
 	if strings.TrimSpace(s.RunID)=="" || NormalizeTarget(s.Target)=="" { return fmt.Errorf("snapshot run ID and target are required") }
-	if s.Collector!="dns" && s.Collector!="tcp" && s.Collector!="tls" && s.Collector!="http" { return fmt.Errorf("unsupported snapshot collector %q",s.Collector) }
+	if s.Collector!="dns" && s.Collector!="tcp" && s.Collector!="tls" && s.Collector!="http" && s.Collector!="ct" && s.Collector!="rdap" && s.Collector!="asn" && s.Collector!="pdns" && s.Collector!="threat" && s.Collector!="investigation" { return fmt.Errorf("unsupported snapshot collector %q",s.Collector) }
 	if s.CollectedAt.IsZero() { return fmt.Errorf("snapshot collection time is required") }
 	seen:=make(map[string]struct{},len(s.Records))
 	for i,r:=range s.Records {
@@ -215,7 +243,12 @@ func recordKey(item evidence.Evidence)(string,error){
 		var d evidence.TLSCertificateDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("%s|%s|%05d",item.Type,NormalizeTarget(item.EntityID),d.Port),nil
 	case evidence.TypeHTTPService:
 		var d evidence.HTTPServiceDetails;if err:=json.Unmarshal([]byte(item.Value),&d);err!=nil{return "",err};return fmt.Sprintf("%s|%s|%05d|%s",item.Type,NormalizeTarget(item.EntityID),d.Port,d.Scheme),nil
-	default:return "",fmt.Errorf("unsupported evidence type %q",item.Type)
+	default:
+		if CollectorForEvidence(item.Type) == "unknown" { return "", fmt.Errorf("unsupported evidence type %q", item.Type) }
+		// External-intelligence evidence IDs are source-specific stable identities.
+		// Use them as the record key so later observations can detect value changes
+		// without inventing fields or losing the original provenance.
+		return fmt.Sprintf("%s|%s|%s", item.Type, NormalizeTarget(item.EntityID), item.ID), nil
 	}
 }
 // NormalizeTarget canonicalizes a hostname/IP or an absolute HTTP(S) URL to its host.
