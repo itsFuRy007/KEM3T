@@ -279,13 +279,13 @@ func planRevision(plan InvestigationPlan) string {
  
 // InvestigationPlanState persists the previous plan and feedback between runs.
 type InvestigationPlanState struct {
-	PreviousPlan *InvestigationPlan `json:"previous_plan,omitempty"`
-	Feedback []InvestigationFeedback `json:"feedback"`
+	PreviousPlan *InvestigationPlan       `json:"previous_plan,omitempty"`
+	Feedback     []InvestigationFeedback `json:"feedback"`
 }
 
- // Validate ensures queued feedback can be applied to the saved plan without
- // guessing task identities or accepting incomplete investigator outcomes.
- func (s InvestigationPlanState) Validate() error {
+// Validate ensures queued feedback can be applied to the saved plan without
+// guessing task identities or accepting incomplete investigator outcomes.
+func (s InvestigationPlanState) Validate() error {
 	if s.PreviousPlan == nil {
 		if len(s.Feedback) != 0 {
 			return fmt.Errorf("feedback cannot be queued without a previous investigation plan")
