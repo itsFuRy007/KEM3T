@@ -485,7 +485,7 @@ func selectIPRDAPService(bootstrap rdapBootstrap, ip net.IP) (string, error) {
 	return bestURL, nil
 }
 
-func RegisterRDAPReport(registry *evidence.Registry, report RDAPReport), provenance ...evidence.ObservationProvenance (bool, error) {
+func RegisterRDAPReport(registry *evidence.Registry, report RDAPReport, provenance ...evidence.ObservationProvenance) (bool, error) {
 	if registry == nil {
 		return false, fmt.Errorf("evidence registry is required")
 	}
@@ -541,7 +541,7 @@ func RegisterRDAPReport(registry *evidence.Registry, report RDAPReport), provena
 	return true, nil
 }
 
-func RegisterIPRDAPReport(registry *evidence.Registry, report IPRDAPReport), provenance ...evidence.ObservationProvenance (bool, error) {
+func RegisterIPRDAPReport(registry *evidence.Registry, report IPRDAPReport, provenance ...evidence.ObservationProvenance) (bool, error) {
 	if registry == nil {
 		return false, fmt.Errorf("evidence registry is required")
 	}

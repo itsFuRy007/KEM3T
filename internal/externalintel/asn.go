@@ -341,7 +341,7 @@ func sortUint32(values []uint32) {
 	}
 }
 
-func RegisterASNReport(registry *evidence.Registry, report ASNReport), provenance ...evidence.ObservationProvenance (bool, error) {
+func RegisterASNReport(registry *evidence.Registry, report ASNReport, provenance ...evidence.ObservationProvenance) (bool, error) {
 	if registry == nil {
 		return false, fmt.Errorf("evidence registry is required")
 	}

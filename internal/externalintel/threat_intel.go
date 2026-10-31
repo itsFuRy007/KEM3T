@@ -194,7 +194,7 @@ func (c *ThreatIntelClient) Lookup(ctx context.Context, rawTarget string) (Threa
 }
 
 // RegisterThreatIntelReport stores the provider snapshot and its timestamped observation.
-func RegisterThreatIntelReport(registry *evidence.Registry, report ThreatIntelReport), provenance ...evidence.ObservationProvenance (bool, error) {
+func RegisterThreatIntelReport(registry *evidence.Registry, report ThreatIntelReport, provenance ...evidence.ObservationProvenance) (bool, error) {
 	if registry == nil {
 		return false, fmt.Errorf("evidence registry is required")
 	}
