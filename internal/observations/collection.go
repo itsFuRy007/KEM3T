@@ -53,9 +53,28 @@ func NormalizeEvents(input []events.Event) Collection {
 }
 
 func BuildServices(input []Observation) []Service {
+	// Apply observations chronologically so newer indicators supersede older
+	// values regardless of collector/event ordering. Stable tie-breakers keep
+	// equal-timestamp merges deterministic.
+	ordered := append([]Observation(nil), input...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if !ordered[i].ObservedAt.Equal(ordered[j].ObservedAt) {
+			return ordered[i].ObservedAt.Before(ordered[j].ObservedAt)
+		}
+		if ordered[i].Target != ordered[j].Target {
+			return ordered[i].Target < ordered[j].Target
+		}
+		if ordered[i].Port != ordered[j].Port {
+			return ordered[i].Port < ordered[j].Port
+		}
+		if ordered[i].Kind != ordered[j].Kind {
+			return ordered[i].Kind < ordered[j].Kind
+		}
+		return ordered[i].EventID < ordered[j].EventID
+	})
 	byID := make(map[string]Service)
 	tcpObservedAt := make(map[string]time.Time)
-	for _, observation := range input {
+	for _, observation := range ordered {
 		service, err := IdentifyService(observation)
 		if err != nil {
 			continue
