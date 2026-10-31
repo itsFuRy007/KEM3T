@@ -32,8 +32,10 @@ func TestSQLiteRegistryPersistsEvidenceAndObservations(t *testing.T) {
 	o := Observation{
 		ID:         "observation:event-001",
 		EvidenceID: e.ID,
-		Source:     "dns",
-		ObservedAt: observedAt,
+		Source:          "dns",
+		CollectionRunID: "dns-run-001",
+		Stage:           "dns",
+		ObservedAt:      observedAt,
 		EventIDs:   []string{"event-001"},
 	}
 
@@ -67,6 +69,8 @@ func TestSQLiteRegistryPersistsEvidenceAndObservations(t *testing.T) {
 	if gotObservation.ID != o.ID ||
 		gotObservation.EvidenceID != o.EvidenceID ||
 		gotObservation.Source != o.Source ||
+		gotObservation.CollectionRunID != o.CollectionRunID ||
+		gotObservation.Stage != o.Stage ||
 		!gotObservation.ObservedAt.Equal(o.ObservedAt) ||
 		len(gotObservation.EventIDs) != 1 ||
 		gotObservation.EventIDs[0] != "event-001" {

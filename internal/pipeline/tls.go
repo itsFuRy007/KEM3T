@@ -119,6 +119,8 @@ func RunTLS(
 		if err != nil {
 			return TLSResult{}, fmt.Errorf("convert TLS event to evidence: %w", err)
 		}
+		observation.CollectionRunID = run.ID
+		observation.Stage = "tls"
 
 		if err := registry.AddEvidence(item); err != nil &&
 			!errors.Is(err, evidence.ErrEvidenceExists) {

@@ -54,8 +54,10 @@ type ServiceTLSObservation struct {
 type ServiceObservationRef struct {
 	EvidenceID    string    `json:"evidence_id"`
 	ObservationID string    `json:"observation_id"`
-	Source        string    `json:"source"`
-	ObservedAt    time.Time `json:"observed_at"`
+	Source          string    `json:"source"`
+	CollectionRunID string    `json:"collection_run_id,omitempty"`
+	Stage           string    `json:"stage,omitempty"`
+	ObservedAt      time.Time `json:"observed_at"`
 }
 
 // BuildServiceSurfaces builds endpoint-level views from durable evidence. It
@@ -177,7 +179,8 @@ func BuildServiceSurfaces(target string, records []evidence.Evidence, observatio
 			observationIDs[key][observation.ID] = struct{}{}
 			surface.ObservationRefs = append(surface.ObservationRefs, ServiceObservationRef{
 				EvidenceID: item.ID, ObservationID: observation.ID,
-				Source: observation.Source, ObservedAt: observation.ObservedAt,
+				Source: observation.Source, CollectionRunID: observation.CollectionRunID,
+				Stage: observation.Stage, ObservedAt: observation.ObservedAt,
 			})
 		}
 	}

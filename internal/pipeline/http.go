@@ -92,6 +92,8 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 		if err != nil {
 			return HTTPResult{}, fmt.Errorf("convert HTTP event to evidence: %w", err)
 		}
+		observation.CollectionRunID = run.ID
+		observation.Stage = "http"
 		if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
 			return HTTPResult{}, fmt.Errorf("register HTTP evidence: %w", err)
 		}

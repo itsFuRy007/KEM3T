@@ -174,6 +174,8 @@ func runDNSWithCollectorAndPlan(
 		if err != nil {
 			continue
 		}
+		observation.CollectionRunID = run.ID
+		observation.Stage = "dns"
 
 		if err := registry.AddEvidence(item); err != nil &&
 			!errors.Is(err, evidence.ErrEvidenceExists) {

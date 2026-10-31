@@ -141,7 +141,13 @@ func BuildSnapshot(run evidence.CollectionRun, records []evidence.Evidence, obse
 	}
 	byKey := make(map[string]*Record)
 	for _, observation := range observations {
-		if observation.ObservedAt.Before(run.StartedAt) || observation.ObservedAt.After(run.FinishedAt) {
+		// Explicit provenance is authoritative. Timestamp matching remains only
+		// as a compatibility fallback for records collected before run IDs existed.
+		if observation.CollectionRunID != "" {
+			if observation.CollectionRunID != run.ID {
+				continue
+			}
+		} else if observation.ObservedAt.Before(run.StartedAt) || observation.ObservedAt.After(run.FinishedAt) {
 			continue
 		}
 		item, ok := evidenceByID[observation.EvidenceID]

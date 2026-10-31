@@ -98,6 +98,8 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 		if err != nil {
 			return TCPResult{}, fmt.Errorf("convert TCP event to evidence: %w", err)
 		}
+		observation.CollectionRunID = run.ID
+		observation.Stage = "tcp"
 		if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
 			return TCPResult{}, fmt.Errorf("register TCP evidence: %w", err)
 		}

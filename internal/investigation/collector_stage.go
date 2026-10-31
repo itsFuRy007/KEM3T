@@ -99,6 +99,8 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 			break
 		}
 
+		evidence.ApplyObservationProvenance(stageCtx, &observation)
+
 		// Buffer stage output and commit it atomically only after the collector
 		// completes successfully. A failed stage must not leave partial evidence
 		// that later stages or reports could mistake for a complete collection.

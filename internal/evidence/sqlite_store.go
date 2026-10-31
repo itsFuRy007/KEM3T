@@ -87,6 +87,50 @@ ON collection_runs(target, started_at DESC, id DESC);
 	if _, err := s.db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("initialize evidence schema: %w", err)
 	}
+	for _, column := range []struct {
+		name string
+		definition string
+	}{
+		{name: "collection_run_id", definition: "TEXT NOT NULL DEFAULT ''"},
+		{name: "stage", definition: "TEXT NOT NULL DEFAULT ''"},
+	} {
+		if err := s.ensureObservationColumn(ctx, column.name, column.definition); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ensureObservationColumn(ctx context.Context, name, definition string) error {
+	rows, err := s.db.QueryContext(ctx, "PRAGMA table_info(observations)")
+	if err != nil {
+		return fmt.Errorf("inspect observation schema: %w", err)
+	}
+	found := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var columnName, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &columnName, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("read observation schema: %w", err)
+		}
+		if columnName == name {
+			found = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("iterate observation schema: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close observation schema: %w", err)
+	}
+	if !found {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE observations ADD COLUMN "+name+" "+definition); err != nil {
+			return fmt.Errorf("add observation %s column: %w", name, err)
+		}
+	}
 	return nil
 }
 
@@ -151,13 +195,15 @@ func (s *SQLiteStore) SaveObservation(ctx context.Context, o Observation) error 
 	_, err = s.db.ExecContext(
 		ctx,
 		`INSERT INTO observations
-		 (id, evidence_id, source, observed_at, event_ids_json)
-		 VALUES (?, ?, ?, ?, ?)`,
+		 (id, evidence_id, source, observed_at, event_ids_json, collection_run_id, stage)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		o.ID,
 		o.EvidenceID,
 		o.Source,
 		o.ObservedAt.UTC().Format(time.RFC3339Nano),
 		string(eventIDs),
+		o.CollectionRunID,
+		o.Stage,
 	)
 	if err != nil {
 		message := strings.ToLower(err.Error())
@@ -252,7 +298,7 @@ func (s *SQLiteStore) SaveBatch(ctx context.Context, records []Evidence, observa
 	}
 
 	observationStmt, err := tx.PrepareContext(ctx, `INSERT INTO observations
-		(id, evidence_id, source, observed_at, event_ids_json) VALUES (?, ?, ?, ?, ?)`)
+		(id, evidence_id, source, observed_at, event_ids_json, collection_run_id, stage) VALUES (?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return fmt.Errorf("prepare observation batch insert: %w", err)
 	}
@@ -262,7 +308,8 @@ func (s *SQLiteStore) SaveBatch(ctx context.Context, records []Evidence, observa
 		observation := item.observation
 		_, err := observationStmt.ExecContext(ctx,
 			observation.ID, observation.EvidenceID, observation.Source,
-			observation.ObservedAt.UTC().Format(time.RFC3339Nano), item.eventIDs)
+			observation.ObservedAt.UTC().Format(time.RFC3339Nano), item.eventIDs,
+			observation.CollectionRunID, observation.Stage)
 		if err != nil {
 			message := strings.ToLower(err.Error())
 			if strings.Contains(message, "unique constraint failed") {
@@ -288,7 +335,7 @@ func (s *SQLiteStore) LoadObservation(ctx context.Context, id string) (Observati
 	var eventIDsJSON string
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT id, evidence_id, source, observed_at, event_ids_json
+		`SELECT id, evidence_id, source, observed_at, event_ids_json, collection_run_id, stage
 		 FROM observations WHERE id = ?`,
 		strings.TrimSpace(id),
 	).Scan(
@@ -297,6 +344,8 @@ func (s *SQLiteStore) LoadObservation(ctx context.Context, id string) (Observati
 		&o.Source,
 		&observedAt,
 		&eventIDsJSON,
+		&o.CollectionRunID,
+		&o.Stage,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Observation{}, ErrObservationNotFound
@@ -343,7 +392,7 @@ func (s *SQLiteStore) LoadAll(ctx context.Context) ([]Evidence, []Observation, e
 	}
 	observationRows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, evidence_id, source, observed_at, event_ids_json
+		`SELECT id, evidence_id, source, observed_at, event_ids_json, collection_run_id, stage
 		 FROM observations ORDER BY observed_at, id`,
 	)
 	if err != nil {
@@ -360,6 +409,8 @@ func (s *SQLiteStore) LoadAll(ctx context.Context) ([]Evidence, []Observation, e
 			&o.Source,
 			&observedAt,
 			&eventIDsJSON,
+			&o.CollectionRunID,
+			&o.Stage,
 		); err != nil {
 			return nil, nil, fmt.Errorf("read observation: %w", err)
 		}

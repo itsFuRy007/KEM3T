@@ -131,7 +131,8 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 			break
 		}
 		name := strings.TrimSpace(stage.Name())
-		stageResult, err := stage.Run(ctx, target, e.Registry)
+		stageCtx := evidence.WithObservationProvenance(ctx, run.ID, name)
+		stageResult, err := stage.Run(stageCtx, target, e.Registry)
 		outcome := StageOutcome{Name: name, Result: stageResult}
 		if err != nil {
 			outcome.Error = err.Error()
