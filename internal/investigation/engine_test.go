@@ -141,6 +141,9 @@ func TestEngineIntegratesExistingDNSCollectorEndToEnd(t *testing.T) {
 	if result.Report.Target != "example.com" {
 		t.Fatalf("unexpected intelligence report: %+v", result.Report)
 	}
+	if result.Report.ReferenceRunID != result.RunID || result.Report.ReferenceRunStatus != string(evidence.CollectionRunCompleted) {
+		t.Fatalf("intelligence report does not reflect the finalized collection run: %+v", result.Report)
+	}
 	if len(result.Stages) != 1 || result.Stages[0].Result.Evidence != 1 {
 		t.Fatalf("unexpected stage outcome: %+v", result.Stages)
 	}
