@@ -94,11 +94,8 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 		}
 		observation.CollectionRunID = run.ID
 		observation.Stage = "http"
-		if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
-			return HTTPResult{}, fmt.Errorf("register HTTP evidence: %w", err)
-		}
-		if err := registry.AddObservation(observation); err != nil && !errors.Is(err, evidence.ErrObservationExists) {
-			return HTTPResult{}, fmt.Errorf("register HTTP observation: %w", err)
+		if _, _, err := registry.AddBatchUnique(ctx, []evidence.Evidence{item}, []evidence.Observation{observation}); err != nil {
+			return HTTPResult{}, fmt.Errorf("register HTTP evidence and observation atomically: %w", err)
 		}
 		result.Event = &event
 		result.Evidence = item
