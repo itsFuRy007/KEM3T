@@ -181,7 +181,7 @@ func TestRunExternalCollectionDoesNotReattributeOldObservations(t *testing.T) {
 			},
 		}
 
-		_, err := externalintel.RegisterCTReport(registry, report)
+		_, err := externalintel.RegisterCTReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 		return err
 	}
 
