@@ -13,6 +13,7 @@ This is a repository-level security baseline for KEM3T, not a penetration-test r
 - Adaptive DNS follow-up is bounded and restricted to the root domain's namespace.
 - HTTP collection bounds response-body inspection and redirect count, enforces same-host redirects, rejects credential-bearing and HTTPS-downgrade redirects, and redacts query values from persisted URLs and Location headers.
 - HTTP evidence validation requires both the original and final URL hosts to match the evidence target and rejects URLs containing credentials.
+- CLI output replaces terminal control and Unicode formatting characters in untrusted display values before printing.
 - External provider requests use HTTPS endpoints, bounded response sizes, request timeouts, cancellation-aware retry/backoff, and HTTPS-preserving redirect checks even with caller-supplied HTTP clients. OTX requests carrying an API key are restricted to the original HTTPS host.
 
 ### Evidence and interpretation boundaries

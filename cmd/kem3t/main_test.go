@@ -207,3 +207,13 @@ func TestCountTCPStatesNormalizesCaseAndWhitespace(t *testing.T) {
 		t.Fatalf("normalized counts = %#v", got)
 	}
 }
+
+
+func TestSanitizeTerminalTextRemovesControlAndFormatCharacters(t *testing.T) {
+	input := "safe\x1b[31mRED\u202e\nnext\tline"
+	got := sanitizeTerminalText(input)
+	want := "safe [31mRED next line"
+	if got != want {
+		t.Fatalf("sanitizeTerminalText() = %q, want %q", got, want)
+	}
+}
