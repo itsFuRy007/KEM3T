@@ -144,6 +144,13 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 	} else if err != nil || port < 1 || port > 65535 {
 		return events.Event{}, fmt.Errorf("invalid HTTP URL port")
 	}
+	allowedPorts := map[string]struct{}{strconv.Itoa(port): {}}
+	if (strings.EqualFold(strings.TrimSpace(c.Scheme), "auto") || strings.TrimSpace(c.Scheme) == "") &&
+		supplied.Scheme == "" && supplied.Port() == "" && c.Port == 0 {
+		allowedPorts["80"] = struct{}{}
+		allowedPorts["443"] = struct{}{}
+	}
+
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
@@ -157,7 +164,7 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 		Transport: transport,
 		Timeout:   timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if err := validateHTTPRedirect(req, requestURL.Hostname(), via); err != nil {
+			if err := validateHTTPRedirect(req, requestURL.Hostname(), allowedPorts, via); err != nil {
 				return err
 			}
 			redirectCount++
@@ -223,7 +230,7 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 	}, nil
 }
 
-func validateHTTPRedirect(req *http.Request, targetHost string, via []*http.Request) error {
+func validateHTTPRedirect(req *http.Request, targetHost string, allowedPorts map[string]struct{}, via []*http.Request) error {
 	if req == nil || req.URL == nil {
 		return fmt.Errorf("redirect request URL is required")
 	}
@@ -240,6 +247,17 @@ func validateHTTPRedirect(req *http.Request, targetHost string, via []*http.Requ
 	}
 	if !strings.EqualFold(req.URL.Hostname(), targetHost) {
 		return fmt.Errorf("cross-host redirect rejected to preserve target scope")
+	}
+	port := req.URL.Port()
+	if port == "" {
+		if req.URL.Scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	if _, allowed := allowedPorts[port]; !allowed {
+		return fmt.Errorf("cross-port redirect rejected to preserve authorized port scope")
 	}
 	if len(via) > maxHTTPRedirects {
 		return http.ErrUseLastResponse
