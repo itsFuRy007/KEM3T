@@ -4,15 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/itsFuRy007/kem3t/internal/collectors"
-	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/graph"
+	"github.com/itsFuRy007/kem3t/internal/investigation"
 	"github.com/itsFuRy007/kem3t/internal/observations"
 )
 
@@ -25,133 +22,43 @@ type TLSResult struct {
 	Normalized       observations.Collection
 }
 
-func RunTLS(
-	ctx context.Context,
-	target string,
-	port int,
-	snapshotDir string,
-) (result TLSResult, retErr error) {
-	if ctx == nil {
-		return TLSResult{}, fmt.Errorf("context is required")
-	}
-	if err := ctx.Err(); err != nil {
-		return TLSResult{}, err
-	}
-
-	target = strings.TrimSpace(target)
-	if target == "" {
-		return TLSResult{}, fmt.Errorf("target is required")
-	}
+// RunTLS is a compatibility adapter over the shared investigation engine.
+func RunTLS(ctx context.Context, target string, port int, snapshotDir string) (result TLSResult, retErr error) {
 	if port == 0 {
 		port = 443
 	}
 	if port < 1 || port > 65535 {
 		return TLSResult{}, fmt.Errorf("port must be between 1 and 65535")
 	}
-	if strings.TrimSpace(snapshotDir) == "" {
-		return TLSResult{}, fmt.Errorf("snapshot directory is required")
+	unified, registry, err := runUnifiedStage(ctx, target, snapshotDir, investigation.NewTLSStage(target, port))
+	if registry != nil {
+		result.EvidenceRegistry = registry
+		defer func() {
+			if closeErr := registry.Close(); closeErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("close shared evidence registry: %w", closeErr))
+			}
+		}()
 	}
-
-	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
-		return TLSResult{}, fmt.Errorf("create snapshot directory: %w", err)
+	if len(unified.Stages) > 0 {
+		stage := unified.Stages[0].Result
+		if len(stage.CollectedEvents) > 0 {
+			event := stage.CollectedEvents[0]
+			result.Event = &event
+		}
+		if len(stage.EvidenceRecords) > 0 {
+			result.Evidence = stage.EvidenceRecords[0]
+		}
+		if len(stage.ObservationRecords) > 0 {
+			result.Observation = stage.ObservationRecords[0]
+		}
 	}
-
-	registry, err := evidence.OpenRegistry(
-		filepath.Join(snapshotDir, "evidence.db"),
-	)
+	result.Graph = unified.Graph
+	result.Normalized = unified.Normalized
 	if err != nil {
-		return TLSResult{}, fmt.Errorf("open evidence registry: %w", err)
+		return result, err
 	}
-	result.EvidenceRegistry = registry
-	defer func() {
-		if err := registry.Close(); err != nil {
-			retErr = errors.Join(retErr, fmt.Errorf("close evidence registry: %w", err))
-		}
-	}()
-
-	run := evidence.CollectionRun{
-		ID:        fmt.Sprintf("tls-%d", time.Now().UnixNano()),
-		Target:    target,
-		StartedAt: time.Now().UTC(),
-		Status:    evidence.CollectionRunRunning,
+	if result.Event == nil || strings.TrimSpace(result.Evidence.ID) == "" || strings.TrimSpace(result.Observation.ID) == "" {
+		return result, fmt.Errorf("unified TLS stage returned no certificate evidence")
 	}
-	if err := registry.AddCollectionRun(run); err != nil {
-		return TLSResult{}, fmt.Errorf("start collection run: %w", err)
-	}
-
-	defer func() {
-		run.FinishedAt = time.Now().UTC()
-		run.EventCount = 0
-		if result.Event != nil {
-			run.EventCount = 1
-		}
-		run.AddressCount = 0
-
-		if retErr != nil {
-			run.Status = evidence.CollectionRunFailed
-			run.ErrorMessage = retErr.Error()
-		} else {
-			run.Status = evidence.CollectionRunCompleted
-		}
-
-		finalizeCollectionRun(snapshotDir, registry, &run, []evidence.Observation{result.Observation}, &retErr)
-	}()
-
-	collector := &collectors.TLS{
-		Target: target,
-		Port:   port,
-	}
-
-	eventCh := make(chan events.Event, 1)
-	collectorErrCh := make(chan error, 1)
-
-	go func() {
-		collectorErrCh <- collector.Run(ctx, eventCh)
-		close(eventCh)
-	}()
-
-	for event := range eventCh {
-		if event.Type != events.EventTLSCertificateFound {
-			continue
-		}
-
-		item, observation, err := evidence.FromTLSEvent(event)
-		if err != nil {
-			return TLSResult{}, fmt.Errorf("convert TLS event to evidence: %w", err)
-		}
-		observation.CollectionRunID = run.ID
-		observation.Stage = "tls"
-
-		if _, _, err := registry.AddBatchUnique(ctx, []evidence.Evidence{item}, []evidence.Observation{observation}); err != nil {
-			return TLSResult{}, fmt.Errorf("register TLS evidence and observation atomically: %w", err)
-		}
-
-		result.Event = &event
-		result.Evidence = item
-		result.Observation = observation
-	}
-
-	if err := <-collectorErrCh; err != nil {
-		return TLSResult{}, err
-	}
-	if result.Event == nil {
-		return TLSResult{}, fmt.Errorf("TLS collector returned no certificate event")
-	}
-
-	result.Normalized = observations.NormalizeEvents([]events.Event{*result.Event})
-	observations.AttachEvidence(&result.Normalized, []evidence.Observation{result.Observation})
-	if len(result.Normalized.Rejected) > 0 {
-		return TLSResult{}, fmt.Errorf("normalize TLS event: %s", result.Normalized.Rejected[0].Reason)
-	}
-	builtGraph, err := graph.Build([]evidence.Evidence{result.Evidence}, []evidence.Observation{result.Observation})
-	if err != nil {
-		return TLSResult{}, fmt.Errorf("build infrastructure graph: %w", err)
-	}
-
-	builtGraph, err = graph.AttachServices(builtGraph, result.Normalized.Services)
-	if err != nil {
-		return TLSResult{}, fmt.Errorf("attach normalized services to graph: %w", err)
-	}
-	result.Graph = builtGraph
 	return result, nil
 }
