@@ -14,6 +14,8 @@ import (
 // discoveries derived from their target-scoped correlations.
 type IntelligenceReport struct {
 	Target                  string                   `json:"target"`
+	ReferenceRunID          string                   `json:"reference_run_id,omitempty"`
+	ReferenceRunStatus      string                   `json:"reference_run_status,omitempty"`
 	Findings                []Finding                `json:"findings"`
 	ServiceSurfaces         []ServiceSurface         `json:"service_surfaces"`
 	Correlations            []Correlation            `json:"correlations"`
@@ -124,7 +126,17 @@ func (e *ReportEngine) BuildWithInvestigationFeedback(
 	if err != nil {
 		return IntelligenceReport{}, fmt.Errorf("generate hypotheses: %w", err)
 	}
-	serviceSurfaces, err := BuildServiceSurfaces(target, registry.AllEvidence(), registry.AllObservations())
+	referenceRunID := ""
+	referenceRunStatus := ""
+	runs, runErr := registry.CollectionRuns(target)
+	if runErr != nil {
+		return IntelligenceReport{}, fmt.Errorf("load target collection runs: %w", runErr)
+	}
+	if len(runs) > 0 {
+		referenceRunID = runs[0].ID
+		referenceRunStatus = string(runs[0].Status)
+	}
+	serviceSurfaces, err := BuildServiceSurfaces(target, registry.AllEvidence(), registry.AllObservations(), referenceRunID)
 	if err != nil {
 		return IntelligenceReport{}, fmt.Errorf("build endpoint service surfaces: %w", err)
 	}
@@ -173,6 +185,8 @@ func (e *ReportEngine) BuildWithInvestigationFeedback(
 
 	report := IntelligenceReport{
 		Target:                  strings.TrimSpace(target),
+		ReferenceRunID:          referenceRunID,
+		ReferenceRunStatus:      referenceRunStatus,
 		Findings:                append([]Finding{}, scopedFindings...),
 		ServiceSurfaces:         append([]ServiceSurface{}, serviceSurfaces...),
 		Correlations:            append([]Correlation{}, correlations...),

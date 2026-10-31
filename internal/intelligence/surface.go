@@ -25,6 +25,8 @@ type ServiceSurface struct {
 	EvidenceIDs     []string                 `json:"evidence_ids"`
 	ObservationIDs  []string                 `json:"observation_ids"`
 	ObservationRefs []ServiceObservationRef  `json:"observation_refs"`
+	ReferenceRunID  string                   `json:"reference_run_id,omitempty"`
+	TemporalScope   string                   `json:"temporal_scope"`
 	Summary         string                   `json:"summary"`
 	Limitations     []string                 `json:"limitations"`
 	NextSteps       []string                 `json:"next_steps"`
@@ -57,16 +59,21 @@ type ServiceObservationRef struct {
 	Source          string    `json:"source"`
 	CollectionRunID string    `json:"collection_run_id,omitempty"`
 	Stage           string    `json:"stage,omitempty"`
+	ReferenceRun    bool      `json:"reference_run"`
 	ObservedAt      time.Time `json:"observed_at"`
 }
 
 // BuildServiceSurfaces builds endpoint-level views from durable evidence. It
 // never joins records by target alone: both normalized target and port must
 // match, preventing unrelated services on different ports from being merged.
-func BuildServiceSurfaces(target string, records []evidence.Evidence, observations []evidence.Observation) ([]ServiceSurface, error) {
+func BuildServiceSurfaces(target string, records []evidence.Evidence, observations []evidence.Observation, referenceRunIDs ...string) ([]ServiceSurface, error) {
 	target = normalizeFindingTarget(target)
 	if target == "" {
 		return nil, fmt.Errorf("service-surface target is required")
+	}
+	referenceRunID := ""
+	if len(referenceRunIDs) > 0 {
+		referenceRunID = strings.TrimSpace(referenceRunIDs[0])
 	}
 
 	// Validate and retain observations only when they belong to evidence that
@@ -180,7 +187,8 @@ func BuildServiceSurfaces(target string, records []evidence.Evidence, observatio
 			surface.ObservationRefs = append(surface.ObservationRefs, ServiceObservationRef{
 				EvidenceID: item.ID, ObservationID: observation.ID,
 				Source: observation.Source, CollectionRunID: observation.CollectionRunID,
-				Stage: observation.Stage, ObservedAt: observation.ObservedAt,
+				Stage: observation.Stage, ReferenceRun: referenceRunID != "" && observation.CollectionRunID == referenceRunID,
+				ObservedAt: observation.ObservedAt,
 			})
 		}
 	}
@@ -231,8 +239,35 @@ func BuildServiceSurfaces(target string, records []evidence.Evidence, observatio
 		for _, tls := range surface.TLS {
 			parts = append(parts, "TLS "+tls.TLSVersion)
 		}
+		hasReferenceRun, hasHistoricalRun, hasLegacyRun := false, false, false
+		for _, observation := range surface.ObservationRefs {
+			switch {
+			case observation.CollectionRunID == "":
+				hasLegacyRun = true
+			case referenceRunID != "" && observation.CollectionRunID == referenceRunID:
+				hasReferenceRun = true
+			default:
+				hasHistoricalRun = true
+			}
+		}
+		switch {
+		case hasReferenceRun && (hasHistoricalRun || hasLegacyRun):
+			surface.TemporalScope = "REFERENCE_AND_HISTORICAL"
+		case hasReferenceRun:
+			surface.TemporalScope = "REFERENCE_RUN_ONLY"
+		case hasHistoricalRun && hasLegacyRun:
+			surface.TemporalScope = "HISTORICAL_AND_LEGACY"
+		case hasHistoricalRun:
+			surface.TemporalScope = "HISTORICAL_ONLY"
+		case hasLegacyRun:
+			surface.TemporalScope = "LEGACY_TIME_ONLY"
+		default:
+			surface.TemporalScope = "NO_OBSERVATION_PROVENANCE"
+		}
+		parts = append(parts, "Temporal scope "+surface.TemporalScope)
 		surface.Summary = strings.Join(parts, " | ")
 		surface.Limitations = []string{
+			"Temporal scope is classified using explicit collection-run IDs where available; legacy observations without run IDs cannot be assigned confidently to a run.",
 			"Records are grouped by exact normalized target and port; collection timestamps may differ.",
 			"A shared endpoint key does not prove the same process, backend, tenant, or infrastructure owner.",
 			"An observed HTTP response or TLS certificate does not by itself establish a vulnerability or secure configuration.",

@@ -203,3 +203,35 @@ func TestBuildServiceSurfacesIgnoresInvalidUnrelatedObservations(t *testing.T) {
 		t.Fatalf("unrelated observation leaked into target surface: %+v", surfaces[0].ObservationIDs)
 	}
 }
+
+
+func TestBuildServiceSurfacesLabelsReferenceAndHistoricalEvidence(t *testing.T) {
+	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	records := []evidence.Evidence{
+		{ID: "tcp-current", EntityID: "lab.example", Type: evidence.TypeTCPPort, Value: `{"target":"lab.example","protocol":"tcp","port":443,"state":"open"}`},
+		{ID: "tcp-historical", EntityID: "lab.example", Type: evidence.TypeTCPPort, Value: `{"target":"lab.example","protocol":"tcp","port":8443,"state":"open"}`},
+	}
+	observations := []evidence.Observation{
+		{ID: "obs-current", EvidenceID: "tcp-current", Source: "tcp", CollectionRunID: "run-current", Stage: "tcp", ObservedAt: now, EventIDs: []string{"event-current"}},
+		{ID: "obs-old", EvidenceID: "tcp-historical", Source: "tcp", CollectionRunID: "run-old", Stage: "tcp", ObservedAt: now.Add(-time.Hour), EventIDs: []string{"event-old"}},
+	}
+	surfaces, err := BuildServiceSurfaces("lab.example", records, observations, "run-current")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(surfaces) != 2 {
+		t.Fatalf("surfaces = %d, want 2", len(surfaces))
+	}
+	for _, surface := range surfaces {
+		switch surface.Port {
+		case 443:
+			if surface.TemporalScope != "REFERENCE_RUN_ONLY" || !surface.ObservationRefs[0].ReferenceRun {
+				t.Fatalf("current evidence was not identified: %+v", surface)
+			}
+		case 8443:
+			if surface.TemporalScope != "HISTORICAL_ONLY" || surface.ObservationRefs[0].ReferenceRun {
+				t.Fatalf("historical evidence was mislabeled: %+v", surface)
+			}
+		}
+	}
+}

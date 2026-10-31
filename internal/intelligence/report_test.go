@@ -502,3 +502,46 @@ func TestReportEngineKeepsTargetReportWhenUnrelatedHistoricalEvidenceIsMalformed
 		t.Fatalf("report did not disclose reduced multi-hop coverage: %s", limitations)
 	}
 }
+
+
+func TestReportEngineIdentifiesLatestCollectionRunAndServiceTemporalScope(t *testing.T) {
+	registry := evidence.NewRegistry()
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close evidence registry: %v", err)
+		}
+	})
+	started := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	run := evidence.CollectionRun{
+		ID: "tcp-current-run", Target: "lab.example", StartedAt: started,
+		Status: evidence.CollectionRunRunning,
+	}
+	if err := registry.AddCollectionRun(run); err != nil {
+		t.Fatal(err)
+	}
+	item := evidence.Evidence{
+		ID: "tcp-current-evidence", EntityID: "lab.example", Type: evidence.TypeTCPPort,
+		Value: `{"target":"lab.example","protocol":"tcp","port":443,"state":"open"}`,
+	}
+	if err := registry.AddEvidence(item); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.AddObservation(evidence.Observation{
+		ID: "tcp-current-observation", EvidenceID: item.ID, Source: "tcp",
+		CollectionRunID: run.ID, Stage: "tcp", ObservedAt: started.Add(time.Second),
+		EventIDs: []string{"tcp-event"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := (&ReportEngine{}).Build("lab.example", nil, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.ReferenceRunID != run.ID || report.ReferenceRunStatus != string(evidence.CollectionRunRunning) {
+		t.Fatalf("report did not identify its reference run: %q %q", report.ReferenceRunID, report.ReferenceRunStatus)
+	}
+	if len(report.ServiceSurfaces) != 1 || report.ServiceSurfaces[0].TemporalScope != "REFERENCE_RUN_ONLY" {
+		t.Fatalf("service temporal scope is incorrect: %+v", report.ServiceSurfaces)
+	}
+}
