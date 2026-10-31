@@ -10,7 +10,6 @@ import (
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/history"
-	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/investigation"
 )
 
@@ -125,23 +124,7 @@ func runExternalCollection(target, snapshotDir, runPrefix string, timeout time.D
 		}
 		return fmt.Errorf("external investigation completed partially")
 	}
-	printExternalIntelligence(result.Report)
+	printIntelligenceReport(result.Report)
+	printInvestigationPlan(result.Report.InvestigationPlan)
 	return nil
-}
-
-func printExternalIntelligence(report intelligence.IntelligenceReport) {
-	fmt.Println("\n[KEM3T INTELLIGENCE]")
-	safePrintf("Correlations: %d | Discoveries: %d | Hypotheses: %d | Verification assessments: %d | Intelligence gaps: %d\n",
-		len(report.Correlations), len(report.Discoveries), len(report.Hypotheses),
-		len(report.VerificationAssessments), len(report.IntelligenceGaps))
-	for _, hypothesis := range report.Hypotheses {
-		safePrintf("[HYPOTHESIS | %s] %s\n", hypothesis.Confidence, hypothesis.Title)
-		safePrintf("  %s\n", hypothesis.Statement)
-		if hypothesis.Alternative != "" {
-			safePrintf("  Alternative: %s\n", hypothesis.Alternative)
-		}
-		if hypothesis.Limitations != "" {
-			safePrintf("  Limitation: %s\n", hypothesis.Limitations)
-		}
-	}
 }
