@@ -275,7 +275,7 @@ func TestPrintIntelligenceReportShowsAllResearchSections(t *testing.T) {
 		DiscoveryPivots: []intelligence.DiscoveryPivot{{
 			ID: "pivot-1", Type: "DISCOVERY_PIVOT", Pivot: "192.0.2.10",
 			ConnectedEntities: []string{"other.example", "www.example.com"}, PathIDs: []string{"path-1", "path-2"},
-			SignalTypes: []intelligence.CorrelationType{intelligence.CorrelationSharedIPAddress, intelligence.CorrelationSharedTLSCertificateFingerprint},
+			SignalTypes:     []intelligence.CorrelationType{intelligence.CorrelationSharedIPAddress, intelligence.CorrelationSharedTLSCertificateFingerprint},
 			SignalDiversity: 2, Confidence: "LOW", Statement: "The address recurs as a pivot.",
 			WhyItMatters: "It may connect separate observations.", AlternativeExplanations: "CDN hosting may explain it.",
 			Verification: []string{"Inspect the supporting paths."},
