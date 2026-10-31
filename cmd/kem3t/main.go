@@ -1054,6 +1054,12 @@ func printInfrastructureGraph(g graph.Graph) {
 			nodeValues[edge.Source],
 			nodeValues[edge.Target],
 		)
+		if len(edge.EvidenceIDs) > 0 {
+			safePrintf("  Evidence refs: %s\n", strings.Join(edge.EvidenceIDs, ", "))
+		}
+		if len(edge.ObservationIDs) > 0 {
+			safePrintf("  Observation refs: %s\n", strings.Join(edge.ObservationIDs, ", "))
+		}
 	}
 }
 
