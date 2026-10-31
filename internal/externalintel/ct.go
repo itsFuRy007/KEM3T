@@ -85,11 +85,6 @@ func (c *CTClient) LookupDomain(ctx context.Context, target string) (CTReport, e
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
 		return CTReport{}, fmt.Errorf("CT endpoint must be an absolute HTTPS URL")
 	}
-	query := parsed.Query()
-	query.Set("q", "%."+target)
-	query.Set("output", "json")
-	parsed.RawQuery = query.Encode()
-
 	timeout := c.Timeout
 	if timeout <= 0 {
 		timeout = 15 * time.Second
@@ -97,36 +92,47 @@ func (c *CTClient) LookupDomain(ctx context.Context, target string) (CTReport, e
 	requestCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, parsed.String(), nil)
-	if err != nil {
-		return CTReport{}, fmt.Errorf("create CT request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "KEM3T-External-Intelligence/1.0 (research)")
-
 	client := c.HTTPClient
 	if client == nil {
 		client = &http.Client{Timeout: timeout}
 	}
-	resp, err := doExternalRequest(ctx, client, req)
-	if err != nil {
-		return CTReport{}, fmt.Errorf("query Certificate Transparency source: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return CTReport{}, fmt.Errorf("CT source returned HTTP %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxCTResponseBytes+1))
-	if err != nil {
-		return CTReport{}, fmt.Errorf("read CT response: %w", err)
-	}
-	if len(body) > maxCTResponseBytes {
-		return CTReport{}, fmt.Errorf("CT response exceeds %d bytes", maxCTResponseBytes)
-	}
-	var rows []crtSHRow
-	if err := json.Unmarshal(body, &rows); err != nil {
-		return CTReport{}, fmt.Errorf("decode CT response: %w", err)
+	rows := make([]crtSHRow, 0)
+	for _, queryValue := range []string{target, "%." + target} {
+		queryURL := *parsed
+		query := queryURL.Query()
+		query.Set("q", queryValue)
+		query.Set("output", "json")
+		queryURL.RawQuery = query.Encode()
+
+		req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, queryURL.String(), nil)
+		if err != nil {
+			return CTReport{}, fmt.Errorf("create CT request for %q: %w", queryValue, err)
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", "KEM3T-External-Intelligence/1.0 (research)")
+
+		resp, err := doExternalRequest(requestCtx, client, req)
+		if err != nil {
+			return CTReport{}, fmt.Errorf("query Certificate Transparency source for %q: %w", queryValue, err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+			_ = resp.Body.Close()
+			return CTReport{}, fmt.Errorf("CT source returned HTTP %d for query %q", resp.StatusCode, queryValue)
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxCTResponseBytes+1))
+		_ = resp.Body.Close()
+		if err != nil {
+			return CTReport{}, fmt.Errorf("read CT response for %q: %w", queryValue, err)
+		}
+		if len(body) > maxCTResponseBytes {
+			return CTReport{}, fmt.Errorf("CT response for %q exceeds %d bytes", queryValue, maxCTResponseBytes)
+		}
+		var queryRows []crtSHRow
+		if err := json.Unmarshal(body, &queryRows); err != nil {
+			return CTReport{}, fmt.Errorf("decode CT response for %q: %w", queryValue, err)
+		}
+		rows = append(rows, queryRows...)
 	}
 
 	recordsByID := make(map[int]CTRecord)
