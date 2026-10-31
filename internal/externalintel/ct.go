@@ -297,7 +297,7 @@ func RegisterCTReport(registry *evidence.Registry, report CTReport, provenance .
 				Target: target, DNSName: name, CertificateID: record.CertificateID,
 				IssuerName: strings.TrimSpace(record.IssuerName),
 				NotBefore:  strings.TrimSpace(record.NotBefore), NotAfter: strings.TrimSpace(record.NotAfter),
-				Source: source, RetrievedAt: report.RetrievedAt.UTC(),
+				Source: source,
 			}
 			value, err := json.Marshal(details)
 			if err != nil {
