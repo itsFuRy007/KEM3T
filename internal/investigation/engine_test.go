@@ -79,6 +79,9 @@ func TestEnginePreservesSuccessfulEvidenceWhenStageFails(t *testing.T) {
 	if len(result.Graph.Edges) != 1 {
 		t.Fatalf("successful evidence was lost: %+v", result.Graph)
 	}
+	if !containsString(result.Report.Narrative.Limitations, "optional-source failed: source unavailable") {
+		t.Fatalf("stage failure was not carried into the research report: %+v", result.Report.Narrative.Limitations)
+	}
 }
 
 func TestEngineRejectsCanceledContextBeforeStartingRun(t *testing.T) {
@@ -239,4 +242,30 @@ func TestEngineMarksRunFailedWhenHistorySnapshotPersistenceFails(t *testing.T) {
 	if runs[0].Status != evidence.CollectionRunFailed || !strings.Contains(runs[0].ErrorMessage, "persist unified investigation history") {
 		t.Fatalf("history persistence failure was not reflected in run status: %+v", runs[0])
 	}
+}
+
+func TestEngineCarriesStageLimitationsIntoResearchReport(t *testing.T) {
+	registry := evidence.NewRegistry()
+	stage := FuncStage{
+		StageName: "bounded-source",
+		Lookup: func(context.Context, string, *evidence.Registry) (StageResult, error) {
+			return StageResult{Limitations: []string{"provider returned a bounded partial response"}}, nil
+		},
+	}
+	result, err := (&Engine{Registry: registry, Stages: []Stage{stage}}).Run(context.Background(), "example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsString(result.Report.Narrative.Limitations, "bounded-source: provider returned a bounded partial response") {
+		t.Fatalf("stage limitation missing from report: %+v", result.Report.Narrative.Limitations)
+	}
+}
+
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }
