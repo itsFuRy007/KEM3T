@@ -11,8 +11,8 @@ This is a repository-level security baseline for KEM3T, not a penetration-test r
 - Active TCP, TLS, and HTTP collection in unified investigation mode is opt-in.
 - Discovered subdomains and IP addresses do not automatically authorize active checks.
 - Adaptive DNS follow-up is bounded and restricted to the root domain's namespace.
-- HTTP collection bounds response-body inspection, redirect count, and redirect hostname scope.
-- External provider requests use HTTPS endpoints, bounded response sizes, request timeouts, and cancellation-aware retry/backoff.
+- HTTP collection bounds response-body inspection and redirect count, enforces same-host redirects, rejects credential-bearing and HTTPS-downgrade redirects, and redacts query values from persisted URLs and Location headers.
+- External provider requests use HTTPS endpoints, bounded response sizes, request timeouts, cancellation-aware retry/backoff, and HTTPS-preserving redirect checks even with caller-supplied HTTP clients.
 
 ### Evidence and interpretation boundaries
 
@@ -48,6 +48,8 @@ The CI workflow runs:
 7. Formatting, vet, and build checks.
 8. Two clean, trimpath-enabled CLI builds whose outputs must be byte-identical.
 9. The controlled loopback validation lab for known-open/closed TCP, HTTP metadata, and TLS certificate extraction.
+
+The tag-triggered release workflow repeats the validation gates on the exact tagged source before building and publishing release artifacts.
 
 The loopback lab is a narrow controlled baseline. It does not validate external provider coverage, public infrastructure attribution, multi-host relationships, or real-world intelligence quality.
 
