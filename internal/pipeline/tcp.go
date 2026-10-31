@@ -102,11 +102,8 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 		}
 		observation.CollectionRunID = run.ID
 		observation.Stage = "tcp"
-		if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
-			return TCPResult{}, fmt.Errorf("register TCP evidence: %w", err)
-		}
-		if err := registry.AddObservation(observation); err != nil && !errors.Is(err, evidence.ErrObservationExists) {
-			return TCPResult{}, fmt.Errorf("register TCP observation: %w", err)
+		if _, _, err := registry.AddBatchUnique(ctx, []evidence.Evidence{item}, []evidence.Observation{observation}); err != nil {
+			return TCPResult{}, fmt.Errorf("register TCP evidence and observation atomically: %w", err)
 		}
 		result.Evidence = append(result.Evidence, item)
 		result.Observations = append(result.Observations, observation)
