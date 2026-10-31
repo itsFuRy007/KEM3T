@@ -103,7 +103,6 @@ func TestEvidenceValidateAcceptsTrimmedIP(t *testing.T) {
 
 }
 
-
 func makeIPRDAPEvidence(target, start, end string) Evidence {
 	details := IPRDAPNetworkDetails{Target: target, StartAddress: start, EndAddress: end}
 	value, _ := json.Marshal(details)

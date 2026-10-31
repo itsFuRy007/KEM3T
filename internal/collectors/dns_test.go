@@ -106,7 +106,6 @@ func TestDNSRunRejectsEmptyTarget(t *testing.T) {
 	}
 }
 
-
 func TestDNSRunRejectsNilContext(t *testing.T) {
 	dns := &DNS{Target: "example.test"}
 	if err := dns.Run(nil, make(chan events.Event, 1)); err == nil {
