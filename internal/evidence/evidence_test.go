@@ -146,8 +146,8 @@ func makeHTTPServiceEvidence(target, rawURL, finalURL string) Evidence {
 
 func TestHTTPServiceEvidenceEnforcesTargetScope(t *testing.T) {
 	tests := []struct {
-		name string
-		item Evidence
+		name      string
+		item      Evidence
 		wantValid bool
 	}{
 		{"same target", makeHTTPServiceEvidence("example.com", "https://example.com:443/", "https://example.com:443/"), true},
