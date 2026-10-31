@@ -567,3 +567,31 @@ func TestRunDNSAdaptsPlanFromInvestigatorFeedback(t *testing.T) {
 		t.Fatal("previous task history was not retained in the next plan")
 	}
 }
+
+  
+// TestRunDNSNormalizesTrailingDotTarget prevents duplicate DNS identities and snapshots.
+func TestRunDNSNormalizesTrailingDotTarget(t *testing.T) {
+	dir := t.TempDir()
+	collected := dnsEvents("192.0.2.10")
+	collected[0].Target = "EXAMPLE.COM."
+
+	result, err := runDNSWithCollector(
+		context.Background(),
+		"EXAMPLE.COM.",
+		dir,
+		&fakeCollector{events: collected},
+	)
+	if err != nil {
+		t.Fatalf("runDNSWithCollector() error = %v", err)
+	}
+	if result.CurrentSnapshot.Target != "example.com" {
+		t.Fatalf("snapshot target = %q, want example.com", result.CurrentSnapshot.Target)
+	}
+	if _, err := result.EvidenceRegistry.GetEvidence("dns-address:example.com:192.0.2.10"); err != nil {
+		t.Fatalf("canonical DNS evidence was not stored: %v", err)
+	}
+	runs, err := result.EvidenceRegistry.CollectionRuns("example.com")
+	if err != nil || len(runs) != 1 || runs[0].Target != "example.com" {
+		t.Fatalf("collection run target was not canonical: runs=%+v err=%v", runs, err)
+	}
+}
