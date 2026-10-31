@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
+	"github.com/itsFuRy007/kem3t/internal/observations"
 )
 
 type Stage interface {
@@ -23,8 +25,11 @@ type StageResult struct {
 	Events       int                    `json:"events"`
 	Evidence     int                    `json:"evidence"`
 	Observations int                    `json:"observations"`
-	Findings     []intelligence.Finding `json:"findings,omitempty"`
-	Limitations  []string               `json:"limitations,omitempty"`
+	Findings            []intelligence.Finding `json:"findings,omitempty"`
+	Limitations         []string               `json:"limitations,omitempty"`
+	CollectedEvents     []events.Event         `json:"collected_events,omitempty"
+	EvidenceRecords     []evidence.Evidence    `json:"evidence_records,omitempty"`
+	ObservationRecords  []evidence.Observation `json:"observation_records,omitempty"`
 }
 
 type StageOutcome struct {
@@ -38,6 +43,7 @@ type Result struct {
 	RunID            string                          `json:"run_id"`
 	Stages           []StageOutcome                  `json:"stages"`
 	Graph            graph.Graph                     `json:"graph"`
+	Normalized       observations.Collection         `json:"normalized"`
 	Report           intelligence.IntelligenceReport `json:"report"`
 	Partial          bool                            `json:"partial"`
 	HistoryPersisted bool                            `json:"history_persisted"`
@@ -193,10 +199,25 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		retErr = ctx.Err()
 	}
 
+	collectedEvents := make([]events.Event, 0)
+	for _, outcome := range result.Stages {
+		collectedEvents = append(collectedEvents, outcome.Result.CollectedEvents...)
+	}
+	result.Normalized = observations.NormalizeEvents(collectedEvents)
+	if len(result.Normalized.Rejected) > 0 {
+		result.Partial = true
+		retErr = errors.Join(retErr, fmt.Errorf("normalize investigation events: %s", result.Normalized.Rejected[0].Reason))
+	}
+
 	scopedEvidence, scopedObservations := scopedRegistryRecords(target, e.Registry)
+	observations.AttachEvidence(&result.Normalized, scopedObservations)
 	built, err := graph.Build(scopedEvidence, scopedObservations)
+	if err == nil && len(result.Normalized.Services) > 0 {
+		built, err = graph.AttachServices(built, result.Normalized.Services)
+	}
 	if err != nil {
-		retErr = errors.Join(retErr, fmt.Errorf("build investigation graph: %w", err))
+		retErr = errors.Join(retErr, fmt.Errorf("build unified investigation graph: %w", err))
+		result.Partial = true
 	} else {
 		result.Graph = built
 	}
