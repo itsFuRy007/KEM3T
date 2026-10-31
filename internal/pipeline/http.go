@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/itsFuRy007/kem3t/internal/events"
@@ -27,7 +30,11 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 	if port < 0 || port > 65535 {
 		return HTTPResult{}, fmt.Errorf("HTTP port must be between 0 and 65535")
 	}
-	unified, registry, err := runUnifiedStage(ctx, target, snapshotDir, investigation.NewHTTPStage(target, scheme, port))
+	stageTarget, stageScheme, stagePort, err := normalizeHTTPStageTarget(target, scheme, port)
+	if err != nil {
+		return HTTPResult{}, err
+	}
+	unified, registry, err := runUnifiedStage(ctx, stageTarget, snapshotDir, investigation.NewHTTPStage(stageTarget, stageScheme, stagePort))
 	if registry != nil {
 		result.EvidenceRegistry = registry
 		defer func() {
@@ -58,4 +65,35 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 		return result, fmt.Errorf("unified HTTP stage returned no response evidence")
 	}
 	return result, nil
+}
+
+func normalizeHTTPStageTarget(target, scheme string, port int) (string, string, int, error) {
+	target = strings.TrimSpace(target)
+	parsed, err := url.Parse(target)
+	if err == nil && parsed.Host != "" && parsed.Scheme != "" {
+		host := parsed.Hostname()
+		if host == "" {
+			return "", "", 0, fmt.Errorf("HTTP URL must include a hostname")
+		}
+		if scheme == "" || scheme == "auto" {
+			scheme = strings.ToLower(parsed.Scheme)
+		}
+		if port == 0 && parsed.Port() != "" {
+			port, err = strconv.Atoi(parsed.Port())
+			if err != nil {
+				return "", "", 0, fmt.Errorf("invalid HTTP URL port: %w", err)
+			}
+		}
+		target = host
+	}
+	if scheme == "" {
+		scheme = "auto"
+	}
+	if port < 0 || port > 65535 {
+		return "", "", 0, fmt.Errorf("HTTP port must be between 0 and 65535")
+	}
+	if net.ParseIP(target) == nil && strings.ContainsAny(target, "/?#") {
+		return "", "", 0, fmt.Errorf("HTTP target must be a hostname, IP address, or absolute HTTP URL")
+	}
+	return target, scheme, port, nil
 }
