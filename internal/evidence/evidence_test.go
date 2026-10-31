@@ -134,7 +134,6 @@ func TestIPRDAPEvidenceRejectsNonCanonicalAddresses(t *testing.T) {
 	}
 }
 
-
 func makeHTTPServiceEvidence(target, rawURL, finalURL string) Evidence {
 	details := HTTPServiceDetails{
 		Target: target, Scheme: "https", Port: 443,
