@@ -42,6 +42,10 @@ jobs:
           unformatted=$(git ls-files '*.go' | xargs -r gofmt -l)
           if [ -n "$unformatted" ]; then
             printf 'Unformatted Go files:\n%s\n' "$unformatted"
+            while IFS= read -r file; do
+              printf '\nFormatting diff for %s:\n' "$file"
+              gofmt -d "$file"
+            done <<< "$unformatted"
             exit 1
           fi
 
