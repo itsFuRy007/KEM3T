@@ -23,7 +23,11 @@ func TestASNLookupCombinesOriginMappingAndRDAP(t *testing.T) {
 			if got := r.URL.Query().Get("name"); got != "8.8.8.8.origin.asn.cymru.com" {
 				t.Errorf("query name=%q", got)
 			}
-			fmt.Fprint(w, "{\"Status\":0,\"Answer\":[{\"name\":\"origin.asn.cymru.com\",\"type\":16,\"data\":\"\\\"15169 | 8.8.8.0/24 | US | arin | 2000-03-30\\\"\"}]}")
+			fmt.Fprint(w, `{"Status":0,"Answer":[
+				{"name":"origin.asn.cymru.com","type":16,"data":"\\"15169 | 8.8.8.0/24 | US | arin | 2000-03-30\\""},
+				{"name":"origin.asn.cymru.com","type":16,"data":"\\"15169 | 8.8.8.0/25 | US | arin | 2000-03-30\\""}
+			]}`)
+
 		case "/asn-bootstrap":
 			fmt.Fprintf(w, "{\"services\":[[[\"10000-20000\"],[%q]]]}", server.URL+"/rdap")
 		case "/rdap/autnum/15169":
@@ -38,12 +42,16 @@ func TestASNLookupCombinesOriginMappingAndRDAP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Target != "8.8.8.8" || len(report.Records) != 1 {
+	if report.Target != "8.8.8.8" || len(report.Records) != 2 {
 		t.Fatalf("unexpected report: %+v", report)
 	}
 	record := report.Records[0]
 	if record.ASN != 15169 || record.Prefix != "8.8.8.0/24" || record.Country != "US" || record.NetworkName != "GOOGLE" || record.RDAPSource == "" {
 		t.Fatalf("unexpected ASN record: %+v", record)
+	}
+	second := report.Records[1]
+	if second.ASN != 15169 || second.Prefix != "8.8.8.0/25" || second.NetworkName != "GOOGLE" || second.RDAPSource == "" {
+		t.Fatalf("second origin prefix was not preserved: %+v", second)
 	}
 }
 
