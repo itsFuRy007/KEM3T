@@ -117,9 +117,9 @@ func TestDNSInvestigationExportRejectsInconsistentTemporalContext(t *testing.T) 
 		Unchanged: []string{"192.0.2.1"}, PreviousCount: 1, CurrentCount: 1,
 	}
 	tests := []struct {
-		name string
+		name   string
 		export InvestigationExport
-		want string
+		want   string
 	}{
 		{
 			name: "snapshot scope mismatch",

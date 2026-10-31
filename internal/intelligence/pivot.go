@@ -10,18 +10,18 @@ import (
 // the bridge in multi-hop paths. It is an investigation lead, not an ownership
 // or control conclusion.
 type DiscoveryPivot struct {
-	ID                     string            `json:"id"`
-	Type                   string            `json:"type"`
-	Pivot                  string            `json:"pivot"`
-	ConnectedEntities      []string          `json:"connected_entities"`
-	PathIDs                []string          `json:"path_ids"`
-	SignalTypes            []CorrelationType `json:"signal_types"`
-	SignalDiversity        int               `json:"signal_diversity"`
-	Confidence             string            `json:"confidence"`
-	Statement              string            `json:"statement"`
-	WhyItMatters           string            `json:"why_it_matters"`
-	AlternativeExplanations string           `json:"alternative_explanations"`
-	Verification           []string          `json:"verification_steps"`
+	ID                      string            `json:"id"`
+	Type                    string            `json:"type"`
+	Pivot                   string            `json:"pivot"`
+	ConnectedEntities       []string          `json:"connected_entities"`
+	PathIDs                 []string          `json:"path_ids"`
+	SignalTypes             []CorrelationType `json:"signal_types"`
+	SignalDiversity         int               `json:"signal_diversity"`
+	Confidence              string            `json:"confidence"`
+	Statement               string            `json:"statement"`
+	WhyItMatters            string            `json:"why_it_matters"`
+	AlternativeExplanations string            `json:"alternative_explanations"`
+	Verification            []string          `json:"verification_steps"`
 }
 
 func (d DiscoveryPivot) Validate() error {
@@ -114,16 +114,16 @@ func (e *DiscoveryEngine) DiscoverPivots(paths []DiscoveryPath, target string) (
 		sort.Slice(signalTypes, func(i, j int) bool { return signalTypes[i] < signalTypes[j] })
 
 		result := DiscoveryPivot{
-			ID: "discovery-pivot:" + target + ":" + pivot,
-			Type: "DISCOVERY_PIVOT",
-			Pivot: pivot,
-			ConnectedEntities: neighbors,
-			PathIDs: pathIDs,
-			SignalTypes: signalTypes,
-			SignalDiversity: len(aggregate.signalTypes),
-			Confidence: "LOW",
-			Statement: fmt.Sprintf("%s repeatedly appears as an investigation pivot connecting %s to multiple surrounding entities across %d infrastructure dimensions.", pivot, target, len(aggregate.signalTypes)),
-			WhyItMatters: "A recurring intermediate entity can reveal a hidden infrastructure hub, provider boundary, certificate-management dependency, or other pivot that is easy to miss when each relationship is investigated independently.",
+			ID:                      "discovery-pivot:" + target + ":" + pivot,
+			Type:                    "DISCOVERY_PIVOT",
+			Pivot:                   pivot,
+			ConnectedEntities:       neighbors,
+			PathIDs:                 pathIDs,
+			SignalTypes:             signalTypes,
+			SignalDiversity:         len(aggregate.signalTypes),
+			Confidence:              "LOW",
+			Statement:               fmt.Sprintf("%s repeatedly appears as an investigation pivot connecting %s to multiple surrounding entities across %d infrastructure dimensions.", pivot, target, len(aggregate.signalTypes)),
+			WhyItMatters:            "A recurring intermediate entity can reveal a hidden infrastructure hub, provider boundary, certificate-management dependency, or other pivot that is easy to miss when each relationship is investigated independently.",
 			AlternativeExplanations: "Shared hosting, CDN infrastructure, certificate-management services, passive-DNS aggregation, mirrored provider data, or other common platforms can cause unrelated entities to converge on the same pivot.",
 			Verification: []string{
 				"Inspect every supporting path and trace each hop back to its original evidence and observation time.",

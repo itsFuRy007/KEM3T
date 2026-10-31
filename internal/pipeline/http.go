@@ -12,7 +12,6 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/collectors"
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
-	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/observations"
 )
@@ -53,8 +52,8 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 	}
 	result.EvidenceRegistry = registry
 	defer func() {
-		if err := registry.Close(); err != nil && retErr == nil {
-			retErr = fmt.Errorf("close evidence registry: %w", err)
+		if err := registry.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close evidence registry: %w", err))
 		}
 	}()
 	run := evidence.CollectionRun{
@@ -76,20 +75,8 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 		if result.Event != nil {
 			run.EventCount = 1
 		}
-		if err := registry.UpdateCollectionRun(run); err != nil {
-			updateErr := fmt.Errorf("finalize collection run: %w", err)
-			if retErr == nil {
-				retErr = updateErr
-			} else {
-				retErr = fmt.Errorf("%w; additionally, %v", retErr, updateErr)
-			}
-		}
-			if retErr == nil && run.Status == evidence.CollectionRunCompleted {
-			if err := history.PersistRunSnapshot(snapshotDir, run, registry, []evidence.Observation{result.Observation}); err != nil {
-				retErr = fmt.Errorf("persist history snapshot: %w", err)
-			}
-		}
-}()
+		finalizeCollectionRun(snapshotDir, registry, &run, []evidence.Observation{result.Observation}, &retErr)
+	}()
 	collector := &collectors.HTTP{Target: target, Scheme: scheme, Port: port}
 	eventCh := make(chan events.Event, 1)
 	errCh := make(chan error, 1)
@@ -105,6 +92,8 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 		if err != nil {
 			return HTTPResult{}, fmt.Errorf("convert HTTP event to evidence: %w", err)
 		}
+		observation.CollectionRunID = run.ID
+		observation.Stage = "http"
 		if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
 			return HTTPResult{}, fmt.Errorf("register HTTP evidence: %w", err)
 		}

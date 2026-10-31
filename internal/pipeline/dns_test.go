@@ -529,11 +529,17 @@ func TestRunDNSAdaptsPlanFromInvestigatorFeedback(t *testing.T) {
 		context.Background(), "example.com", dir,
 		&fakeCollector{events: dnsEvents("192.0.2.10", "192.0.2.11")}, nil, nil,
 	)
-	if err != nil { t.Fatalf("first run: %v", err) }
-	if len(first.Report.InvestigationPlan.Items) == 0 { t.Fatal("expected an initial investigation plan") }
+	if err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+	if len(first.Report.InvestigationPlan.Items) == 0 {
+		t.Fatal("expected an initial investigation plan")
+	}
 	previous := first.Report.InvestigationPlan
 	item := previous.Items[0]
-	if err := first.EvidenceRegistry.Close(); err != nil { t.Fatal(err) }
+	if err := first.EvidenceRegistry.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	second, err := runDNSWithCollectorAndPlan(
 		context.Background(), "example.com", dir,
@@ -541,15 +547,50 @@ func TestRunDNSAdaptsPlanFromInvestigatorFeedback(t *testing.T) {
 		&previous,
 		[]intelligence.InvestigationFeedback{{ItemID: item.ID, Outcome: intelligence.FeedbackCompleted, EvidenceIDs: []string{"investigator-evidence-1"}}},
 	)
-	if err != nil { t.Fatalf("second run: %v", err) }
+	if err != nil {
+		t.Fatalf("second run: %v", err)
+	}
 	defer second.EvidenceRegistry.Close()
 	found := false
 	for _, task := range second.Report.InvestigationPlan.Items {
 		if task.ID == item.ID {
 			found = true
-			if task.Status != intelligence.TaskCompleted { t.Fatalf("task status = %s, want completed", task.Status) }
-			if len(task.EvidenceIDs) != 1 || task.EvidenceIDs[0] != "investigator-evidence-1" { t.Fatalf("feedback evidence not retained: %#v", task.EvidenceIDs) }
+			if task.Status != intelligence.TaskCompleted {
+				t.Fatalf("task status = %s, want completed", task.Status)
+			}
+			if len(task.EvidenceIDs) != 1 || task.EvidenceIDs[0] != "investigator-evidence-1" {
+				t.Fatalf("feedback evidence not retained: %#v", task.EvidenceIDs)
+			}
 		}
 	}
-	if !found { t.Fatal("previous task history was not retained in the next plan") }
+	if !found {
+		t.Fatal("previous task history was not retained in the next plan")
+	}
+}
+
+// TestRunDNSNormalizesTrailingDotTarget prevents duplicate DNS identities and snapshots.
+func TestRunDNSNormalizesTrailingDotTarget(t *testing.T) {
+	dir := t.TempDir()
+	collected := dnsEvents("192.0.2.10")
+	collected[0].Target = "EXAMPLE.COM."
+
+	result, err := runDNSWithCollector(
+		context.Background(),
+		"EXAMPLE.COM.",
+		dir,
+		&fakeCollector{events: collected},
+	)
+	if err != nil {
+		t.Fatalf("runDNSWithCollector() error = %v", err)
+	}
+	if result.CurrentSnapshot.Target != "example.com" {
+		t.Fatalf("snapshot target = %q, want example.com", result.CurrentSnapshot.Target)
+	}
+	if _, err := result.EvidenceRegistry.GetEvidence("dns-address:example.com:192.0.2.10"); err != nil {
+		t.Fatalf("canonical DNS evidence was not stored: %v", err)
+	}
+	runs, err := result.EvidenceRegistry.CollectionRuns("example.com")
+	if err != nil || len(runs) != 1 || runs[0].Target != "example.com" {
+		t.Fatalf("collection run target was not canonical: runs=%+v err=%v", runs, err)
+	}
 }

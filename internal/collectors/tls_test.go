@@ -149,6 +149,9 @@ func TestTLSCollectorEmitsCertificateEvent(t *testing.T) {
 		if event.Data["verified"] != "false" {
 			t.Fatalf("self-signed test certificate should not be marked verified: %q", event.Data["verified"])
 		}
+		if !strings.Contains(strings.ToLower(event.Data["verification_error"]), "unknown authority") {
+			t.Fatalf("expected the self-signed certificate verification reason, got %q", event.Data["verification_error"])
+		}
 	case <-time.After(4 * time.Second):
 		t.Fatal("timed out waiting for TLS event")
 	}
@@ -165,5 +168,12 @@ func TestTLSCollectorRejectsInvalidPort(t *testing.T) {
 	err := (&TLS{Target: "localhost", Port: 70000}).Run(context.Background(), output)
 	if err == nil {
 		t.Fatal("expected invalid port error")
+	}
+}
+
+func TestTLSCollectorRejectsNilContext(t *testing.T) {
+	collector := &TLS{Target: "localhost"}
+	if err := collector.Run(nil, make(chan events.Event, 1)); err == nil {
+		t.Fatal("Run() should reject a nil context")
 	}
 }

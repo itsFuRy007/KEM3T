@@ -19,7 +19,7 @@ func benchmarkDNSOutcomes(targetCount, addressesPerTarget int) []DNSOutcome {
 		}
 		outcomes = append(outcomes, DNSOutcome{
 			Target: target, Addresses: addresses,
-			CollectedAt: time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC),
+			CollectedAt:   time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC),
 			EvidenceStore: fmt.Sprintf("/evidence/%05d.db", i),
 		})
 	}

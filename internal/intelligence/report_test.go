@@ -1,12 +1,13 @@
 package intelligence
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/events"
+	"github.com/itsFuRy007/kem3t/internal/evidence"
 )
 
 func TestReportEngineRejectsMissingTarget(t *testing.T) {
@@ -231,7 +232,6 @@ func TestReportEngineExcludesCorrelationsUnrelatedToTarget(t *testing.T) {
 	}
 }
 
-
 func reportScopeFinding(id, target string) Finding {
 	return Finding{
 		Title:    "Observed asset " + target,
@@ -240,7 +240,7 @@ func reportScopeFinding(id, target string) Finding {
 		Evidence: []events.Event{{
 			ID: id, Type: events.EventSubdomainDiscovered,
 			Timestamp: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-			Target: target, Source: "test",
+			Target:    target, Source: "test",
 		}},
 	}
 }
@@ -291,14 +291,13 @@ func TestReportEngineRejectsMixedScopeAggregateFinding(t *testing.T) {
 	finding.Evidence = append(finding.Evidence, events.Event{
 		ID: "out-of-scope", Type: events.EventSubdomainDiscovered,
 		Timestamp: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		Target: "other.example.net", Source: "test",
+		Target:    "other.example.net", Source: "test",
 	})
 	_, err := (&ReportEngine{}).Build("example.com", []Finding{finding}, registry)
 	if err == nil {
 		t.Fatal("expected mixed-scope aggregate finding to be rejected")
 	}
 }
-
 
 func TestReportEngineIncludesSharedTLSCertificateIntelligence(t *testing.T) {
 	registry := evidence.NewRegistry()
@@ -335,7 +334,6 @@ func TestReportEngineIncludesSharedTLSCertificateIntelligence(t *testing.T) {
 		t.Fatalf("expected conservative LOW confidence, got %q", report.Hypotheses[0].Confidence)
 	}
 }
-
 
 // TestReportEngineIntegratesEvidenceCorrelationHypothesisAndVerification exercises
 // the complete Phase 5 path and ensures original evidence cannot corroborate itself.
@@ -430,7 +428,6 @@ func TestReportEngineRejectsVerificationForUnknownHypothesis(t *testing.T) {
 	}
 }
 
-
 func TestReportEngineBuildsMultiHopPathsAndRecurringPivots(t *testing.T) {
 	registry := evidence.NewRegistry()
 	t.Cleanup(func() {
@@ -472,5 +469,134 @@ func TestReportEngineBuildsMultiHopPathsAndRecurringPivots(t *testing.T) {
 	}
 	if len(pivot.PathIDs) != 2 || len(pivot.ConnectedEntities) != 2 {
 		t.Fatalf("pivot must retain both supporting paths and neighbors: %#v", pivot)
+	}
+}
+
+func TestReportEngineIdentifiesLatestCollectionRunAndServiceTemporalScope(t *testing.T) {
+	registry := evidence.NewRegistry()
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close evidence registry: %v", err)
+		}
+	})
+	started := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	run := evidence.CollectionRun{
+		ID: "tcp-current-run", Target: "lab.example", StartedAt: started,
+		Status: evidence.CollectionRunRunning,
+	}
+	if err := registry.AddCollectionRun(run); err != nil {
+		t.Fatal(err)
+	}
+	item := evidence.Evidence{
+		ID: "tcp-current-evidence", EntityID: "lab.example", Type: evidence.TypeTCPPort,
+		Value: `{"target":"lab.example","protocol":"tcp","port":443,"state":"open"}`,
+	}
+	if err := registry.AddEvidence(item); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.AddObservation(evidence.Observation{
+		ID: "tcp-current-observation", EvidenceID: item.ID, Source: "tcp",
+		CollectionRunID: run.ID, Stage: "tcp", ObservedAt: started.Add(time.Second),
+		EventIDs: []string{"tcp-event"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := (&ReportEngine{}).Build("lab.example", nil, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.ReferenceRunID != run.ID || report.ReferenceRunStatus != string(evidence.CollectionRunRunning) {
+		t.Fatalf("report did not identify its reference run: %q %q", report.ReferenceRunID, report.ReferenceRunStatus)
+	}
+	if len(report.ServiceSurfaces) != 1 || report.ServiceSurfaces[0].TemporalScope != "REFERENCE_RUN_ONLY" {
+		t.Fatalf("service temporal scope is incorrect: %+v", report.ServiceSurfaces)
+	}
+}
+
+// TestReportEngineBuildsHypothesesForEveryCorrelationType verifies that the
+// report pipeline can carry all correlation types through hypothesis generation.
+func TestReportEngineBuildsHypothesesForEveryCorrelationType(t *testing.T) {
+	registry := evidence.NewRegistry()
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close evidence registry: %v", err)
+		}
+	})
+
+	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	fingerprint := strings.Repeat("b", 64)
+	makeCT := func(id, target string) evidence.Evidence {
+		details := evidence.CTDNSNameDetails{
+			Target: target, DNSName: target, CertificateID: 77,
+			Source: "crt.sh", RetrievedAt: now,
+		}
+		value, err := json.Marshal(details)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return evidence.Evidence{ID: id, EntityID: target, Type: evidence.TypeCTDNSName, Value: string(value)}
+	}
+	makePDNS := func(id, target string) evidence.Evidence {
+		details := evidence.PassiveDNSDetails{
+			Target: target, Hostname: target, Address: "203.0.113.7",
+			RecordType: "A", FirstSeen: "2024-01-01", LastSeen: "2025-01-01",
+			Source: "pdns-provider",
+		}
+		value, err := json.Marshal(details)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return evidence.Evidence{ID: id, EntityID: target, Type: evidence.TypePassiveDNS, Value: string(value)}
+	}
+
+	records := []evidence.Evidence{
+		{ID: "dns-a", EntityID: "a.example.com", Type: evidence.TypeDNSAddress, Value: "192.0.2.50"},
+		{ID: "dns-b", EntityID: "b.example.net", Type: evidence.TypeDNSAddress, Value: "192.0.2.50"},
+		tlsEvidenceForTest(t, "tls-a", "a.example.com", fingerprint),
+		tlsEvidenceForTest(t, "tls-b", "b.example.net", fingerprint),
+		makeCT("ct-a", "a.example.com"),
+		makeCT("ct-b", "b.example.net"),
+		makePDNS("pdns-a", "a.example.com"),
+		makePDNS("pdns-b", "b.example.net"),
+	}
+	for _, record := range records {
+		if err := registry.AddEvidence(record); err != nil {
+			t.Fatalf("AddEvidence(%q): %v", record.ID, err)
+		}
+	}
+
+	report, err := (&ReportEngine{}).Build("a.example.com", nil, registry)
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if len(report.Correlations) != 4 {
+		t.Fatalf("expected all four correlation types, got %#v", report.Correlations)
+	}
+	if len(report.Hypotheses) != 4 {
+		t.Fatalf("expected one hypothesis per correlation, got %d", len(report.Hypotheses))
+	}
+
+	seen := make(map[CorrelationType]bool, len(report.Correlations))
+	for _, correlation := range report.Correlations {
+		seen[correlation.Type] = true
+	}
+	for _, correlationType := range []CorrelationType{
+		CorrelationSharedIPAddress,
+		CorrelationSharedTLSCertificateFingerprint,
+		CorrelationSharedCTCertificateRecord,
+		CorrelationSharedHistoricalIPAddress,
+	} {
+		if !seen[correlationType] {
+			t.Errorf("report is missing correlation type %q", correlationType)
+		}
+	}
+	for _, hypothesis := range report.Hypotheses {
+		if err := hypothesis.Validate(); err != nil {
+			t.Errorf("invalid hypothesis %q: %v", hypothesis.ID, err)
+		}
+		if hypothesis.Confidence != HypothesisConfidenceLow {
+			t.Errorf("hypothesis %q confidence = %q, want LOW", hypothesis.ID, hypothesis.Confidence)
+		}
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,12 +58,7 @@ func runExternalCollection(
 	}
 	defer func() {
 		if err := registry.Close(); err != nil {
-			closeErr := fmt.Errorf("close evidence registry: %w", err)
-			if retErr == nil {
-				retErr = closeErr
-			} else {
-				retErr = fmt.Errorf("%w; additionally, %v", retErr, closeErr)
-			}
+			retErr = errors.Join(retErr, fmt.Errorf("close evidence registry: %w", err))
 		}
 	}()
 
@@ -115,11 +111,17 @@ func runExternalCollection(
 
 		if err := registry.UpdateCollectionRun(run); err != nil {
 			updateErr := fmt.Errorf("finalize external collection run: %w", err)
-			if retErr == nil {
-				retErr = updateErr
+			retErr = errors.Join(retErr, updateErr)
+			run.Status = evidence.CollectionRunFailed
+			if run.ErrorMessage == "" {
+				run.ErrorMessage = updateErr.Error()
 			} else {
-				retErr = fmt.Errorf("%w; additionally, %v", retErr, updateErr)
+				run.ErrorMessage += "; " + updateErr.Error()
 			}
+			if retryErr := registry.UpdateCollectionRun(run); retryErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("mark external collection run failed after finalization error: %w", retryErr))
+			}
+			return
 		}
 
 		if retErr != nil || run.Status != evidence.CollectionRunCompleted {
@@ -127,7 +129,17 @@ func runExternalCollection(
 		}
 
 		if err := history.PersistRunSnapshot(snapshotDir, run, registry, runObservations); err != nil {
-			retErr = fmt.Errorf("persist external collection history snapshot: %w", err)
+			persistErr := fmt.Errorf("persist external collection history snapshot: %w", err)
+			retErr = errors.Join(retErr, persistErr)
+			run.Status = evidence.CollectionRunFailed
+			if run.ErrorMessage == "" {
+				run.ErrorMessage = persistErr.Error()
+			} else {
+				run.ErrorMessage += "; " + persistErr.Error()
+			}
+			if updateErr := registry.UpdateCollectionRun(run); updateErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("mark external collection run failed after history persistence error: %w", updateErr))
+			}
 		}
 	}()
 

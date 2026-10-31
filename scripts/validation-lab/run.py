@@ -99,6 +99,40 @@ def run_case(
     }
 
 
+def run_test_case(
+    output_dir: Path,
+    name: str,
+    arguments: list[str],
+    expected: list[str],
+) -> dict[str, object]:
+    case_dir = output_dir / name
+    case_dir.mkdir(parents=True, exist_ok=True)
+    command = ["go", "test", "-v", *arguments]
+    completed = subprocess.run(
+        command,
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+        timeout=180,
+    )
+    log_path = case_dir / "output.log"
+    log_path.write_text(completed.stdout, encoding="utf-8")
+    missing = [token for token in expected if token not in completed.stdout]
+    passed = completed.returncode == 0 and not missing
+    return {
+        "name": name,
+        "command": command,
+        "exit_code": completed.returncode,
+        "passed": passed,
+        "expected_tokens": expected,
+        "missing_tokens": missing,
+        "output_file": str(log_path.relative_to(output_dir)),
+        "output_sha256": sha256_file(log_path),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -201,6 +235,11 @@ def main() -> int:
                 ["-mode", "tls", "-target", TARGET, "-port", str(tls_port)],
                 ["[TLS CERTIFICATE]", "Target: 127.0.0.1",
                  "Verified: false", "SHA-256:"],
+            ),
+            run_test_case(
+                output_dir, "unified-investigation",
+                ["./internal/integration", "-run", "^TestUnifiedInvestigationEngineCombinesTCPHTTPAndTLS$", "-count=1"],
+                ["TestUnifiedInvestigationEngineCombinesTCPHTTPAndTLS", "PASS"],
             ),
         ]
 

@@ -10,11 +10,11 @@ func TestEntityAndRelationshipLookupExposeExistingGraphModel(t *testing.T) {
 		},
 		Edges: []Edge{
 			{
-				ID:          "resolves-to:example.com:192.0.2.10",
-				Type:        EdgeResolvesTo,
-				Source:      "domain:example.com",
-				Target:      "ip:192.0.2.10",
-				EvidenceIDs: []string{"dns-2", "dns-9"},
+				ID:             "resolves-to:example.com:192.0.2.10",
+				Type:           EdgeResolvesTo,
+				Source:         "domain:example.com",
+				Target:         "ip:192.0.2.10",
+				EvidenceIDs:    []string{"dns-2", "dns-9"},
 				ObservationIDs: []string{"obs-1", "obs-2"},
 			},
 		},

@@ -12,7 +12,6 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/collectors"
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
-	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/observations"
 )
@@ -65,8 +64,8 @@ func RunTLS(
 	}
 	result.EvidenceRegistry = registry
 	defer func() {
-		if err := registry.Close(); err != nil && retErr == nil {
-			retErr = fmt.Errorf("close evidence registry: %w", err)
+		if err := registry.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close evidence registry: %w", err))
 		}
 	}()
 
@@ -95,20 +94,8 @@ func RunTLS(
 			run.Status = evidence.CollectionRunCompleted
 		}
 
-		if err := registry.UpdateCollectionRun(run); err != nil {
-			updateErr := fmt.Errorf("finalize collection run: %w", err)
-			if retErr == nil {
-				retErr = updateErr
-			} else {
-				retErr = fmt.Errorf("%w; additionally, %v", retErr, updateErr)
-			}
-		}
-			if retErr == nil && run.Status == evidence.CollectionRunCompleted {
-			if err := history.PersistRunSnapshot(snapshotDir, run, registry, []evidence.Observation{result.Observation}); err != nil {
-				retErr = fmt.Errorf("persist history snapshot: %w", err)
-			}
-		}
-}()
+		finalizeCollectionRun(snapshotDir, registry, &run, []evidence.Observation{result.Observation}, &retErr)
+	}()
 
 	collector := &collectors.TLS{
 		Target: target,
@@ -132,6 +119,8 @@ func RunTLS(
 		if err != nil {
 			return TLSResult{}, fmt.Errorf("convert TLS event to evidence: %w", err)
 		}
+		observation.CollectionRunID = run.ID
+		observation.Stage = "tls"
 
 		if err := registry.AddEvidence(item); err != nil &&
 			!errors.Is(err, evidence.ErrEvidenceExists) {

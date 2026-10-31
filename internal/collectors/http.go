@@ -2,8 +2,8 @@ package collectors
 
 import (
 	"context"
-	"crypto/tls"
 	"crypto/sha256"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -136,31 +136,36 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 	}
 	port, err := strconv.Atoi(requestURL.Port())
 	if requestURL.Port() == "" {
-		if scheme == "https" { port = 443 } else { port = 80 }
+		if scheme == "https" {
+			port = 443
+		} else {
+			port = 80
+		}
 	} else if err != nil || port < 1 || port > 65535 {
 		return events.Event{}, fmt.Errorf("invalid HTTP URL port")
 	}
+	allowedPorts := map[string]struct{}{strconv.Itoa(port): {}}
+	if (strings.EqualFold(strings.TrimSpace(c.Scheme), "auto") || strings.TrimSpace(c.Scheme) == "") &&
+		supplied.Scheme == "" && supplied.Port() == "" && c.Port == 0 {
+		allowedPorts["80"] = struct{}{}
+		allowedPorts["443"] = struct{}{}
+	}
+
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
 	redirectCount := 0
 	transport := &http.Transport{
-		Proxy: nil,
+		Proxy:           nil,
 		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 	}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{
 		Transport: transport,
-		Timeout: timeout,
+		Timeout:   timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
-				return fmt.Errorf("redirect to unsupported scheme")
-			}
-			if !strings.EqualFold(req.URL.Hostname(), requestURL.Hostname()) {
-				return fmt.Errorf("cross-host redirect rejected to preserve target scope")
-			}
-			if len(via) > maxHTTPRedirects {
-				return http.ErrUseLastResponse
+			if err := validateHTTPRedirect(req, requestURL.Hostname(), allowedPorts, via); err != nil {
+				return err
 			}
 			redirectCount++
 			return nil
@@ -174,7 +179,7 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8")
 	resp, err := client.Do(req)
 	if err != nil {
-		return events.Event{}, fmt.Errorf("request %s: %w", requestURL.Redacted(), err)
+		return events.Event{}, fmt.Errorf("request %s: %w", redactHTTPURL(&requestURL), err)
 	}
 	defer resp.Body.Close()
 
@@ -189,46 +194,121 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 	title := ""
 	if match := titlePattern.FindSubmatch(body); len(match) == 2 {
 		title = strings.Join(strings.Fields(string(match[1])), " ")
-		if len(title) > 512 { title = title[:512] }
+		if len(title) > 512 {
+			title = title[:512]
+		}
 	}
 	tlsVersion, tlsVerified := "", false
 	if resp.TLS != nil {
 		tlsVersion = tlsVersionLabel(resp.TLS.Version)
 		tlsVerified = len(resp.TLS.VerifiedChains) > 0
 	}
-	finalURL := resp.Request.URL.String()
+	finalURL := redactHTTPURL(resp.Request.URL)
 	location := strings.TrimSpace(resp.Header.Get("Location"))
-	if location != "" && len(location) > 2048 { location = location[:2048] }
+	if location != "" {
+		location = redactHTTPURLString(location)
+	}
+	if location != "" && len(location) > 2048 {
+		location = location[:2048]
+	}
 	data := map[string]string{
-		"scheme": scheme, "port": strconv.Itoa(port), "url": requestURL.String(),
+		"scheme": scheme, "port": strconv.Itoa(port), "url": redactHTTPURL(&requestURL),
 		"final_url": finalURL, "status_code": strconv.Itoa(resp.StatusCode),
 		"content_type": boundedHeader(resp.Header.Get("Content-Type")),
-		"server": boundedHeader(resp.Header.Get("Server")),
-		"powered_by": boundedHeader(resp.Header.Get("X-Powered-By")),
-		"title": title, "location": location,
+		"server":       boundedHeader(resp.Header.Get("Server")),
+		"powered_by":   boundedHeader(resp.Header.Get("X-Powered-By")),
+		"title":        title, "location": location,
 		"redirect_count": strconv.Itoa(redirectCount),
 		"body_truncated": strconv.FormatBool(truncated),
-		"tls_version": tlsVersion, "tls_verified": strconv.FormatBool(tlsVerified),
+		"tls_version":    tlsVersion, "tls_verified": strconv.FormatBool(tlsVerified),
 	}
 	now := time.Now().UTC()
 	return events.Event{
-		ID: fmt.Sprintf("http-%d-%x", now.UnixNano(), hashPrefix(requestURL.String())),
+		ID:   fmt.Sprintf("http-%d-%x", now.UnixNano(), hashPrefix(requestURL.String())),
 		Type: events.EventHTTPObserved, Timestamp: now, Target: host,
 		Source: "http-collector", Data: data,
 	}, nil
 }
 
+func validateHTTPRedirect(req *http.Request, targetHost string, allowedPorts map[string]struct{}, via []*http.Request) error {
+	if req == nil || req.URL == nil {
+		return fmt.Errorf("redirect request URL is required")
+	}
+	if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
+		return fmt.Errorf("redirect to unsupported scheme")
+	}
+	if req.URL.User != nil {
+		return fmt.Errorf("redirect URLs containing credentials are not allowed")
+	}
+	if len(via) > 0 && via[len(via)-1].URL != nil &&
+		strings.EqualFold(via[len(via)-1].URL.Scheme, "https") &&
+		!strings.EqualFold(req.URL.Scheme, "https") {
+		return fmt.Errorf("HTTPS redirect downgrade rejected")
+	}
+	if !strings.EqualFold(req.URL.Hostname(), targetHost) {
+		return fmt.Errorf("cross-host redirect rejected to preserve target scope")
+	}
+	port := req.URL.Port()
+	if port == "" {
+		if req.URL.Scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	if _, allowed := allowedPorts[port]; !allowed {
+		return fmt.Errorf("cross-port redirect rejected to preserve authorized port scope")
+	}
+	if len(via) > maxHTTPRedirects {
+		return http.ErrUseLastResponse
+	}
+	return nil
+}
+
+func redactHTTPURL(raw *url.URL) string {
+	if raw == nil {
+		return ""
+	}
+	safe := *raw
+	safe.User = nil
+	safe.Fragment = ""
+	if safe.RawQuery != "" {
+		query := safe.Query()
+		for key, values := range query {
+			for i := range values {
+				values[i] = "[redacted]"
+			}
+			query[key] = values
+		}
+		safe.RawQuery = query.Encode()
+	}
+	return safe.String()
+}
+
+func redactHTTPURLString(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "[redacted]"
+	}
+	return redactHTTPURL(parsed)
+}
+
 func boundedHeader(value string) string {
 	value = strings.TrimSpace(value)
-	if len(value) > 512 { return value[:512] }
+	if len(value) > 512 {
+		return value[:512]
+	}
 	return value
 }
 
 func tlsVersionLabel(version uint16) string {
 	switch version {
-	case tls.VersionTLS12: return "TLS 1.2"
-	case tls.VersionTLS13: return "TLS 1.3"
-	default: return fmt.Sprintf("unknown (0x%04x)", version)
+	case tls.VersionTLS12:
+		return "TLS 1.2"
+	case tls.VersionTLS13:
+		return "TLS 1.3"
+	default:
+		return fmt.Sprintf("unknown (0x%04x)", version)
 	}
 }
 

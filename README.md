@@ -84,7 +84,11 @@ go run ./cmd/kem3t -mode investigate -target example.com
 go run ./cmd/kem3t -mode investigate -target example.com -export-markdown ./reports/example.com.md
 ~~~
 
-The Markdown dossier organizes the executive summary, signals, correlations, discoveries, multi-hop paths, recurring pivots, hypotheses, conflicting verification evidence, intelligence gaps, and next steps. It preserves report/evidence references and writes the file atomically with owner-only permissions.\n\nActive TCP/TLS/HTTP checks are deliberately disabled by default. Enable them only when you are authorized to assess the supplied target; the TCP range applies only to that target and is never expanded to DNS-discovered addresses:
+The Markdown dossier organizes the executive summary, signals, correlations, discoveries, multi-hop paths, recurring pivots, hypotheses, conflicting verification evidence, intelligence gaps, and next steps. It preserves report/evidence references and writes the file atomically with owner-only permissions.
+
+Unified investigations retain successful stage results when another source fails. Generalized history snapshots are written only after successful run finalization and snapshot persistence; partial or failed runs remain marked accordingly in the evidence database and are not reported as saved snapshots.
+
+Active TCP/TLS/HTTP checks are deliberately disabled by default. Enable them only when you are authorized to assess the supplied target; the TCP range applies only to that target and is never expanded to DNS-discovered addresses:
 
 ~~~bash
 go run ./cmd/kem3t -mode investigate -target example.com -enable-active -start-port 1 -end-port 1024 -port 443 -http-scheme auto
@@ -162,6 +166,8 @@ Run bounded DNS investigations from a target file (one hostname/IP per line; bla
 ~~~bash
 go run ./cmd/kem3t -mode batch-dns -targets-file targets.txt -workers 4
 ~~~
+
+The worker pool enforces a hard maximum of 64 concurrent targets, even when a larger value is supplied.
 
 Batch DNS evidence and snapshots are isolated per canonical target under `.kem3t/snapshots/batch-dns/`. Output follows target-file order. A machine-readable `report.json` summarizes successful/failed targets and surfaces IP addresses observed for multiple target scopes, with per-target collection times and evidence-store paths. Shared IPs are investigation leads—not proof of common ownership or control. Per-target failures are reported without suppressing successful results; the command exits non-zero if any target failed. Use only targets you own or are authorized to assess.
 
@@ -250,7 +256,7 @@ cmp /tmp/kem3t-first /tmp/kem3t-second
 git diff --check
 ~~~
 
-CI checks gofmt on changed Go files. The repository still contains legacy files with formatting debt, so a full-tree `gofmt -l .` is informational until those files are normalized. The race-detector command uses -p 1 to run package tests serially. CI also runs the controlled loopback validation lab, full test suite, race detector, a bounded fuzz smoke test, performance benchmarks, vulnerability analysis, module verification, reproducible-build checks, vet, and build.
+CI checks formatting across every tracked Go file. The race-detector command uses -p 1 to run package tests serially. CI also runs the controlled loopback validation lab, full test suite, race detector, a bounded fuzz smoke test, performance benchmarks, vulnerability analysis, module verification, reproducible-build checks, vet, and build.
 
 ## Development roadmap
 

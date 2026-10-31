@@ -201,9 +201,14 @@ func analyzeTLSCertificate(event events.Event) (*Finding, error) {
 	} else if !verified {
 		priority = PriorityInterest
 		title = "TLS certificate verification did not succeed"
-		observation = "The collector reported that certificate verification did not succeed."
-		significance = "Possible causes include an untrusted chain, hostname mismatch, or other validation failure; the exact cause must be verified."
-		nextSteps = []string{"Inspect the certificate chain and hostname match.", "Determine the specific verification failure before recommending remediation."}
+		verificationError := strings.TrimSpace(event.Data["verification_error"])
+		if verificationError != "" {
+			observation = "Certificate verification failed: " + verificationError + "."
+		} else {
+			observation = "The collector reported that certificate verification did not succeed; no detailed reason was recorded."
+		}
+		significance = "A failed trust check may reflect an untrusted chain, hostname mismatch, validity problem, or another verification failure. Interpret the recorded reason in context; it is not by itself proof of malicious activity."
+		nextSteps = []string{"Inspect the certificate chain and hostname match.", "Confirm the specific verification failure and whether the certificate is expected for this endpoint before recommending remediation."}
 	}
 	return &Finding{Title: title, Priority: priority, Fact: fact, Observation: observation, PossibleSignificance: significance, Evidence: []events.Event{event}, NextSteps: nextSteps}, nil
 }

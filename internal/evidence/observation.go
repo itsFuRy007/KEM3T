@@ -8,11 +8,13 @@ import (
 
 // Observation records an individual observation supporting evidence.
 type Observation struct {
-	ID         string    `json:"id"`
-	EvidenceID string    `json:"evidence_id"`
-	Source     string    `json:"source"`
-	ObservedAt time.Time `json:"observed_at"`
-	EventIDs   []string  `json:"event_ids"`
+	ID              string    `json:"id"`
+	EvidenceID      string    `json:"evidence_id"`
+	Source          string    `json:"source"`
+	CollectionRunID string    `json:"collection_run_id,omitempty"`
+	Stage           string    `json:"stage,omitempty"`
+	ObservedAt      time.Time `json:"observed_at"`
+	EventIDs        []string  `json:"event_ids"`
 }
 
 // Validate checks whether the observation is complete and consistent.

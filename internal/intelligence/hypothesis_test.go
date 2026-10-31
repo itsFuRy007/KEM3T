@@ -129,12 +129,11 @@ func TestHypothesisValidateRejectsMissingAlternative(t *testing.T) {
 	}
 }
 
-
 func verificationTestHypothesis(t *testing.T) Hypothesis {
 	t.Helper()
 	results, err := (&HypothesisEngine{}).Generate([]Correlation{{
 		ID: "shared-ip:192.0.2.10", Type: CorrelationSharedIPAddress,
-		Entities: []string{"a.example.com", "b.example.com"},
+		Entities:    []string{"a.example.com", "b.example.com"},
 		SharedValue: "192.0.2.10", ConfidenceScope: "OBSERVED_SHARED_ADDRESS", EvidenceIDs: []string{"ev-original"},
 	}})
 	if err != nil {
@@ -197,9 +196,9 @@ func TestHypothesisAssessmentStatuses(t *testing.T) {
 	hypothesis := verificationTestHypothesis(t)
 	engine := &HypothesisEngine{}
 	cases := []struct {
-		name string
+		name     string
 		evidence []VerificationEvidence
-		want VerificationStatus
+		want     VerificationStatus
 	}{
 		{name: "no evidence", want: VerificationUnverified},
 		{name: "support", evidence: []VerificationEvidence{{ID: "support", Fact: "Independent support.", Relation: VerificationSupports, Independent: true}}, want: VerificationSupported},
@@ -229,16 +228,15 @@ func TestHypothesisAssessmentRejectsDuplicateEvidenceIDs(t *testing.T) {
 	}
 }
 
-
 func TestHypothesisEngineGeneratesSharedTLSCertificateHypothesis(t *testing.T) {
 	fingerprint := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	results, err := (&HypothesisEngine{}).Generate([]Correlation{{
-		ID: "shared-tls-cert:" + fingerprint,
-		Type: CorrelationSharedTLSCertificateFingerprint,
-		Entities: []string{"a.example.com", "b.example.com"},
-		SharedValue: fingerprint,
+		ID:              "shared-tls-cert:" + fingerprint,
+		Type:            CorrelationSharedTLSCertificateFingerprint,
+		Entities:        []string{"a.example.com", "b.example.com"},
+		SharedValue:     fingerprint,
 		ConfidenceScope: "OBSERVED_SHARED_CERTIFICATE_FINGERPRINT",
-		EvidenceIDs: []string{"tls-a", "tls-b"},
+		EvidenceIDs:     []string{"tls-a", "tls-b"},
 	}})
 	if err != nil {
 		t.Fatalf("Generate returned error: %v", err)
@@ -261,26 +259,25 @@ func TestHypothesisEngineGeneratesSharedTLSCertificateHypothesis(t *testing.T) {
 	}
 }
 
-
 func TestHypothesisEngineRejectsMalformedCorrelationClaims(t *testing.T) {
 	cases := []struct {
-		name string
+		name        string
 		correlation Correlation
 	}{
 		{
-			name: "non canonical shared IP",
+			name:        "non canonical shared IP",
 			correlation: Correlation{ID: "ip", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.010", EvidenceIDs: []string{"ev-a"}, ConfidenceScope: "OBSERVED_SHARED_ADDRESS"},
 		},
 		{
-			name: "wrong confidence scope",
+			name:        "wrong confidence scope",
 			correlation: Correlation{ID: "scope", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.10", EvidenceIDs: []string{"ev-a"}, ConfidenceScope: "OWNERSHIP_CONFIRMED"},
 		},
 		{
-			name: "blank evidence ID",
+			name:        "blank evidence ID",
 			correlation: Correlation{ID: "blank-evidence", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.10", EvidenceIDs: []string{"ev-a", " "}, ConfidenceScope: "OBSERVED_SHARED_ADDRESS"},
 		},
 		{
-			name: "malformed TLS fingerprint",
+			name:        "malformed TLS fingerprint",
 			correlation: Correlation{ID: "tls", Type: CorrelationSharedTLSCertificateFingerprint, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "not-a-fingerprint", EvidenceIDs: []string{"tls-a"}, ConfidenceScope: "OBSERVED_SHARED_CERTIFICATE_FINGERPRINT"},
 		},
 	}
@@ -297,7 +294,7 @@ func TestHypothesisEngineRejectsMalformedCorrelationClaims(t *testing.T) {
 func TestHypothesisEngineRejectsDuplicateCorrelationIDs(t *testing.T) {
 	correlation := Correlation{
 		ID: "same", Type: CorrelationSharedIPAddress,
-		Entities: []string{"a.example.com", "b.example.com"},
+		Entities:    []string{"a.example.com", "b.example.com"},
 		SharedValue: "192.0.2.10", EvidenceIDs: []string{"ev-a"},
 		ConfidenceScope: "OBSERVED_SHARED_ADDRESS",
 	}
@@ -307,26 +304,25 @@ func TestHypothesisEngineRejectsDuplicateCorrelationIDs(t *testing.T) {
 	}
 }
 
-
 func TestHypothesisValidateRejectsUntraceableOrNonActionableDetails(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*Hypothesis)
 	}{
 		{
-			name: "blank supporting evidence ID",
+			name:   "blank supporting evidence ID",
 			mutate: func(h *Hypothesis) { h.SupportingIDs = []string{"  "} },
 		},
 		{
-			name: "duplicate supporting evidence ID",
+			name:   "duplicate supporting evidence ID",
 			mutate: func(h *Hypothesis) { h.SupportingIDs = []string{"ev-a", " ev-a "} },
 		},
 		{
-			name: "blank supporting fact",
+			name:   "blank supporting fact",
 			mutate: func(h *Hypothesis) { h.SupportingFacts = []string{"  "} },
 		},
 		{
-			name: "blank verification step",
+			name:   "blank verification step",
 			mutate: func(h *Hypothesis) { h.Verification = []string{"  "} },
 		},
 	}
@@ -343,6 +339,84 @@ func TestHypothesisValidateRejectsUntraceableOrNonActionableDetails(t *testing.T
 			tc.mutate(&h)
 			if err := h.Validate(); err == nil {
 				t.Fatal("expected invalid hypothesis details to be rejected")
+			}
+		})
+	}
+}
+
+func TestHypothesisEngineGeneratesAllCorrelationTypes(t *testing.T) {
+	fingerprint := strings.Repeat("a", 64)
+	cases := []struct {
+		name        string
+		correlation Correlation
+		wantTitle   string
+		wantText    string
+	}{
+		{
+			name:        "shared current IP",
+			correlation: Correlation{ID: "shared-ip:192.0.2.10", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.10", ConfidenceScope: "OBSERVED_SHARED_ADDRESS", EvidenceIDs: []string{"ev-a", "ev-b"}},
+			wantTitle:   "Potential shared infrastructure", wantText: "192.0.2.10",
+		},
+		{
+			name:        "shared TLS fingerprint",
+			correlation: Correlation{ID: "shared-tls-cert:" + fingerprint, Type: CorrelationSharedTLSCertificateFingerprint, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: fingerprint, ConfidenceScope: "OBSERVED_SHARED_CERTIFICATE_FINGERPRINT", EvidenceIDs: []string{"tls-a", "tls-b"}},
+			wantTitle:   "Potential shared TLS certificate deployment", wantText: fingerprint,
+		},
+		{
+			name:        "shared CT record",
+			correlation: Correlation{ID: "shared-ct-cert:crt.sh#77", Type: CorrelationSharedCTCertificateRecord, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "crt.sh#77", ConfidenceScope: "OBSERVED_SHARED_CT_CERTIFICATE_RECORD", EvidenceIDs: []string{"ct-a", "ct-b"}},
+			wantTitle:   "Potential shared Certificate Transparency record", wantText: "crt.sh#77",
+		},
+		{
+			name:        "historical IP",
+			correlation: Correlation{ID: "shared-historical-ip:203.0.113.7", Type: CorrelationSharedHistoricalIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "203.0.113.7", ConfidenceScope: "OBSERVED_HISTORICAL_SHARED_ADDRESS", EvidenceIDs: []string{"pdns-a", "pdns-b"}},
+			wantTitle:   "Potential historical infrastructure overlap", wantText: "203.0.113.7",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := (&HypothesisEngine{}).Generate([]Correlation{tc.correlation})
+			if err != nil {
+				t.Fatalf("Generate returned error: %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("got %d hypotheses, want 1", len(got))
+			}
+			if got[0].Title != tc.wantTitle || !strings.Contains(got[0].Statement, tc.wantText) {
+				t.Fatalf("unexpected hypothesis: %+v", got[0])
+			}
+			if got[0].Confidence != HypothesisConfidenceLow {
+				t.Fatalf("confidence = %q, want LOW", got[0].Confidence)
+			}
+			if err := got[0].Validate(); err != nil {
+				t.Fatalf("generated hypothesis is invalid: %v", err)
+			}
+		})
+	}
+}
+
+func TestHypothesisEngineRejectsMalformedNewCorrelationTypes(t *testing.T) {
+	cases := []struct {
+		name        string
+		correlation Correlation
+	}{
+		{
+			name:        "CT key missing source",
+			correlation: Correlation{ID: "ct", Type: CorrelationSharedCTCertificateRecord, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "#77", ConfidenceScope: "OBSERVED_SHARED_CT_CERTIFICATE_RECORD", EvidenceIDs: []string{"ct-a"}},
+		},
+		{
+			name:        "CT key noncanonical ID",
+			correlation: Correlation{ID: "ct", Type: CorrelationSharedCTCertificateRecord, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "crt.sh#077", ConfidenceScope: "OBSERVED_SHARED_CT_CERTIFICATE_RECORD", EvidenceIDs: []string{"ct-a"}},
+		},
+		{
+			name:        "historical address not canonical",
+			correlation: Correlation{ID: "historical", Type: CorrelationSharedHistoricalIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "203.000.113.7", ConfidenceScope: "OBSERVED_HISTORICAL_SHARED_ADDRESS", EvidenceIDs: []string{"pdns-a"}},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := (&HypothesisEngine{}).Generate([]Correlation{tc.correlation}); err == nil {
+				t.Fatal("expected malformed correlation to be rejected")
 			}
 		})
 	}

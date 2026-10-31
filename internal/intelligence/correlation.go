@@ -15,27 +15,27 @@ import (
 type CorrelationType string
 
 const (
-	CorrelationSharedIPAddress             CorrelationType = "SHARED_IP_ADDRESS"
+	CorrelationSharedIPAddress                 CorrelationType = "SHARED_IP_ADDRESS"
 	CorrelationSharedTLSCertificateFingerprint CorrelationType = "SHARED_TLS_CERTIFICATE_FINGERPRINT"
-	CorrelationSharedCTCertificateRecord CorrelationType = "SHARED_CT_CERTIFICATE_RECORD"
-	CorrelationSharedHistoricalIPAddress CorrelationType = "SHARED_HISTORICAL_IP_ADDRESS"
+	CorrelationSharedCTCertificateRecord       CorrelationType = "SHARED_CT_CERTIFICATE_RECORD"
+	CorrelationSharedHistoricalIPAddress       CorrelationType = "SHARED_HISTORICAL_IP_ADDRESS"
 )
 
 // Correlation represents a relationship between distinct entities.
 type Correlation struct {
-	ID               string          `json:"id"`
-	Type             CorrelationType `json:"type"`
-	Entities         []string        `json:"entities"`
-	SharedValue      string          `json:"shared_value"`
-	EvidenceIDs      []string        `json:"evidence_ids"`
-	ObservationIDs   []string        `json:"observation_ids"`
+	ID                  string          `json:"id"`
+	Type                CorrelationType `json:"type"`
+	Entities            []string        `json:"entities"`
+	SharedValue         string          `json:"shared_value"`
+	EvidenceIDs         []string        `json:"evidence_ids"`
+	ObservationIDs      []string        `json:"observation_ids"`
 	ObservationCount    int             `json:"observation_count"`
 	SourceNames         []string        `json:"source_names"`
 	DistinctSourceCount int             `json:"distinct_source_count"`
 	Confidence          string          `json:"confidence"`
-	ConfidenceScope  string          `json:"confidence_scope"`
-	Explanation      string          `json:"explanation"`
-	Limitations      string          `json:"limitations"`
+	ConfidenceScope     string          `json:"confidence_scope"`
+	Explanation         string          `json:"explanation"`
+	Limitations         string          `json:"limitations"`
 }
 
 type correlationEvidenceItem struct {
@@ -120,17 +120,23 @@ func (e *CorrelationEngine) correlateEvidence(records []evidence.Evidence, obser
 			byAddress[ip.String()] = append(byAddress[ip.String()], item)
 		case evidence.TypeCTDNSName:
 			var details evidence.CTDNSNameDetails
-			if err:=json.Unmarshal([]byte(record.Value),&details);err!=nil{return nil,fmt.Errorf("decode CT evidence %q: %w",record.ID,err)}
-			if details.CertificateID>0 {
-				key:=strings.ToLower(strings.TrimSpace(details.Source))+"#"+fmt.Sprint(details.CertificateID)
-				byCTCertificate[key]=append(byCTCertificate[key],item)
+			if err := json.Unmarshal([]byte(record.Value), &details); err != nil {
+				return nil, fmt.Errorf("decode CT evidence %q: %w", record.ID, err)
+			}
+			if details.CertificateID > 0 {
+				key := strings.ToLower(strings.TrimSpace(details.Source)) + "#" + fmt.Sprint(details.CertificateID)
+				byCTCertificate[key] = append(byCTCertificate[key], item)
 			}
 		case evidence.TypePassiveDNS:
 			var details evidence.PassiveDNSDetails
-			if err:=json.Unmarshal([]byte(record.Value),&details);err!=nil{return nil,fmt.Errorf("decode passive-DNS evidence %q: %w",record.ID,err)}
-			ip:=net.ParseIP(strings.TrimSpace(details.Address))
-			if ip==nil{return nil,fmt.Errorf("passive-DNS evidence %q has invalid address",record.ID)}
-			byHistoricalAddress[ip.String()]=append(byHistoricalAddress[ip.String()],item)
+			if err := json.Unmarshal([]byte(record.Value), &details); err != nil {
+				return nil, fmt.Errorf("decode passive-DNS evidence %q: %w", record.ID, err)
+			}
+			ip := net.ParseIP(strings.TrimSpace(details.Address))
+			if ip == nil {
+				return nil, fmt.Errorf("passive-DNS evidence %q has invalid address", record.ID)
+			}
+			byHistoricalAddress[ip.String()] = append(byHistoricalAddress[ip.String()], item)
 		case evidence.TypeTLSCertificate:
 			var details evidence.TLSCertificateDetails
 			if err := json.Unmarshal([]byte(record.Value), &details); err != nil {

@@ -13,7 +13,6 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
-	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/observations"
 )
@@ -56,8 +55,8 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 	}
 	result.EvidenceRegistry = registry
 	defer func() {
-		if err := registry.Close(); err != nil && retErr == nil {
-			retErr = fmt.Errorf("close evidence registry: %w", err)
+		if err := registry.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close evidence registry: %w", err))
 		}
 	}()
 
@@ -74,19 +73,7 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 		} else {
 			run.Status = evidence.CollectionRunCompleted
 		}
-		if err := registry.UpdateCollectionRun(run); err != nil {
-			updateErr := fmt.Errorf("finalize collection run: %w", err)
-			if retErr == nil {
-				retErr = updateErr
-			} else {
-				retErr = fmt.Errorf("%w; additionally, %v", retErr, updateErr)
-			}
-		}
-		if retErr == nil && run.Status == evidence.CollectionRunCompleted {
-			if err := history.PersistRunSnapshot(snapshotDir, run, registry, result.Observations); err != nil {
-				retErr = fmt.Errorf("persist history snapshot: %w", err)
-			}
-		}
+		finalizeCollectionRun(snapshotDir, registry, &run, result.Observations, &retErr)
 	}()
 
 	collector := &collectors.TCP{Target: target, StartPort: startPort, EndPort: endPort}
@@ -111,6 +98,8 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 		if err != nil {
 			return TCPResult{}, fmt.Errorf("convert TCP event to evidence: %w", err)
 		}
+		observation.CollectionRunID = run.ID
+		observation.Stage = "tcp"
 		if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
 			return TCPResult{}, fmt.Errorf("register TCP evidence: %w", err)
 		}

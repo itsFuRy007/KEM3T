@@ -25,6 +25,8 @@ type ServiceSurface struct {
 	EvidenceIDs     []string                 `json:"evidence_ids"`
 	ObservationIDs  []string                 `json:"observation_ids"`
 	ObservationRefs []ServiceObservationRef  `json:"observation_refs"`
+	ReferenceRunID  string                   `json:"reference_run_id,omitempty"`
+	TemporalScope   string                   `json:"temporal_scope"`
 	Summary         string                   `json:"summary"`
 	Limitations     []string                 `json:"limitations"`
 	NextSteps       []string                 `json:"next_steps"`
@@ -52,24 +54,44 @@ type ServiceTLSObservation struct {
 }
 
 type ServiceObservationRef struct {
-	EvidenceID    string    `json:"evidence_id"`
-	ObservationID string    `json:"observation_id"`
-	Source        string    `json:"source"`
-	ObservedAt    time.Time `json:"observed_at"`
+	EvidenceID      string    `json:"evidence_id"`
+	ObservationID   string    `json:"observation_id"`
+	Source          string    `json:"source"`
+	CollectionRunID string    `json:"collection_run_id,omitempty"`
+	Stage           string    `json:"stage,omitempty"`
+	ReferenceRun    bool      `json:"reference_run"`
+	ObservedAt      time.Time `json:"observed_at"`
 }
 
 // BuildServiceSurfaces builds endpoint-level views from durable evidence. It
 // never joins records by target alone: both normalized target and port must
 // match, preventing unrelated services on different ports from being merged.
-func BuildServiceSurfaces(target string, records []evidence.Evidence, observations []evidence.Observation) ([]ServiceSurface, error) {
+func BuildServiceSurfaces(target string, records []evidence.Evidence, observations []evidence.Observation, referenceRunIDs ...string) ([]ServiceSurface, error) {
 	target = normalizeFindingTarget(target)
 	if target == "" {
 		return nil, fmt.Errorf("service-surface target is required")
 	}
+	referenceRunID := ""
+	if len(referenceRunIDs) > 0 {
+		referenceRunID = strings.TrimSpace(referenceRunIDs[0])
+	}
 
+	// Validate and retain observations only when they belong to evidence that
+	// can contribute to this target's service surfaces. Historical records for
+	// unrelated targets must not poison an otherwise valid target report.
+	scopedEvidenceIDs := make(map[string]struct{}, len(records))
+	for _, item := range records {
+		entity := normalizeFindingTarget(item.EntityID)
+		if entity != "" && serviceTargetInScope(entity, target) {
+			scopedEvidenceIDs[item.ID] = struct{}{}
+		}
+	}
 	observationsByEvidence := make(map[string][]evidence.Observation)
 	seenObservationIDs := make(map[string]struct{}, len(observations))
 	for _, observation := range observations {
+		if _, relevant := scopedEvidenceIDs[observation.EvidenceID]; !relevant {
+			continue
+		}
 		if err := observation.Validate(); err != nil {
 			return nil, fmt.Errorf("invalid service-surface observation %q: %w", observation.ID, err)
 		}
@@ -164,7 +186,9 @@ func BuildServiceSurfaces(target string, records []evidence.Evidence, observatio
 			observationIDs[key][observation.ID] = struct{}{}
 			surface.ObservationRefs = append(surface.ObservationRefs, ServiceObservationRef{
 				EvidenceID: item.ID, ObservationID: observation.ID,
-				Source: observation.Source, ObservedAt: observation.ObservedAt,
+				Source: observation.Source, CollectionRunID: observation.CollectionRunID,
+				Stage: observation.Stage, ReferenceRun: referenceRunID != "" && observation.CollectionRunID == referenceRunID,
+				ObservedAt: observation.ObservedAt,
 			})
 		}
 	}
@@ -215,11 +239,46 @@ func BuildServiceSurfaces(target string, records []evidence.Evidence, observatio
 		for _, tls := range surface.TLS {
 			parts = append(parts, "TLS "+tls.TLSVersion)
 		}
+		hasReferenceRun, hasHistoricalRun, hasLegacyRun := false, false, false
+		for _, observation := range surface.ObservationRefs {
+			switch {
+			case observation.CollectionRunID == "":
+				hasLegacyRun = true
+			case referenceRunID != "" && observation.CollectionRunID == referenceRunID:
+				hasReferenceRun = true
+			default:
+				hasHistoricalRun = true
+			}
+		}
+		switch {
+		case hasReferenceRun && (hasHistoricalRun || hasLegacyRun):
+			surface.TemporalScope = "REFERENCE_AND_HISTORICAL"
+		case hasReferenceRun:
+			surface.TemporalScope = "REFERENCE_RUN_ONLY"
+		case hasHistoricalRun && hasLegacyRun:
+			surface.TemporalScope = "HISTORICAL_AND_LEGACY"
+		case hasHistoricalRun:
+			surface.TemporalScope = "HISTORICAL_ONLY"
+		case hasLegacyRun:
+			surface.TemporalScope = "LEGACY_TIME_ONLY"
+		default:
+			surface.TemporalScope = "NO_OBSERVATION_PROVENANCE"
+		}
+		parts = append(parts, "Temporal scope "+surface.TemporalScope)
 		surface.Summary = strings.Join(parts, " | ")
 		surface.Limitations = []string{
+			"Temporal scope is classified using explicit collection-run IDs where available; legacy observations without run IDs cannot be assigned confidently to a run.",
 			"Records are grouped by exact normalized target and port; collection timestamps may differ.",
 			"A shared endpoint key does not prove the same process, backend, tenant, or infrastructure owner.",
 			"An observed HTTP response or TLS certificate does not by itself establish a vulnerability or secure configuration.",
+		}
+		switch surface.TemporalScope {
+		case "HISTORICAL_ONLY":
+			surface.Limitations = append(surface.Limitations, "No service observation for this endpoint was recorded in the reference collection run; this surface is historical context, not a current-run confirmation.")
+		case "REFERENCE_AND_HISTORICAL":
+			surface.Limitations = append(surface.Limitations, "This surface combines reference-run and historical observations; compare each observation's run ID and timestamp before treating the layers as simultaneous.")
+		case "LEGACY_TIME_ONLY":
+			surface.Limitations = append(surface.Limitations, "Legacy observations lack explicit collection-run IDs; temporal grouping relies on timestamps and may be ambiguous.")
 		}
 		if len(surface.TCPStates) > 1 {
 			surface.Limitations = append(surface.Limitations, "Multiple TCP states were observed across records; compare timestamps before treating them as a state change or contradiction.")
@@ -286,6 +345,9 @@ func GenerateServiceHypotheses(surfaces []ServiceSurface) ([]Hypothesis, error) 
 		if len(https) == 0 || len(surface.TLS) == 0 {
 			continue
 		}
+		if !serviceEvidenceObservedTogether(surface, https, surface.TLS) {
+			continue
+		}
 
 		supportingIDs := append([]string(nil), surface.EvidenceIDs...)
 		supportingFacts := []string{
@@ -318,6 +380,36 @@ func GenerateServiceHypotheses(surfaces []ServiceSurface) ([]Hypothesis, error) 
 	}
 	sort.Slice(results, func(i, j int) bool { return results[i].ID < results[j].ID })
 	return results, nil
+}
+
+func serviceEvidenceObservedTogether(surface ServiceSurface, httpObservations []ServiceHTTPObservation, tlsObservations []ServiceTLSObservation) bool {
+	refsByEvidence := make(map[string][]ServiceObservationRef)
+	for _, ref := range surface.ObservationRefs {
+		refsByEvidence[ref.EvidenceID] = append(refsByEvidence[ref.EvidenceID], ref)
+	}
+	const legacyMaxSkew = 5 * time.Minute
+	for _, httpObservation := range httpObservations {
+		for _, tlsObservation := range tlsObservations {
+			for _, httpRef := range refsByEvidence[httpObservation.EvidenceID] {
+				for _, tlsRef := range refsByEvidence[tlsObservation.EvidenceID] {
+					if httpRef.CollectionRunID != "" && httpRef.CollectionRunID == tlsRef.CollectionRunID {
+						return true
+					}
+					if httpRef.CollectionRunID != "" || tlsRef.CollectionRunID != "" {
+						continue
+					}
+					skew := httpRef.ObservedAt.Sub(tlsRef.ObservedAt)
+					if skew < 0 {
+						skew = -skew
+					}
+					if skew <= legacyMaxSkew {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 func serviceTargetInScope(entity, target string) bool {

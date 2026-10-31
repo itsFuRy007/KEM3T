@@ -35,14 +35,62 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 		b.WriteString(mdText(report.Narrative.Summary) + "\n\n")
 	}
 
+	if len(report.ServiceSurfaces) > 0 {
+		b.WriteString("## Service surfaces\n\n")
+		items := append([]ServiceSurface(nil), report.ServiceSurfaces...)
+		sort.Slice(items, func(i, j int) bool {
+			if items[i].Target != items[j].Target {
+				return items[i].Target < items[j].Target
+			}
+			return items[i].Port < items[j].Port
+		})
+		for _, item := range items {
+			fmt.Fprintf(&b, "### %s:%d\n\n%s\n\n", mdCode(item.Target), item.Port, mdText(item.Summary))
+			if len(item.Protocols) > 0 {
+				fmt.Fprintf(&b, "- **Protocols:** %s\n", mdText(strings.Join(item.Protocols, ", ")))
+			}
+			if len(item.TCPStates) > 0 {
+				fmt.Fprintf(&b, "- **TCP states:** %s\n", mdText(strings.Join(item.TCPStates, ", ")))
+			}
+			for _, observation := range item.HTTP {
+				fmt.Fprintf(&b, "- **HTTP:** %s, status %d, title %s, server %s, final URL %s",
+					mdText(strings.ToUpper(observation.Scheme)), observation.StatusCode, mdText(observation.Title),
+					mdText(observation.Server), mdCode(observation.FinalURL))
+				if observation.TLSVersion != "" {
+					fmt.Fprintf(&b, ", TLS %s (verified: %t)", mdText(observation.TLSVersion), observation.TLSVerified)
+				}
+				b.WriteString("\n")
+			}
+			for _, observation := range item.TLS {
+				fmt.Fprintf(&b, "- **TLS:** %s, verified %t, fingerprint %s, subject %s, issuer %s, expires %s\n",
+					mdText(observation.TLSVersion), observation.Verified, mdCode(observation.Fingerprint),
+					mdText(observation.Subject), mdText(observation.Issuer), mdText(observation.NotAfter.UTC().Format("2006-01-02T15:04:05Z")))
+			}
+			writeMarkdownRefs(&b, "Evidence", item.EvidenceIDs)
+			writeMarkdownRefs(&b, "Observations", item.ObservationIDs)
+			for _, ref := range item.ObservationRefs {
+				fmt.Fprintf(&b, "- **Observation provenance:** %s at %s from %s (evidence %s)\n",
+					mdCode(ref.ObservationID), mdText(ref.ObservedAt.UTC().Format("2006-01-02T15:04:05Z")),
+					mdText(ref.Source), mdCode(ref.EvidenceID))
+			}
+			writeMarkdownSteps(&b, "Limitations", item.Limitations)
+			writeMarkdownSteps(&b, "Next steps", item.NextSteps)
+			b.WriteString("\n")
+		}
+	}
+
 	if len(report.Narrative.Signals) > 0 {
 		b.WriteString("## Key signals\n\n")
 		items := append([]NarrativeSignal(nil), report.Narrative.Signals...)
 		sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 		for _, item := range items {
 			fmt.Fprintf(&b, "### %s — %s\n\n", mdText(item.Kind), mdText(item.Summary))
-			if item.Confidence != "" { fmt.Fprintf(&b, "- **Confidence:** %s\n", mdText(item.Confidence)) }
-			if item.AlternativeExplanations != "" { fmt.Fprintf(&b, "- **Alternative explanations / limitations:** %s\n", mdText(item.AlternativeExplanations)) }
+			if item.Confidence != "" {
+				fmt.Fprintf(&b, "- **Confidence:** %s\n", mdText(item.Confidence))
+			}
+			if item.AlternativeExplanations != "" {
+				fmt.Fprintf(&b, "- **Alternative explanations / limitations:** %s\n", mdText(item.AlternativeExplanations))
+			}
 			writeMarkdownRefs(&b, "References", item.References)
 			b.WriteString("\n")
 		}
@@ -56,8 +104,12 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 			fmt.Fprintf(&b, "### %s\n\n", mdCode(item.ID))
 			fmt.Fprintf(&b, "- **Signal:** %s\n- **Entities:** %s\n- **Shared value:** %s\n- **Confidence scope:** %s\n",
 				mdText(string(item.Type)), mdText(strings.Join(item.Entities, ", ")), mdCode(item.SharedValue), mdText(item.Confidence+" ("+item.ConfidenceScope+")"))
-			if item.Explanation != "" { fmt.Fprintf(&b, "- **Interpretation:** %s\n", mdText(item.Explanation)) }
-			if item.Limitations != "" { fmt.Fprintf(&b, "- **Limitations:** %s\n", mdText(item.Limitations)) }
+			if item.Explanation != "" {
+				fmt.Fprintf(&b, "- **Interpretation:** %s\n", mdText(item.Explanation))
+			}
+			if item.Limitations != "" {
+				fmt.Fprintf(&b, "- **Limitations:** %s\n", mdText(item.Limitations))
+			}
 			writeMarkdownRefs(&b, "Evidence", item.EvidenceIDs)
 			writeMarkdownRefs(&b, "Observations", item.ObservationIDs)
 			b.WriteString("\n")
@@ -69,8 +121,9 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 		items := append([]Discovery(nil), report.Discoveries...)
 		sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 		for _, item := range items {
-			fmt.Fprintf(&b, "### %s\n\n%s\n\n- **Entities:** %s\n- **Confidence:** %s\n- **Why it matters:** %s\n- **Alternative explanations:** %s\n",
+			fmt.Fprintf(&b, "### %s\n\n%s\n\n- **Entities:** %s\n- **Confidence:** %s\n- **Signal types:** %s (diversity %d)\n- **Shared values:** %s\n- **Why it matters:** %s\n- **Alternative explanations:** %s\n",
 				mdCode(item.ID), mdText(item.Statement), mdText(strings.Join(item.Entities, ", ")), mdText(item.Confidence),
+				mdText(correlationTypeList(item.SignalTypes)), item.SignalDiversity, mdText(strings.Join(item.SharedValues, ", ")),
 				mdText(item.WhyItMatters), mdText(item.AlternativeExplanations))
 			writeMarkdownRefs(&b, "Supporting correlations", item.CorrelationIDs)
 			writeMarkdownSteps(&b, "Verification", item.Verification)
@@ -83,9 +136,9 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 		items := append([]DiscoveryPath(nil), report.DiscoveryPaths...)
 		sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 		for _, item := range items {
-			fmt.Fprintf(&b, "### %s\n\n%s\n\n- **Path:** %s\n- **Confidence:** %s\n- **Why it matters:** %s\n- **Alternative explanations:** %s\n",
+			fmt.Fprintf(&b, "### %s\n\n%s\n\n- **Path:** %s\n- **Confidence:** %s\n- **Signal types:** %s (diversity %d)\n- **Why it matters:** %s\n- **Alternative explanations:** %s\n",
 				mdCode(item.ID), mdText(item.Statement), mdText(strings.Join(item.Entities, " → ")), mdText(item.Confidence),
-				mdText(item.WhyItMatters), mdText(item.AlternativeExplanations))
+				mdText(correlationTypeList(item.SignalTypes)), item.SignalDiversity, mdText(item.WhyItMatters), mdText(item.AlternativeExplanations))
 			writeMarkdownRefs(&b, "Supporting correlations", item.CorrelationIDs)
 			writeMarkdownSteps(&b, "Verification", item.Verification)
 			b.WriteString("\n")
@@ -97,9 +150,10 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 		items := append([]DiscoveryPivot(nil), report.DiscoveryPivots...)
 		sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 		for _, item := range items {
-			fmt.Fprintf(&b, "### %s\n\n%s\n\n- **Pivot:** %s\n- **Connected entities:** %s\n- **Confidence:** %s\n- **Why it matters:** %s\n- **Alternative explanations:** %s\n",
+			fmt.Fprintf(&b, "### %s\n\n%s\n\n- **Pivot:** %s\n- **Connected entities:** %s\n- **Confidence:** %s\n- **Signal types:** %s (diversity %d)\n- **Why it matters:** %s\n- **Alternative explanations:** %s\n",
 				mdCode(item.ID), mdText(item.Statement), mdCode(item.Pivot), mdText(strings.Join(item.ConnectedEntities, ", ")),
-				mdText(item.Confidence), mdText(item.WhyItMatters), mdText(item.AlternativeExplanations))
+				mdText(item.Confidence), mdText(correlationTypeList(item.SignalTypes)), item.SignalDiversity,
+				mdText(item.WhyItMatters), mdText(item.AlternativeExplanations))
 			writeMarkdownRefs(&b, "Supporting paths", item.PathIDs)
 			writeMarkdownSteps(&b, "Verification", item.Verification)
 			b.WriteString("\n")
@@ -127,9 +181,13 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 		for _, item := range items {
 			fmt.Fprintf(&b, "### %s — %s\n\n%s\n\n", mdCode(item.HypothesisID), mdText(string(item.Status)), mdText(item.Explanation))
 			writeMarkdownRefs(&b, "Supporting evidence", item.SupportingEvidenceIDs)
+			writeMarkdownSteps(&b, "Supporting facts", item.SupportingFacts)
 			writeMarkdownRefs(&b, "Contradicting evidence", item.ContradictingEvidenceIDs)
+			writeMarkdownSteps(&b, "Contradicting facts", item.ContradictingFacts)
 			writeMarkdownRefs(&b, "Excluded / non-independent evidence", item.ExcludedEvidenceIDs)
-			if item.Limitations != "" { fmt.Fprintf(&b, "- **Limitations:** %s\n", mdText(item.Limitations)) }
+			if item.Limitations != "" {
+				fmt.Fprintf(&b, "- **Limitations:** %s\n", mdText(item.Limitations))
+			}
 			b.WriteString("\n")
 		}
 	}
@@ -151,14 +209,22 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 		b.WriteString("## Prioritized findings\n\n")
 		items := append([]PrioritizedFinding(nil), report.PrioritizedFindings...)
 		sort.Slice(items, func(i, j int) bool {
-			if items[i].Priority != items[j].Priority { return items[i].Priority > items[j].Priority }
+			if items[i].Priority != items[j].Priority {
+				return items[i].Priority > items[j].Priority
+			}
 			return items[i].Finding.Title < items[j].Finding.Title
 		})
 		for _, item := range items {
 			fmt.Fprintf(&b, "### [%s] %s\n\n**Fact:** %s\n\n", mdText(string(item.Priority)), mdText(item.Finding.Title), mdText(item.Finding.Fact))
-			if item.Finding.Observation != "" { fmt.Fprintf(&b, "**Observation:** %s\n\n", mdText(item.Finding.Observation)) }
-			if item.Finding.PossibleSignificance != "" { fmt.Fprintf(&b, "**Possible significance:** %s\n\n", mdText(item.Finding.PossibleSignificance)) }
-			if item.Reason != "" { fmt.Fprintf(&b, "**Priority rationale:** %s\n\n", mdText(item.Reason)) }
+			if item.Finding.Observation != "" {
+				fmt.Fprintf(&b, "**Observation:** %s\n\n", mdText(item.Finding.Observation))
+			}
+			if item.Finding.PossibleSignificance != "" {
+				fmt.Fprintf(&b, "**Possible significance:** %s\n\n", mdText(item.Finding.PossibleSignificance))
+			}
+			if item.Reason != "" {
+				fmt.Fprintf(&b, "**Priority rationale:** %s\n\n", mdText(item.Reason))
+			}
 			writeMarkdownRefs(&b, "Source events", eventIDs(item.Finding.Evidence))
 			writeMarkdownSteps(&b, "Suggested next steps", item.Finding.NextSteps)
 			b.WriteString("\n")
@@ -185,13 +251,19 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 		sort.Slice(items, func(i, j int) bool {
 			leftActive := items[i].Status == TaskRecommended || items[i].Status == TaskInconclusive
 			rightActive := items[j].Status == TaskRecommended || items[j].Status == TaskInconclusive
-			if leftActive != rightActive { return leftActive }
-			if items[i].Priority != items[j].Priority { return items[i].Priority > items[j].Priority }
+			if leftActive != rightActive {
+				return leftActive
+			}
+			if items[i].Priority != items[j].Priority {
+				return items[i].Priority > items[j].Priority
+			}
 			return items[i].ID < items[j].ID
 		})
 		for _, item := range items {
 			fmt.Fprintf(&b, "### [%s | %s] %s\n\n%s\n\n", mdText(item.Status), mdText(item.PriorityLabel), mdText(item.Action), mdText(item.Rationale))
-			if item.OutcomeNote != "" { fmt.Fprintf(&b, "- **Investigator note:** %s\n", mdText(item.OutcomeNote)) }
+			if item.OutcomeNote != "" {
+				fmt.Fprintf(&b, "- **Investigator note:** %s\n", mdText(item.OutcomeNote))
+			}
 			writeMarkdownRefs(&b, "References", item.References)
 			writeMarkdownRefs(&b, "Outcome evidence", item.EvidenceIDs)
 			b.WriteString("\n")
@@ -205,6 +277,14 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 	}
 
 	return strings.TrimSpace(b.String()) + "\n", nil
+}
+
+func correlationTypeList(values []CorrelationType) string {
+	items := make([]string, len(values))
+	for i, value := range values {
+		items[i] = string(value)
+	}
+	return strings.Join(items, ", ")
 }
 
 func mdText(value string) string {
@@ -234,30 +314,44 @@ func markdownRefValues(values []string) string {
 }
 
 func writeMarkdownRefs(b *strings.Builder, label string, values []string) {
-	if len(values) == 0 { return }
+	if len(values) == 0 {
+		return
+	}
 	items := append([]string(nil), values...)
 	sort.Strings(items)
 	items = uniqueStrings(items)
 	fmt.Fprintf(b, "- **%s:** ", label)
 	for i, item := range items {
-		if i > 0 { b.WriteString(", ") }
+		if i > 0 {
+			b.WriteString(", ")
+		}
 		b.WriteString(mdCode(item))
 	}
 	b.WriteString("\n")
 }
 
 func writeMarkdownSteps(b *strings.Builder, label string, values []string) {
-	if len(values) == 0 { return }
-	if label != "" { fmt.Fprintf(b, "- **%s:**\n", label) }
+	if len(values) == 0 {
+		return
+	}
+	if label != "" {
+		fmt.Fprintf(b, "- **%s:**\n", label)
+	}
 	for _, value := range values {
-		if label == "" { fmt.Fprintf(b, "- %s\n", mdText(value)) } else { fmt.Fprintf(b, "  - %s\n", mdText(value)) }
+		if label == "" {
+			fmt.Fprintf(b, "- %s\n", mdText(value))
+		} else {
+			fmt.Fprintf(b, "  - %s\n", mdText(value))
+		}
 	}
 }
 
 func eventIDs(events []events.Event) []string {
 	ids := make([]string, 0, len(events))
 	for _, event := range events {
-		if strings.TrimSpace(event.ID) != "" { ids = append(ids, event.ID) }
+		if strings.TrimSpace(event.ID) != "" {
+			ids = append(ids, event.ID)
+		}
 	}
 	sort.Strings(ids)
 	return uniqueStrings(ids)
