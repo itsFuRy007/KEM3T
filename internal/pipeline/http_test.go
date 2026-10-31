@@ -28,6 +28,9 @@ func TestRunHTTPPersistsEvidenceAndBuildsGraph(t *testing.T) {
 	if result.Event == nil {
 		t.Fatal("expected HTTP event")
 	}
+	if result.Report.Target != "127.0.0.1" || result.Report.ReferenceRunID == "" {
+		t.Fatalf("HTTP adapter did not return the shared intelligence report: %+v", result.Report)
+	}
 	if result.Evidence.Type != evidence.TypeHTTPService {
 		t.Fatalf("evidence type = %q", result.Evidence.Type)
 	}
