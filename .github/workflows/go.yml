@@ -37,15 +37,11 @@ jobs:
       - name: Run controlled loopback validation lab
         run: python3 scripts/validation-lab/run.py --output-dir "$RUNNER_TEMP/kem3t-validation-lab"
 
-      - name: Check changed Go files are formatted
-        if: github.event_name == 'pull_request'
+      - name: Check all tracked Go files are formatted
         run: |
-          git fetch origin "$GITHUB_BASE_REF"
-          changed=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD" -- '*.go')
-          if [ -z "$changed" ]; then exit 0; fi
-          unformatted=$(printf '%s\n' "$changed" | xargs -r gofmt -l)
+          unformatted=$(git ls-files '*.go' | xargs -r gofmt -l)
           if [ -n "$unformatted" ]; then
-            printf 'Unformatted changed Go files:\n%s\n' "$unformatted"
+            printf 'Unformatted Go files:\n%s\n' "$unformatted"
             exit 1
           fi
 
