@@ -123,7 +123,7 @@ func TestCollectorStageDoesNotCommitPartialOutputOnCollectorFailure(t *testing.T
 	stage := CollectorStage{
 		StageName: "dns-failing",
 		Collector: failingCollector{event: dnsEvent("event-partial", "example.com", "203.0.113.20"), err: errors.New("simulated collector failure")},
-		Convert: evidence.FromDNSEvent,
+		Convert:   evidence.FromDNSEvent,
 	}
 	result, err := stage.Run(context.Background(), "example.com", registry)
 	if err == nil {
