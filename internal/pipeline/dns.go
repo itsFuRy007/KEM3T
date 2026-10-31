@@ -177,22 +177,15 @@ func runDNSWithCollectorAndPlan(
 		observation.CollectionRunID = run.ID
 		observation.Stage = "dns"
 
-		if err := registry.AddEvidence(item); err != nil &&
-			!errors.Is(err, evidence.ErrEvidenceExists) {
-			aggregationErr = fmt.Errorf("register evidence: %w", err)
+		_, addedObservations, err := registry.AddBatchUnique(ctx, []evidence.Evidence{item}, []evidence.Observation{observation})
+		if err != nil {
+			aggregationErr = fmt.Errorf("register DNS evidence and observation atomically: %w", err)
 			cancel()
 			break
 		}
-
-		if err := registry.AddObservation(observation); err != nil {
-			if errors.Is(err, evidence.ErrObservationExists) {
-				continue
-			}
-			aggregationErr = fmt.Errorf("register observation: %w", err)
-			cancel()
-			break
+		if addedObservations > 0 {
+			runObservations = append(runObservations, observation)
 		}
-		runObservations = append(runObservations, observation)
 	}
 
 	collectorErr := <-collectorDone
