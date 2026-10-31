@@ -88,8 +88,8 @@ func TestBuildResearchNarrativeConsolidatesServiceIdentificationActions(t *testi
 			NextSteps: []string{"Identify the service and version using authorized collection."},
 		}},
 		ServiceSurfaces: []ServiceSurface{{
-			ID:      "surface:example.com:8443",
-			Summary: "An open TCP endpoint was observed without application protocol identification.",
+			ID:        "surface:example.com:8443",
+			Summary:   "An open TCP endpoint was observed without application protocol identification.",
 			NextSteps: []string{"Identify the application protocol on this open TCP port using authorized, bounded service identification."},
 		}},
 		IntelligenceGaps: []IntelligenceGap{{
