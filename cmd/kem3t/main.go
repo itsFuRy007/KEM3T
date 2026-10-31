@@ -605,9 +605,26 @@ func printIntelligenceReport(report intelligence.IntelligenceReport) {
 	safePrintf("Findings: %d\n", len(report.Findings))
 	safePrintf("Service surfaces: %d\n", len(report.ServiceSurfaces))
 	safePrintf("Correlations: %d\n", len(report.Correlations))
+	safePrintf("Discoveries: %d | Multi-hop paths: %d | Recurring pivots: %d\n", len(report.Discoveries), len(report.DiscoveryPaths), len(report.DiscoveryPivots))
+	safePrintf("Hypotheses: %d | Verification assessments: %d\n", len(report.Hypotheses), len(report.VerificationAssessments))
 	safePrintf("Intelligence gaps: %d\n", len(report.IntelligenceGaps))
-	safePrintf("Hypotheses: %d\n", len(report.Hypotheses))
 	safePrintf("Prioritized findings: %d\n", len(report.PrioritizedFindings))
+
+	correlationsByID := make(map[string]intelligence.Correlation, len(report.Correlations))
+	for _, correlation := range report.Correlations {
+		correlationsByID[correlation.ID] = correlation
+	}
+	pathsByID := make(map[string]intelligence.DiscoveryPath, len(report.DiscoveryPaths))
+	for _, path := range report.DiscoveryPaths {
+		pathsByID[path.ID] = path
+	}
+
+	if len(report.Findings) > 0 {
+		fmt.Println("\n[FINDINGS]")
+		for _, finding := range report.Findings {
+			printFinding(finding)
+		}
+	}
 
 	if len(report.ServiceSurfaces) > 0 {
 		fmt.Println("\n[SERVICE SURFACES]")
@@ -672,6 +689,72 @@ func printIntelligenceReport(report intelligence.IntelligenceReport) {
 		}
 	}
 
+	if len(report.Discoveries) > 0 {
+		fmt.Println("\n[HIGHER-ORDER DISCOVERIES]")
+		for _, discovery := range report.Discoveries {
+			safePrintf("[%s] %s\n", discovery.Confidence, discovery.ID)
+			safePrintf("  Entities: %s\n", strings.Join(discovery.Entities, " -> "))
+			safePrintf("  Statement: %s\n", discovery.Statement)
+			safePrintf("  Signal types: %s | diversity: %d\n", strings.Join(correlationTypeStrings(discovery.SignalTypes), ", "), discovery.SignalDiversity)
+			safePrintf("  Shared values: %s\n", strings.Join(discovery.SharedValues, ", "))
+			safePrintf("  Correlation refs: %s\n", strings.Join(discovery.CorrelationIDs, ", "))
+			safePrintf("  Why it matters: %s\n", discovery.WhyItMatters)
+			safePrintf("  Alternative explanations: %s\n", discovery.AlternativeExplanations)
+			for _, correlationID := range discovery.CorrelationIDs {
+				if correlation, ok := correlationsByID[correlationID]; ok {
+					safePrintf("  Evidence for %s: %s\n", correlationID, strings.Join(correlation.EvidenceIDs, ", "))
+					safePrintf("  Observations for %s: %s\n", correlationID, strings.Join(correlation.ObservationIDs, ", "))
+				}
+			}
+			for _, step := range discovery.Verification {
+				safePrintf("  Verify: %s\n", step)
+			}
+		}
+	}
+
+	if len(report.DiscoveryPaths) > 0 {
+		fmt.Println("\n[MULTI-HOP DISCOVERY PATHS]")
+		for _, path := range report.DiscoveryPaths {
+			safePrintf("[%s] %s\n", path.Confidence, path.ID)
+			safePrintf("  Route: %s\n", strings.Join(path.Entities, " -> "))
+			safePrintf("  Statement: %s\n", path.Statement)
+			safePrintf("  Correlation refs: %s\n", strings.Join(path.CorrelationIDs, ", "))
+			safePrintf("  Signal types: %s\n", strings.Join(correlationTypeStrings(path.SignalTypes), ", "))
+			safePrintf("  Why it matters: %s\n", path.WhyItMatters)
+			safePrintf("  Alternative explanations: %s\n", path.AlternativeExplanations)
+			for _, correlationID := range path.CorrelationIDs {
+				if correlation, ok := correlationsByID[correlationID]; ok {
+					safePrintf("  Evidence for %s: %s\n", correlationID, strings.Join(correlation.EvidenceIDs, ", "))
+					safePrintf("  Observations for %s: %s\n", correlationID, strings.Join(correlation.ObservationIDs, ", "))
+				}
+			}
+			for _, step := range path.Verification {
+				safePrintf("  Verify: %s\n", step)
+			}
+		}
+	}
+
+	if len(report.DiscoveryPivots) > 0 {
+		fmt.Println("\n[RECURRING INVESTIGATION PIVOTS]")
+		for _, pivot := range report.DiscoveryPivots {
+			safePrintf("[%s] %s — %s\n", pivot.Confidence, pivot.Pivot, pivot.ID)
+			safePrintf("  Connected entities: %s\n", strings.Join(pivot.ConnectedEntities, ", "))
+			safePrintf("  Supporting paths: %s\n", strings.Join(pivot.PathIDs, ", "))
+			safePrintf("  Signal types: %s | diversity: %d\n", strings.Join(correlationTypeStrings(pivot.SignalTypes), ", "), pivot.SignalDiversity)
+			safePrintf("  Statement: %s\n", pivot.Statement)
+			safePrintf("  Why it matters: %s\n", pivot.WhyItMatters)
+			safePrintf("  Alternative explanations: %s\n", pivot.AlternativeExplanations)
+			for _, pathID := range pivot.PathIDs {
+				if path, ok := pathsByID[pathID]; ok {
+					safePrintf("  Path %s: %s\n", pathID, strings.Join(path.Entities, " -> "))
+				}
+			}
+			for _, step := range pivot.Verification {
+				safePrintf("  Verify: %s\n", step)
+			}
+		}
+	}
+
 	if len(report.Hypotheses) > 0 {
 		fmt.Println("\n[HYPOTHESES]")
 		for _, item := range report.Hypotheses {
@@ -689,6 +772,58 @@ func printIntelligenceReport(report intelligence.IntelligenceReport) {
 			}
 		}
 	}
+	if len(report.VerificationAssessments) > 0 {
+		fmt.Println("\n[VERIFICATION ASSESSMENTS]")
+		for _, assessment := range report.VerificationAssessments {
+			safePrintf("[%s] %s\n", assessment.Status, assessment.HypothesisID)
+			safePrintf("  Assessment: %s\n", assessment.Explanation)
+			if len(assessment.SupportingEvidenceIDs) > 0 {
+				safePrintf("  Supporting evidence: %s\n", strings.Join(assessment.SupportingEvidenceIDs, ", "))
+				for _, fact := range assessment.SupportingFacts {
+					safePrintf("    Supports: %s\n", fact)
+				}
+			}
+			if len(assessment.ContradictingEvidenceIDs) > 0 {
+				safePrintf("  Contradicting evidence: %s\n", strings.Join(assessment.ContradictingEvidenceIDs, ", "))
+				for _, fact := range assessment.ContradictingFacts {
+					safePrintf("    Contradicts: %s\n", fact)
+				}
+			}
+			if len(assessment.ExcludedEvidenceIDs) > 0 {
+				safePrintf("  Excluded/reused evidence: %s\n", strings.Join(assessment.ExcludedEvidenceIDs, ", "))
+			}
+			safePrintf("  Limitations: %s\n", assessment.Limitations)
+		}
+	}
+
+	if len(report.Narrative.Signals) > 0 {
+		fmt.Println("\n[RESEARCH NARRATIVE SIGNALS]")
+		for _, signal := range report.Narrative.Signals {
+			safePrintf("[%s | %s] %s\n", signal.Kind, signal.Confidence, signal.ID)
+			safePrintf("  %s\n", signal.Summary)
+			if signal.AlternativeExplanations != "" {
+				safePrintf("  Alternatives/limitations: %s\n", signal.AlternativeExplanations)
+			}
+			safePrintf("  References: %s\n", strings.Join(signal.References, ", "))
+		}
+	}
+
+	if len(report.Narrative.NextSteps) > 0 {
+		fmt.Println("\n[RESEARCHER NEXT STEPS]")
+		for _, step := range report.Narrative.NextSteps {
+			safePrintf("%s: %s\n", step.ID, step.Action)
+			safePrintf("  Reason: %s\n", step.Reason)
+			safePrintf("  References: %s\n", strings.Join(step.References, ", "))
+		}
+	}
+
+	if len(report.Narrative.Limitations) > 0 {
+		fmt.Println("\n[REPORT LIMITATIONS]")
+		for _, limitation := range report.Narrative.Limitations {
+			safePrintf("- %s\n", limitation)
+		}
+	}
+
 }
 
 func printDNSHistory(history intelligence.DNSHistoryComparison) {
@@ -747,6 +882,10 @@ func printFinding(finding intelligence.Finding) {
 	}
 
 	safePrintf("Evidence events: %d\n", len(finding.Evidence))
+	for _, event := range finding.Evidence {
+		safePrintf("  Event ref: %s | %s | target=%s | source=%s | observed=%s\n",
+			event.ID, event.Type, event.Target, event.Source, event.Timestamp.UTC().Format(time.RFC3339))
+	}
 }
 
 func runHistory(target, snapshotDir string) error {
