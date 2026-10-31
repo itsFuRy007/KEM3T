@@ -163,6 +163,10 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 			if req.URL.User != nil {
 				return fmt.Errorf("redirect URLs containing credentials are not allowed")
 			}
+			if len(via) > 0 && strings.EqualFold(via[len(via)-1].URL.Scheme, "https") &&
+				!strings.EqualFold(req.URL.Scheme, "https") {
+				return fmt.Errorf("HTTPS redirect downgrade rejected")
+			}
 			if !strings.EqualFold(req.URL.Hostname(), requestURL.Hostname()) {
 				return fmt.Errorf("cross-host redirect rejected to preserve target scope")
 			}
