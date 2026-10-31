@@ -220,3 +220,34 @@ func TestRegisterIPRDAPReportRejectsInvalidNetworkRanges(t *testing.T) {
 		})
 	}
 }
+
+func TestRegisterIPRDAPReportNormalizesMappedIPv4Target(t *testing.T) {
+	registry := evidence.NewRegistry()
+	report := IPRDAPReport{
+		Target: "::ffff:8.8.8.8", Source: "rdap.example.test",
+		RetrievedAt: time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC),
+		StartAddress: "8.8.8.0", EndAddress: "8.8.8.255",
+	}
+	if _, err := RegisterIPRDAPReport(registry, report); err != nil {
+		t.Fatal(err)
+	}
+	records := registry.AllEvidence()
+	if len(records) != 1 || records[0].EntityID != "8.8.8.8" {
+		t.Fatalf("mapped IPv4 target was not normalized: %+v", records)
+	}
+}
+
+func TestRegisterIPRDAPReportRejectsZoneIdentifiers(t *testing.T) {
+	registry := evidence.NewRegistry()
+	report := IPRDAPReport{
+		Target: "fe80::1%eth0", Source: "rdap.example.test",
+		RetrievedAt: time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC),
+		StartAddress: "fe80::", EndAddress: "fe80::ffff",
+	}
+	if _, err := RegisterIPRDAPReport(registry, report); err == nil {
+		t.Fatal("expected zone-scoped IP target to be rejected")
+	}
+	if len(registry.AllEvidence()) != 0 {
+		t.Fatal("zone-scoped IP report was persisted")
+	}
+}

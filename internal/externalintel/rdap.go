@@ -325,6 +325,10 @@ func (c *RDAPClient) LookupIP(ctx context.Context, rawTarget string) (IPRDAPRepo
 	if err != nil {
 		return IPRDAPReport{}, fmt.Errorf("target must be an IP address: %w", err)
 	}
+	if targetAddr.Zone() != "" {
+		return IPRDAPReport{}, fmt.Errorf("RDAP target IP cannot include a zone identifier")
+	}
+	targetAddr = targetAddr.Unmap()
 	target := targetAddr.String()
 	ip := net.ParseIP(target)
 	timeout := c.Timeout
@@ -402,14 +406,26 @@ func validateIPRDAPRange(target, startAddress, endAddress string) (netip.Addr, n
 	if err != nil {
 		return netip.Addr{}, netip.Addr{}, netip.Addr{}, fmt.Errorf("RDAP target IP is invalid: %w", err)
 	}
+	if targetAddr.Zone() != "" {
+		return netip.Addr{}, netip.Addr{}, netip.Addr{}, fmt.Errorf("RDAP target IP cannot include a zone identifier")
+	}
+	targetAddr = targetAddr.Unmap()
 	start, err := netip.ParseAddr(strings.TrimSpace(startAddress))
 	if err != nil {
 		return netip.Addr{}, netip.Addr{}, netip.Addr{}, fmt.Errorf("RDAP start address is invalid: %w", err)
 	}
+	if start.Zone() != "" {
+		return netip.Addr{}, netip.Addr{}, netip.Addr{}, fmt.Errorf("RDAP start address cannot include a zone identifier")
+	}
+	start = start.Unmap()
 	end, err := netip.ParseAddr(strings.TrimSpace(endAddress))
 	if err != nil {
 		return netip.Addr{}, netip.Addr{}, netip.Addr{}, fmt.Errorf("RDAP end address is invalid: %w", err)
 	}
+	if end.Zone() != "" {
+		return netip.Addr{}, netip.Addr{}, netip.Addr{}, fmt.Errorf("RDAP end address cannot include a zone identifier")
+	}
+	end = end.Unmap()
 	if start.Is4() != targetAddr.Is4() || end.Is4() != targetAddr.Is4() || start.Compare(end) > 0 || targetAddr.Compare(start) < 0 || targetAddr.Compare(end) > 0 {
 		return netip.Addr{}, netip.Addr{}, netip.Addr{}, fmt.Errorf("RDAP network range does not contain requested IP")
 	}
