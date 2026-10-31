@@ -352,6 +352,9 @@ func runTLS(target string, port int, snapshotDir string) error {
 		safePrintf("Issuer: %s\n", result.Event.Data["issuer"])
 		safePrintf("TLS Version: %s\n", result.Event.Data["tls_version"])
 		safePrintf("Verified: %s\n", result.Event.Data["verified"])
+		if reason := strings.TrimSpace(result.Event.Data["verification_error"]); reason != "" {
+			safePrintf("Verification error: %s\n", reason)
+		}
 		safePrintf("SHA-256: %s\n", result.Event.Data["sha256_fingerprint"])
 	}
 

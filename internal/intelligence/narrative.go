@@ -119,10 +119,10 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 			group := steps[key]
 			if group == nil {
 				group = &narrativeStepGroup{
-					action: canonicalNarrativeAction(action),
-					kinds: make(map[string]struct{}),
+					action:  canonicalNarrativeAction(action),
+					kinds:   make(map[string]struct{}),
 					reasons: make(map[string]struct{}),
-					refs: make(map[string]struct{}),
+					refs:    make(map[string]struct{}),
 				}
 				steps[key] = group
 			}

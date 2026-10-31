@@ -584,7 +584,7 @@ func TestBuildRepresentsClosedAndUnknownTCPObservationsWithoutOpenPortClaims(t *
 		observations = append(observations, evidence.Observation{
 			ID: "observation:" + state, EvidenceID: record.ID, Source: "tcp",
 			ObservedAt: time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC),
-			EventIDs: []string{"event:" + state},
+			EventIDs:   []string{"event:" + state},
 		})
 	}
 	got, err := Build(records, observations)

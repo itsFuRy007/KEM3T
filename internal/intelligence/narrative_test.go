@@ -82,18 +82,18 @@ func TestBuildResearchNarrativeConsolidatesServiceIdentificationActions(t *testi
 	report := IntelligenceReport{
 		Target: "example.com",
 		Findings: []Finding{{
-			Title: "Open TCP port observed",
-			Evidence: []events.Event{{ID: "event:open", Type: events.EventPortDiscovered}},
+			Title:     "Open TCP port observed",
+			Evidence:  []events.Event{{ID: "event:open", Type: events.EventPortDiscovered}},
 			NextSteps: []string{"Identify the service and version using authorized collection."},
 		}},
 		ServiceSurfaces: []ServiceSurface{{
-			ID: "surface:example.com:8443",
+			ID:        "surface:example.com:8443",
 			NextSteps: []string{"Identify the application protocol on this open TCP port using authorized, bounded service identification."},
 		}},
 		IntelligenceGaps: []IntelligenceGap{{
-			ID: "gap:service-identification:example.com:8443",
-			Unknown: "The application protocol is unknown.",
-			WhyItMatters: "Protocol identity is needed for a meaningful assessment.",
+			ID:              "gap:service-identification:example.com:8443",
+			Unknown:         "The application protocol is unknown.",
+			WhyItMatters:    "Protocol identity is needed for a meaningful assessment.",
 			SuggestedAction: "Identify the application protocol on this open TCP port using an authorized, bounded probe; preserve the response and collection timestamp.",
 		}},
 	}

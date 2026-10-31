@@ -48,16 +48,16 @@ func TestBuildAdaptiveInvestigationPlanMergesEquivalentActionsAndReferences(t *t
 	report := IntelligenceReport{
 		Target: "example.com",
 		IntelligenceGaps: []IntelligenceGap{{
-			ID: "gap:service-identification",
-			WhyItMatters: "The protocol is not identified.",
+			ID:              "gap:service-identification",
+			WhyItMatters:    "The protocol is not identified.",
 			SuggestedAction: "Identify the application protocol on this open TCP port using an authorized, bounded probe; preserve the response and collection timestamp.",
-			Priority: "MEDIUM",
-			References: []string{"evidence:tcp-open"},
+			Priority:        "MEDIUM",
+			References:      []string{"evidence:tcp-open"},
 		}},
 		Narrative: ResearchNarrative{NextSteps: []NarrativeNextStep{{
-			ID: "next-step:service-identification",
-			Action: "Identify the service and version using authorized collection.",
-			Reason: "An open TCP port requires protocol identification.",
+			ID:         "next-step:service-identification",
+			Action:     "Identify the service and version using authorized collection.",
+			Reason:     "An open TCP port requires protocol identification.",
 			References: []string{"finding:open-port", "service-surface:surface-1"},
 		}}},
 	}
