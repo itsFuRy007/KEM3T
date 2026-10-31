@@ -130,18 +130,18 @@ func runExternalCollection(target, snapshotDir, runPrefix string, timeout time.D
 }
 
 func printExternalIntelligence(report intelligence.IntelligenceReport) {
-	fmt.Println("\\n[KEM3T INTELLIGENCE]")
-	safePrintf("Correlations: %d | Discoveries: %d | Hypotheses: %d | Verification assessments: %d | Intelligence gaps: %d\\n",
+	fmt.Println("\n[KEM3T INTELLIGENCE]")
+	safePrintf("Correlations: %d | Discoveries: %d | Hypotheses: %d | Verification assessments: %d | Intelligence gaps: %d\n",
 		len(report.Correlations), len(report.Discoveries), len(report.Hypotheses),
 		len(report.VerificationAssessments), len(report.IntelligenceGaps))
 	for _, hypothesis := range report.Hypotheses {
-		safePrintf("[HYPOTHESIS | %s] %s\\n", hypothesis.Confidence, hypothesis.Title)
-		safePrintf("  %s\\n", hypothesis.Statement)
+		safePrintf("[HYPOTHESIS | %s] %s\n", hypothesis.Confidence, hypothesis.Title)
+		safePrintf("  %s\n", hypothesis.Statement)
 		if hypothesis.Alternative != "" {
-			safePrintf("  Alternative: %s\\n", hypothesis.Alternative)
+			safePrintf("  Alternative: %s\n", hypothesis.Alternative)
 		}
 		if hypothesis.Limitations != "" {
-			safePrintf("  Limitation: %s\\n", hypothesis.Limitations)
+			safePrintf("  Limitation: %s\n", hypothesis.Limitations)
 		}
 	}
 }
