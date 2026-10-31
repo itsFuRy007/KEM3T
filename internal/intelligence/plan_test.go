@@ -20,15 +20,59 @@ func TestBuildAdaptiveInvestigationPlanPrioritizesEvidenceGaps(t *testing.T) {
 		PrioritizedFindings: []PrioritizedFinding{{Finding: Finding{Title: "service"}, Priority: PriorityHigh}},
 	}
 	plan, err := BuildAdaptiveInvestigationPlan(report, nil, nil)
-	if err != nil { t.Fatal(err) }
-	if len(plan.Items) != 2 { t.Fatalf("got %d plan items, want 2", len(plan.Items)) }
-	if plan.Items[0].Action != "Reconcile source timestamps." { t.Fatalf("high-priority gap was not first: %#v", plan.Items) }
-	if plan.Items[0].PriorityLabel != "HIGH" { t.Fatalf("unexpected priority label: %s", plan.Items[0].PriorityLabel) }
-	if err := plan.Validate(); err != nil { t.Fatalf("plan invalid: %v", err) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Items) != 2 {
+		t.Fatalf("got %d plan items, want 2", len(plan.Items))
+	}
+	if plan.Items[0].Action != "Reconcile source timestamps." {
+		t.Fatalf("high-priority gap was not first: %#v", plan.Items)
+	}
+	if plan.Items[0].PriorityLabel != "HIGH" {
+		t.Fatalf("unexpected priority label: %s", plan.Items[0].PriorityLabel)
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("plan invalid: %v", err)
+	}
 	again, err := BuildAdaptiveInvestigationPlan(report, nil, nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if plan.Revision != again.Revision || plan.Items[0].ID != again.Items[0].ID {
 		t.Fatal("plan is not deterministic")
+	}
+}
+
+func TestBuildAdaptiveInvestigationPlanMergesEquivalentActionsAndReferences(t *testing.T) {
+	report := IntelligenceReport{
+		Target: "example.com",
+		IntelligenceGaps: []IntelligenceGap{{
+			ID:              "gap:service-identification",
+			WhyItMatters:    "The protocol is not identified.",
+			SuggestedAction: "Identify the application protocol on this open TCP port using an authorized, bounded probe; preserve the response and collection timestamp.",
+			Priority:        "MEDIUM",
+			References:      []string{"evidence:tcp-open"},
+		}},
+		Narrative: ResearchNarrative{NextSteps: []NarrativeNextStep{{
+			ID:         "next-step:service-identification",
+			Action:     "Identify the service and version using authorized collection.",
+			Reason:     "An open TCP port requires protocol identification.",
+			References: []string{"finding:open-port", "service-surface:surface-1"},
+		}}},
+	}
+	plan, err := BuildAdaptiveInvestigationPlan(report, nil, nil)
+	if err != nil {
+		t.Fatalf("BuildAdaptiveInvestigationPlan() error = %v", err)
+	}
+	if len(plan.Items) != 1 {
+		t.Fatalf("got %d tasks, want one consolidated task: %#v", len(plan.Items), plan.Items)
+	}
+	item := plan.Items[0]
+	for _, ref := range []string{"gap:gap:service-identification", "evidence:tcp-open", "finding:open-port", "service-surface:surface-1"} {
+		if !containsString(item.References, ref) {
+			t.Errorf("task is missing reference %q: %v", ref, item.References)
+		}
 	}
 }
 
@@ -43,20 +87,26 @@ func TestBuildAdaptiveInvestigationPlanAppliesFeedbackAndRetainsHistory(t *testi
 		}},
 	}
 	first, err := BuildAdaptiveInvestigationPlan(initial, nil, nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	itemID := first.Items[0].ID
 
 	updated, err := BuildAdaptiveInvestigationPlan(IntelligenceReport{Target: "example.com"}, &first, []InvestigationFeedback{{
 		ItemID: itemID, Outcome: FeedbackCompleted, EvidenceIDs: []string{"evidence:new"},
 	}})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(updated.Items) != 1 || updated.Items[0].Status != TaskCompleted {
 		t.Fatalf("completed task history not retained: %#v", updated.Items)
 	}
 	if len(updated.Items[0].EvidenceIDs) != 1 || updated.Items[0].EvidenceIDs[0] != "evidence:new" {
 		t.Fatalf("feedback evidence not retained: %#v", updated.Items[0].EvidenceIDs)
 	}
-	if updated.Revision == first.Revision { t.Fatal("plan revision did not change after feedback") }
+	if updated.Revision == first.Revision {
+		t.Fatal("plan revision did not change after feedback")
+	}
 }
 
 func TestBuildAdaptiveInvestigationPlanKeepsInconclusiveWorkActive(t *testing.T) {
@@ -68,13 +118,21 @@ func TestBuildAdaptiveInvestigationPlanKeepsInconclusiveWorkActive(t *testing.T)
 		}}},
 	}
 	first, err := BuildAdaptiveInvestigationPlan(report, nil, nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	next, err := BuildAdaptiveInvestigationPlan(report, &first, []InvestigationFeedback{{
 		ItemID: first.Items[0].ID, Outcome: FeedbackInconclusive, Note: "Source records were incomplete.",
 	}})
-	if err != nil { t.Fatal(err) }
-	if next.Items[0].Status != TaskInconclusive { t.Fatalf("got status %s", next.Items[0].Status) }
-	if next.Items[0].Status != TaskInconclusive && next.Items[0].Status != TaskRecommended { t.Fatal("inconclusive action should remain active") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Items[0].Status != TaskInconclusive {
+		t.Fatalf("got status %s", next.Items[0].Status)
+	}
+	if next.Items[0].Status != TaskInconclusive && next.Items[0].Status != TaskRecommended {
+		t.Fatal("inconclusive action should remain active")
+	}
 }
 
 func TestBuildAdaptiveInvestigationPlanRejectsInvalidFeedback(t *testing.T) {
@@ -84,7 +142,9 @@ func TestBuildAdaptiveInvestigationPlanRejectsInvalidFeedback(t *testing.T) {
 	}
 	report.Narrative.NextSteps = []NarrativeNextStep{{ID: "step", Action: "Review evidence.", Reason: "Need more context.", References: []string{"finding:one"}}}
 	plan, err := BuildAdaptiveInvestigationPlan(report, nil, nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := BuildAdaptiveInvestigationPlan(report, &plan, []InvestigationFeedback{{ItemID: plan.Items[0].ID, Outcome: FeedbackCompleted}}); err == nil {
 		t.Fatal("completed feedback without evidence must be rejected")
 	}

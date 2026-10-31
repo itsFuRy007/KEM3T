@@ -11,8 +11,10 @@ This is a repository-level security baseline for KEM3T, not a penetration-test r
 - Active TCP, TLS, and HTTP collection in unified investigation mode is opt-in.
 - Discovered subdomains and IP addresses do not automatically authorize active checks.
 - Adaptive DNS follow-up is bounded and restricted to the root domain's namespace.
-- HTTP collection bounds response-body inspection, redirect count, and redirect hostname scope.
-- External provider requests use HTTPS endpoints, bounded response sizes, request timeouts, and cancellation-aware retry/backoff.
+- HTTP collection bounds response-body inspection and redirect count, enforces same-host redirects within the originally authorized port set (or the default 80/443 set for an unschemed auto target), rejects credential-bearing and HTTPS-downgrade redirects, and redacts query values from persisted URLs and Location headers.
+- HTTP evidence validation requires both the original and final URL hosts to match the evidence target and rejects URLs containing credentials.
+- CLI output replaces terminal control and Unicode formatting characters in untrusted display values before printing.
+- External provider requests use HTTPS endpoints, bounded response sizes, request timeouts, cancellation-aware retry/backoff, and HTTPS-preserving redirect checks even with caller-supplied HTTP clients. OTX requests carrying an API key are restricted to the original HTTPS host.
 
 ### Evidence and interpretation boundaries
 
@@ -31,7 +33,7 @@ This is a repository-level security baseline for KEM3T, not a penetration-test r
 
 ### Secrets and provider data
 
-- The OTX API key is read from the process environment and sent only in the provider request header.
+- The OTX API key is read from the process environment and sent only in the provider request header; OTX redirects cannot forward it to another host.
 - API keys and raw HTTP response bodies are not intended to be included in reports or persisted as evidence.
 - Provider data is untrusted input; malformed or out-of-scope records must be rejected or excluded without widening target scope.
 
@@ -49,6 +51,8 @@ The CI workflow runs:
 8. Two clean, trimpath-enabled CLI builds whose outputs must be byte-identical.
 9. The controlled loopback validation lab for known-open/closed TCP, HTTP metadata, and TLS certificate extraction.
 
+The tag-triggered release workflow repeats the validation gates on the exact tagged source before building and publishing release artifacts.
+
 The loopback lab is a narrow controlled baseline. It does not validate external provider coverage, public infrastructure attribution, multi-host relationships, or real-world intelligence quality.
 
 A successful vulnerability scan means no known, reachable Go vulnerability was reported for that analyzed source/build configuration at scan time. It does not cover every operating-system package, runtime environment, configuration, or vulnerability class.
@@ -64,6 +68,15 @@ Before publishing a release:
 - Record the Go toolchain version, source commit, target OS/architecture, and artifact SHA-256.
 - Test the produced artifact in an authorized environment.
 - Publish checksums and release notes that state supported platforms, known limitations, and the scope of validation.
+
+### Additional regression coverage
+
+- CT lookup requests the exact apex and the wildcard subdomain namespace separately; both requests share a bounded context.
+- ASN origin records preserve distinct prefixes even when multiple routes map to the same ASN.
+- Investigation output includes discovery paths, recurring pivots, verification evidence, service surfaces, and graph/report provenance.
+- Stage-level errors and provider limitations are carried into the final research narrative so exported reports do not silently omit incomplete collection.
+
+These are code-level protections and deterministic tests. They do not replace independent validation of live provider data or authorized real-world environments.
 
 ## Remaining limitations
 

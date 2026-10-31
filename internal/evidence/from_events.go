@@ -30,7 +30,7 @@ func FromDNSEvent(event events.Event) (Evidence, Observation, error) {
 		return Evidence{}, Observation{}, fmt.Errorf("unsupported DNS record type")
 	}
 
-	target := strings.ToLower(strings.TrimSpace(event.Target))
+	target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(event.Target)), ".")
 	ip := net.ParseIP(strings.TrimSpace(event.Data["value"]))
 	if ip == nil {
 		return Evidence{}, Observation{}, fmt.Errorf("invalid DNS IP address")
@@ -185,6 +185,7 @@ func FromTLSEvent(event events.Event) (Evidence, Observation, error) {
 		PublicKeyAlgorithm: strings.TrimSpace(event.Data["public_key_algorithm"]),
 		TLSVersion:         strings.TrimSpace(event.Data["tls_version"]),
 		Verified:           verified,
+		VerificationError:  strings.TrimSpace(event.Data["verification_error"]),
 	}
 
 	value, err := json.Marshal(details)

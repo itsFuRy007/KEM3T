@@ -132,22 +132,11 @@ func TestCrossLayerServiceSurfaceEndToEndLocalhost(t *testing.T) {
 			break
 		}
 	}
-	if serviceHypothesis == nil {
-		t.Fatal("report did not generate the expected HTTPS/TLS endpoint hypothesis")
+	if surface.TemporalScope != "REFERENCE_AND_HISTORICAL" {
+		t.Fatalf("expected the separately collected layers to be marked as mixed-time evidence, got %q", surface.TemporalScope)
 	}
-	if serviceHypothesis.Confidence != intelligence.HypothesisConfidenceLow {
-		t.Errorf("service hypothesis confidence = %q, want LOW", serviceHypothesis.Confidence)
-	}
-	for _, evidenceID := range expectedEvidence {
-		if !containsIntegrationString(serviceHypothesis.SupportingIDs, evidenceID) {
-			t.Errorf("hypothesis is missing supporting evidence %q", evidenceID)
-		}
-	}
-	if !strings.Contains(strings.ToLower(serviceHypothesis.Statement), "does not identify the backend application") {
-		t.Errorf("hypothesis overstates backend attribution: %q", serviceHypothesis.Statement)
-	}
-	if !strings.Contains(strings.ToLower(serviceHypothesis.Alternative), "load balancer") {
-		t.Errorf("hypothesis is missing a plausible alternative explanation: %q", serviceHypothesis.Alternative)
+	if serviceHypothesis != nil {
+		t.Fatal("report generated an HTTPS/TLS hypothesis by joining observations from separate collection runs")
 	}
 
 	foundNarrativeSignal := false

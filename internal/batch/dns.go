@@ -41,22 +41,22 @@ type DNSObservationRef struct {
 }
 
 type SharedAddressCorrelation struct {
-	Address       string              `json:"address"`
-	TargetCount   int                 `json:"target_count"`
-	Observations  []DNSObservationRef `json:"observations"`
-	Interpretation string             `json:"interpretation"`
+	Address        string              `json:"address"`
+	TargetCount    int                 `json:"target_count"`
+	Observations   []DNSObservationRef `json:"observations"`
+	Interpretation string              `json:"interpretation"`
 }
 
 type DNSBatchReport struct {
-	GeneratedAt     time.Time                 `json:"generated_at"`
-	TargetCount     int                       `json:"target_count"`
-	CompletedCount  int                       `json:"completed_count"`
-	FailedCount     int                       `json:"failed_count"`
-	GraphFile       string                    `json:"graph_file,omitempty"`
-	ChangesFile     string                    `json:"changes_file,omitempty"`
-	Outcomes        []DNSOutcome              `json:"outcomes"`
+	GeneratedAt     time.Time                  `json:"generated_at"`
+	TargetCount     int                        `json:"target_count"`
+	CompletedCount  int                        `json:"completed_count"`
+	FailedCount     int                        `json:"failed_count"`
+	GraphFile       string                     `json:"graph_file,omitempty"`
+	ChangesFile     string                     `json:"changes_file,omitempty"`
+	Outcomes        []DNSOutcome               `json:"outcomes"`
 	SharedAddresses []SharedAddressCorrelation `json:"shared_addresses"`
-	Limitations     []string                  `json:"limitations"`
+	Limitations     []string                   `json:"limitations"`
 }
 
 type dnsInvestigator func(context.Context, string, string) (DNSOutcome, error)
@@ -159,13 +159,13 @@ func RunDNS(ctx context.Context, targets []string, workers int, snapshotDir stri
 			return DNSOutcome{}, err
 		}
 		return DNSOutcome{
-			Target: target,
-			AddressCount: len(result.CurrentSnapshot.Addresses),
-			ChangeCount: len(result.Changes),
+			Target:          target,
+			AddressCount:    len(result.CurrentSnapshot.Addresses),
+			ChangeCount:     len(result.Changes),
 			BaselineCreated: result.BaselineCreated,
-			Addresses: append([]string(nil), result.CurrentSnapshot.Addresses...),
-			CollectedAt: result.CurrentSnapshot.Collected,
-			EvidenceStore: filepath.Join(dir, "evidence.db"),
+			Addresses:       append([]string(nil), result.CurrentSnapshot.Addresses...),
+			CollectedAt:     result.CurrentSnapshot.Collected,
+			EvidenceStore:   filepath.Join(dir, "evidence.db"),
 		}, nil
 	})
 	if err != nil {
@@ -247,9 +247,9 @@ func BuildDNSBatchReport(outcomes []DNSOutcome, generatedAt time.Time) DNSBatchR
 		generatedAt = generatedAt.UTC()
 	}
 	report := DNSBatchReport{
-		GeneratedAt: generatedAt,
-		TargetCount: len(outcomes),
-		Outcomes: append([]DNSOutcome(nil), outcomes...),
+		GeneratedAt:     generatedAt,
+		TargetCount:     len(outcomes),
+		Outcomes:        append([]DNSOutcome(nil), outcomes...),
 		SharedAddresses: make([]SharedAddressCorrelation, 0),
 		Limitations: []string{
 			"DNS addresses are observations collected at the per-target timestamps, not guarantees of current resolution.",

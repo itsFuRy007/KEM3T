@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/events"
+	"github.com/itsFuRy007/kem3t/internal/evidence"
 )
 
 func TestReportEngineRejectsMissingTarget(t *testing.T) {
@@ -231,7 +231,6 @@ func TestReportEngineExcludesCorrelationsUnrelatedToTarget(t *testing.T) {
 	}
 }
 
-
 func reportScopeFinding(id, target string) Finding {
 	return Finding{
 		Title:    "Observed asset " + target,
@@ -240,7 +239,7 @@ func reportScopeFinding(id, target string) Finding {
 		Evidence: []events.Event{{
 			ID: id, Type: events.EventSubdomainDiscovered,
 			Timestamp: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-			Target: target, Source: "test",
+			Target:    target, Source: "test",
 		}},
 	}
 }
@@ -291,14 +290,13 @@ func TestReportEngineRejectsMixedScopeAggregateFinding(t *testing.T) {
 	finding.Evidence = append(finding.Evidence, events.Event{
 		ID: "out-of-scope", Type: events.EventSubdomainDiscovered,
 		Timestamp: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		Target: "other.example.net", Source: "test",
+		Target:    "other.example.net", Source: "test",
 	})
 	_, err := (&ReportEngine{}).Build("example.com", []Finding{finding}, registry)
 	if err == nil {
 		t.Fatal("expected mixed-scope aggregate finding to be rejected")
 	}
 }
-
 
 func TestReportEngineIncludesSharedTLSCertificateIntelligence(t *testing.T) {
 	registry := evidence.NewRegistry()
@@ -335,7 +333,6 @@ func TestReportEngineIncludesSharedTLSCertificateIntelligence(t *testing.T) {
 		t.Fatalf("expected conservative LOW confidence, got %q", report.Hypotheses[0].Confidence)
 	}
 }
-
 
 // TestReportEngineIntegratesEvidenceCorrelationHypothesisAndVerification exercises
 // the complete Phase 5 path and ensures original evidence cannot corroborate itself.
@@ -430,7 +427,6 @@ func TestReportEngineRejectsVerificationForUnknownHypothesis(t *testing.T) {
 	}
 }
 
-
 func TestReportEngineBuildsMultiHopPathsAndRecurringPivots(t *testing.T) {
 	registry := evidence.NewRegistry()
 	t.Cleanup(func() {
@@ -472,5 +468,47 @@ func TestReportEngineBuildsMultiHopPathsAndRecurringPivots(t *testing.T) {
 	}
 	if len(pivot.PathIDs) != 2 || len(pivot.ConnectedEntities) != 2 {
 		t.Fatalf("pivot must retain both supporting paths and neighbors: %#v", pivot)
+	}
+}
+
+func TestReportEngineIdentifiesLatestCollectionRunAndServiceTemporalScope(t *testing.T) {
+	registry := evidence.NewRegistry()
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close evidence registry: %v", err)
+		}
+	})
+	started := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	run := evidence.CollectionRun{
+		ID: "tcp-current-run", Target: "lab.example", StartedAt: started,
+		Status: evidence.CollectionRunRunning,
+	}
+	if err := registry.AddCollectionRun(run); err != nil {
+		t.Fatal(err)
+	}
+	item := evidence.Evidence{
+		ID: "tcp-current-evidence", EntityID: "lab.example", Type: evidence.TypeTCPPort,
+		Value: `{"target":"lab.example","protocol":"tcp","port":443,"state":"open"}`,
+	}
+	if err := registry.AddEvidence(item); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.AddObservation(evidence.Observation{
+		ID: "tcp-current-observation", EvidenceID: item.ID, Source: "tcp",
+		CollectionRunID: run.ID, Stage: "tcp", ObservedAt: started.Add(time.Second),
+		EventIDs: []string{"tcp-event"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := (&ReportEngine{}).Build("lab.example", nil, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.ReferenceRunID != run.ID || report.ReferenceRunStatus != string(evidence.CollectionRunRunning) {
+		t.Fatalf("report did not identify its reference run: %q %q", report.ReferenceRunID, report.ReferenceRunStatus)
+	}
+	if len(report.ServiceSurfaces) != 1 || report.ServiceSurfaces[0].TemporalScope != "REFERENCE_RUN_ONLY" {
+		t.Fatalf("service temporal scope is incorrect: %+v", report.ServiceSurfaces)
 	}
 }

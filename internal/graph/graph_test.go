@@ -564,6 +564,61 @@ func TestBuildCreatesTCPPortGraph(t *testing.T) {
 	}
 }
 
+func TestBuildRepresentsClosedAndUnknownTCPObservationsWithoutOpenPortClaims(t *testing.T) {
+	records := make([]evidence.Evidence, 0, 2)
+	observations := make([]evidence.Observation, 0, 2)
+	for _, state := range []string{"closed", "unknown"} {
+		details := evidence.TCPPortObservationDetails{
+			Target: "127.0.0.1", Protocol: "tcp", Port: 8080,
+			State: state, Reason: "controlled test observation",
+		}
+		value, err := json.Marshal(details)
+		if err != nil {
+			t.Fatalf("marshal %s details: %v", state, err)
+		}
+		record := evidence.Evidence{
+			ID: "tcp-port-observation:" + state, EntityID: "127.0.0.1",
+			Type: evidence.TypeTCPPortObservation, Value: string(value),
+		}
+		records = append(records, record)
+		observations = append(observations, evidence.Observation{
+			ID: "observation:" + state, EvidenceID: record.ID, Source: "tcp",
+			ObservedAt: time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC),
+			EventIDs:   []string{"event:" + state},
+		})
+	}
+	got, err := Build(records, observations)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if err := got.Validate(); err != nil {
+		t.Fatalf("Graph.Validate() error = %v", err)
+	}
+	if len(got.Nodes) != 2 || len(got.Edges) != 2 {
+		t.Fatalf("graph should contain host/port nodes and two state edges; got %d nodes, %d edges", len(got.Nodes), len(got.Edges))
+	}
+	states := make(map[string]Edge)
+	for _, edge := range got.Edges {
+		if edge.Type != EdgeObservedTCPPortState {
+			t.Fatalf("unexpected edge type %q", edge.Type)
+		}
+		states[edge.State] = edge
+	}
+	for _, state := range []string{"closed", "unknown"} {
+		edge, ok := states[state]
+		if !ok {
+			t.Errorf("missing %s state edge", state)
+			continue
+		}
+		if edge.Source != "ip:127.0.0.1" || edge.Target != "tcp-port:127.0.0.1:8080" || edge.Port != 8080 {
+			t.Errorf("invalid %s state edge: %+v", state, edge)
+		}
+		if len(edge.EvidenceIDs) != 1 || len(edge.ObservationIDs) != 1 {
+			t.Errorf("%s edge lost provenance: %+v", state, edge)
+		}
+	}
+}
+
 func TestAttachServicesDoesNotCreateHostedServiceForClosedOrUnknownTCP(t *testing.T) {
 	services := []observations.Service{
 		{ID: "closed", Target: "127.0.0.1", Port: 80, Transport: "tcp", State: "closed", EvidenceIDs: []string{"closed-evidence"}},

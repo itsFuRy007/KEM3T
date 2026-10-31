@@ -14,7 +14,6 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
-	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/observations"
 	"github.com/itsFuRy007/kem3t/internal/snapshots"
@@ -76,7 +75,7 @@ func runDNSWithCollectorAndPlan(
 		return DNSResult{}, err
 	}
 
-	target = strings.ToLower(strings.TrimSpace(target))
+	target = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(target)), ".")
 	if target == "" {
 		return DNSResult{}, fmt.Errorf("target is required")
 	}
@@ -102,7 +101,11 @@ func runDNSWithCollectorAndPlan(
 	if err != nil {
 		return DNSResult{}, fmt.Errorf("open evidence registry: %w", err)
 	}
-	defer registry.Close()
+	defer func() {
+		if err := registry.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close evidence registry: %w", err))
+		}
+	}()
 
 	run := evidence.CollectionRun{
 		ID:        fmt.Sprintf("dns-%d", time.Now().UnixNano()),
@@ -131,19 +134,7 @@ func runDNSWithCollectorAndPlan(
 			run.Status = evidence.CollectionRunCompleted
 		}
 
-		if err := registry.UpdateCollectionRun(run); err != nil {
-			updateErr := fmt.Errorf("finalize collection run: %w", err)
-			if retErr == nil {
-				retErr = updateErr
-			} else {
-				retErr = fmt.Errorf("%w; additionally, %v", retErr, updateErr)
-			}
-		}
-		if retErr == nil && run.Status == evidence.CollectionRunCompleted {
-			if err := history.PersistRunSnapshot(snapshotDir, run, registry, runObservations); err != nil {
-				retErr = fmt.Errorf("persist history snapshot: %w", err)
-			}
-		}
+		finalizeCollectionRun(snapshotDir, registry, &run, runObservations, &retErr)
 	}()
 
 	aggregator := intelligence.NewAggregator()
@@ -183,6 +174,8 @@ func runDNSWithCollectorAndPlan(
 		if err != nil {
 			continue
 		}
+		observation.CollectionRunID = run.ID
+		observation.Stage = "dns"
 
 		if err := registry.AddEvidence(item); err != nil &&
 			!errors.Is(err, evidence.ErrEvidenceExists) {

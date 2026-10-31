@@ -214,26 +214,37 @@ func (r *Registry) AddObservation(o Observation) error {
 	return nil
 }
 
-
- // AddBatch atomically adds evidence and observations to the registry. All
- // validation and duplicate/reference checks happen before any in-memory state
- // changes; persistent registries commit the SQLite transaction first.
- func (r *Registry) AddBatch(ctx context.Context, records []Evidence, observations []Observation) error {
-	if ctx == nil { return errors.New("context is required") }
-	if err := ctx.Err(); err != nil { return err }
+// AddBatch atomically adds evidence and observations to the registry. All
+// validation and duplicate/reference checks happen before any in-memory state
+// changes; persistent registries commit the SQLite transaction first.
+func (r *Registry) AddBatch(ctx context.Context, records []Evidence, observations []Observation) error {
+	if ctx == nil {
+		return errors.New("context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	normalizedEvidence := make([]Evidence, len(records))
 	batchEvidenceIDs := make(map[string]struct{}, len(records))
 	for i, item := range records {
-		if err := ctx.Err(); err != nil { return err }
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		item.ID = strings.TrimSpace(item.ID)
 		item.EntityID = strings.ToLower(strings.TrimSpace(item.EntityID))
 		item.Value = strings.TrimSpace(item.Value)
 		if item.Type == TypeDNSAddress {
-			if ip := net.ParseIP(item.Value); ip != nil { item.Value = ip.String() }
+			if ip := net.ParseIP(item.Value); ip != nil {
+				item.Value = ip.String()
+			}
 		}
-		if err := item.Validate(); err != nil { return fmt.Errorf("validate evidence batch item %q: %w", item.ID, err) }
-		if _, exists := batchEvidenceIDs[item.ID]; exists { return ErrEvidenceExists }
+		if err := item.Validate(); err != nil {
+			return fmt.Errorf("validate evidence batch item %q: %w", item.ID, err)
+		}
+		if _, exists := batchEvidenceIDs[item.ID]; exists {
+			return ErrEvidenceExists
+		}
 		batchEvidenceIDs[item.ID] = struct{}{}
 		normalizedEvidence[i] = item
 	}
@@ -241,30 +252,48 @@ func (r *Registry) AddObservation(o Observation) error {
 	normalizedObservations := make([]Observation, len(observations))
 	batchObservationIDs := make(map[string]struct{}, len(observations))
 	for i, item := range observations {
-		if err := ctx.Err(); err != nil { return err }
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		item.ID = strings.TrimSpace(item.ID)
 		item.EvidenceID = strings.TrimSpace(item.EvidenceID)
 		item.Source = strings.TrimSpace(item.Source)
 		item.EventIDs = append([]string(nil), item.EventIDs...)
-		for j, id := range item.EventIDs { item.EventIDs[j] = strings.TrimSpace(id) }
-		if err := item.Validate(); err != nil { return fmt.Errorf("validate observation batch item %q: %w", item.ID, err) }
-		if _, exists := batchObservationIDs[item.ID]; exists { return ErrObservationExists }
+		for j, id := range item.EventIDs {
+			item.EventIDs[j] = strings.TrimSpace(id)
+		}
+		if err := item.Validate(); err != nil {
+			return fmt.Errorf("validate observation batch item %q: %w", item.ID, err)
+		}
+		if _, exists := batchObservationIDs[item.ID]; exists {
+			return ErrObservationExists
+		}
 		batchObservationIDs[item.ID] = struct{}{}
 		normalizedObservations[i] = item
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.closed { return ErrRegistryClosed }
-	if err := ctx.Err(); err != nil { return err }
+	if r.closed {
+		return ErrRegistryClosed
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	for _, item := range normalizedEvidence {
-		if _, exists := r.evidence[item.ID]; exists { return ErrEvidenceExists }
+		if _, exists := r.evidence[item.ID]; exists {
+			return ErrEvidenceExists
+		}
 	}
 	for _, item := range normalizedObservations {
-		if _, exists := r.observations[item.ID]; exists { return ErrObservationExists }
+		if _, exists := r.observations[item.ID]; exists {
+			return ErrObservationExists
+		}
 		if _, exists := r.evidence[item.EvidenceID]; !exists {
-			if _, inBatch := batchEvidenceIDs[item.EvidenceID]; !inBatch { return ErrEvidenceNotFound }
+			if _, inBatch := batchEvidenceIDs[item.EvidenceID]; !inBatch {
+				return ErrEvidenceNotFound
+			}
 		}
 	}
 
@@ -274,7 +303,9 @@ func (r *Registry) AddObservation(o Observation) error {
 		}
 	}
 
-	for _, item := range normalizedEvidence { r.evidence[item.ID] = item }
+	for _, item := range normalizedEvidence {
+		r.evidence[item.ID] = item
+	}
 	for _, item := range normalizedObservations {
 		r.observations[item.ID] = cloneObservation(item)
 		r.byEvidence[item.EvidenceID] = append(r.byEvidence[item.EvidenceID], item.ID)

@@ -34,12 +34,13 @@ type StageOutcome struct {
 }
 
 type Result struct {
-	Target  string                          `json:"target"`
-	RunID   string                          `json:"run_id"`
-	Stages  []StageOutcome                  `json:"stages"`
-	Graph   graph.Graph                     `json:"graph"`
-	Report  intelligence.IntelligenceReport `json:"report"`
-	Partial bool                            `json:"partial"`
+	Target           string                          `json:"target"`
+	RunID            string                          `json:"run_id"`
+	Stages           []StageOutcome                  `json:"stages"`
+	Graph            graph.Graph                     `json:"graph"`
+	Report           intelligence.IntelligenceReport `json:"report"`
+	Partial          bool                            `json:"partial"`
+	HistoryPersisted bool                            `json:"history_persisted"`
 }
 
 type PlanningState struct {
@@ -50,6 +51,9 @@ type PlanningState struct {
 	Findings     []intelligence.Finding
 	Completed    []StageOutcome
 	Scheduled    []string
+	// Limitations lets planners report decisions even when they cannot enqueue
+	// a stage (for example, when an expansion cap has no remaining capacity).
+	Limitations *[]string
 }
 
 type Planner interface {
@@ -118,6 +122,7 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 	}
 	result = Result{Target: target, RunID: run.ID, Stages: make([]StageOutcome, 0, len(e.Stages))}
 	queue := append([]Stage(nil), e.Stages...)
+	plannerLimitations := make([]string, 0)
 
 	for index := 0; index < len(queue); index++ {
 		stage := queue[index]
@@ -126,7 +131,8 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 			break
 		}
 		name := strings.TrimSpace(stage.Name())
-		stageResult, err := stage.Run(ctx, target, e.Registry)
+		stageCtx := evidence.WithObservationProvenance(ctx, run.ID, name)
+		stageResult, err := stage.Run(stageCtx, target, e.Registry)
 		outcome := StageOutcome{Name: name, Result: stageResult}
 		if err != nil {
 			outcome.Error = err.Error()
@@ -151,6 +157,7 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 				Target: target, Evidence: allEvidence, NewEvidence: newEvidence,
 				Observations: e.Registry.AllObservations(), Findings: findings,
 				Completed: append([]StageOutcome(nil), result.Stages...), Scheduled: scheduled,
+				Limitations: &plannerLimitations,
 			})
 			if planErr != nil {
 				retErr = fmt.Errorf("plan next investigation stages: %w", planErr)
@@ -200,6 +207,26 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		retErr = errors.Join(retErr, fmt.Errorf("build intelligence report: %w", err))
 	} else {
 		result.Report = report
+		for _, limitation := range plannerLimitations {
+			result.Report.Narrative.Limitations = appendUniqueLimitation(
+				result.Report.Narrative.Limitations,
+				"planner: "+limitation,
+			)
+		}
+		for _, outcome := range result.Stages {
+			for _, limitation := range outcome.Result.Limitations {
+				result.Report.Narrative.Limitations = appendUniqueLimitation(
+					result.Report.Narrative.Limitations,
+					outcome.Name+": "+limitation,
+				)
+			}
+			if outcome.Error != "" {
+				result.Report.Narrative.Limitations = appendUniqueLimitation(
+					result.Report.Narrative.Limitations,
+					outcome.Name+" failed: "+outcome.Error,
+				)
+			}
+		}
 	}
 
 	run.FinishedAt = now().UTC()
@@ -230,15 +257,68 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 	} else {
 		run.Status = evidence.CollectionRunCompleted
 	}
+	if retErr != nil {
+		result.Partial = true
+	}
 	if err := e.Registry.UpdateCollectionRun(run); err != nil {
-		retErr = errors.Join(retErr, fmt.Errorf("finalize investigation run: %w", err))
+		finalizeErr := fmt.Errorf("finalize investigation run: %w", err)
+		retErr = errors.Join(retErr, finalizeErr)
+		result.Partial = true
+		run.Status = evidence.CollectionRunFailed
+		if run.ErrorMessage == "" {
+			run.ErrorMessage = finalizeErr.Error()
+		} else {
+			run.ErrorMessage += "; " + finalizeErr.Error()
+		}
+		if retryErr := e.Registry.UpdateCollectionRun(run); retryErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("mark investigation run failed after finalization error: %w", retryErr))
+		}
+		if result.Report.Target != "" && retErr != nil {
+			result.Report.Narrative.Limitations = appendUniqueLimitation(
+				result.Report.Narrative.Limitations,
+				"Investigation finalization: "+retErr.Error(),
+			)
+		}
+		return result, retErr
 	}
 	if run.Status == evidence.CollectionRunCompleted && strings.TrimSpace(e.SnapshotDir) != "" {
 		if err := history.PersistRunSnapshot(e.SnapshotDir, run, e.Registry); err != nil {
-			retErr = errors.Join(retErr, fmt.Errorf("persist unified investigation history: %w", err))
+			persistErr := fmt.Errorf("persist unified investigation history: %w", err)
+			retErr = errors.Join(retErr, persistErr)
+			result.Partial = true
+			run.Status = evidence.CollectionRunFailed
+			if run.ErrorMessage == "" {
+				run.ErrorMessage = persistErr.Error()
+			} else {
+				run.ErrorMessage += "; " + persistErr.Error()
+			}
+			if updateErr := e.Registry.UpdateCollectionRun(run); updateErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("mark investigation run failed after history persistence error: %w", updateErr))
+			}
+		} else {
+			result.HistoryPersisted = true
 		}
 	}
+	if result.Report.Target != "" && retErr != nil {
+		result.Report.Narrative.Limitations = appendUniqueLimitation(
+			result.Report.Narrative.Limitations,
+			"Investigation incomplete: "+retErr.Error(),
+		)
+	}
 	return result, retErr
+}
+
+func appendUniqueLimitation(existing []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return existing
+	}
+	for _, current := range existing {
+		if current == value {
+			return existing
+		}
+	}
+	return append(existing, value)
 }
 
 func collectFindings(stages []StageOutcome) []intelligence.Finding {

@@ -62,6 +62,19 @@ The runner binds only to `127.0.0.1`, creates HTTP and self-signed TLS services,
 This is a controlled network/service baseline, not a complete validation of DNS, CT/RDAP, ASN attribution, passive DNS, external threat intelligence, multi-host correlations, or real-world infrastructure. The self-signed certificate is expected to be extracted but not trusted. A mismatch must be recorded as a fixture deviation or KEM3T defect; do not edit the expected facts merely to make a run pass.
 
 
+### Stage 1b — Offline integration and accuracy regressions
+
+The automated test suite also covers deterministic cross-component regressions for:
+
+- Canonical DNS target identity, including case and trailing-dot normalization.
+- Certificate Transparency lookups for both the apex domain and in-scope subdomains, with request-timeout enforcement.
+- Multiple origin prefixes announced by the same ASN without discarding route records.
+- HTTP same-host redirects that attempt to move outside the explicitly authorized port set.
+- Target-scoped investigation graphs, stage-failure/limitation propagation, and traceable evidence references.
+- CLI and Markdown report completeness for findings, service surfaces, discoveries, paths, pivots, verification assessments, and provenance.
+
+These tests verify application behavior against controlled fixtures. They do **not** establish that live provider responses are complete or factually correct. Independent provider/ground-truth validation remains part of Stage 2 and Stage 3.
+
 ### Stage 2 — Authorized real-world environments
 
 After the controlled baseline, test a small number of owner-approved environments with different configurations, such as:

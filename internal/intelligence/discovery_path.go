@@ -10,17 +10,17 @@ import (
 // path through observed relationships rather than claiming that the endpoints
 // are directly related.
 type DiscoveryPath struct {
-	ID                    string             `json:"id"`
-	Type                  DiscoveryType     `json:"type"`
-	Entities              []string           `json:"entities"`
-	CorrelationIDs        []string           `json:"correlation_ids"`
-	SignalTypes           []CorrelationType  `json:"signal_types"`
-	SignalDiversity       int                `json:"signal_diversity"`
-	Confidence             string             `json:"confidence"`
-	Statement              string             `json:"statement"`
-	WhyItMatters           string             `json:"why_it_matters"`
+	ID                      string            `json:"id"`
+	Type                    DiscoveryType     `json:"type"`
+	Entities                []string          `json:"entities"`
+	CorrelationIDs          []string          `json:"correlation_ids"`
+	SignalTypes             []CorrelationType `json:"signal_types"`
+	SignalDiversity         int               `json:"signal_diversity"`
+	Confidence              string            `json:"confidence"`
+	Statement               string            `json:"statement"`
+	WhyItMatters            string            `json:"why_it_matters"`
 	AlternativeExplanations string            `json:"alternative_explanations"`
-	Verification           []string           `json:"verification_steps"`
+	Verification            []string          `json:"verification_steps"`
 }
 
 func (d DiscoveryPath) Validate() error {
@@ -52,7 +52,7 @@ func (d DiscoveryPath) Validate() error {
 }
 
 type discoveryEdge struct {
-	from, to string
+	from, to    string
 	correlation Correlation
 }
 
@@ -76,8 +76,12 @@ func (e *DiscoveryEngine) DiscoverPaths(correlations []Correlation, target strin
 		seen := make(map[string]struct{}, len(correlation.Entities))
 		for _, entity := range correlation.Entities {
 			entity = normalizeCorrelationEntity(entity)
-			if entity == "" { continue }
-			if _, ok := seen[entity]; ok { continue }
+			if entity == "" {
+				continue
+			}
+			if _, ok := seen[entity]; ok {
+				continue
+			}
 			seen[entity] = struct{}{}
 			entities = append(entities, entity)
 		}
@@ -92,28 +96,36 @@ func (e *DiscoveryEngine) DiscoverPaths(correlations []Correlation, target strin
 	resultsByID := make(map[string]DiscoveryPath)
 	for _, first := range adjacency[target] {
 		for _, second := range adjacency[first.to] {
-			if second.to == target || second.to == first.from { continue }
-			if correlationDimension(first.correlation.Type) == correlationDimension(second.correlation.Type) { continue }
+			if second.to == target || second.to == first.from {
+				continue
+			}
+			if correlationDimension(first.correlation.Type) == correlationDimension(second.correlation.Type) {
+				continue
+			}
 
 			// A path is only interesting if the intermediate node is the actual
 			// bridge. Direct target->endpoint convergence is already handled by
 			// Discover and should not be duplicated here.
-			if !containsEntity(first.correlation.Entities, target) || !containsEntity(second.correlation.Entities, first.to) { continue }
+			if !containsEntity(first.correlation.Entities, target) || !containsEntity(second.correlation.Entities, first.to) {
+				continue
+			}
 
 			entities := []string{target, first.to, second.to}
 			id := "discovery:path:" + strings.Join(entities, "|") + ":" + first.correlation.ID + ":" + second.correlation.ID
-			if _, exists := resultsByID[id]; exists { continue }
+			if _, exists := resultsByID[id]; exists {
+				continue
+			}
 
 			path := DiscoveryPath{
-				ID: id,
-				Type: DiscoveryConvergentInfrastructure,
-				Entities: entities,
-				CorrelationIDs: []string{first.correlation.ID, second.correlation.ID},
-				SignalTypes: []CorrelationType{first.correlation.Type, second.correlation.Type},
-				SignalDiversity: 2,
-				Confidence: "LOW",
-				Statement: fmt.Sprintf("%s reaches %s through %s, and %s is connected to %s through a different infrastructure dimension (%s).", target, first.to, first.correlation.Type, first.to, second.to, second.correlation.Type),
-				WhyItMatters: "KEM3T found a multi-hop infrastructure path that is easy to miss when relationships are inspected one correlation at a time. The intermediate entity may be a useful pivot for discovering infrastructure or ownership context around the target.",
+				ID:                      id,
+				Type:                    DiscoveryConvergentInfrastructure,
+				Entities:                entities,
+				CorrelationIDs:          []string{first.correlation.ID, second.correlation.ID},
+				SignalTypes:             []CorrelationType{first.correlation.Type, second.correlation.Type},
+				SignalDiversity:         2,
+				Confidence:              "LOW",
+				Statement:               fmt.Sprintf("%s reaches %s through %s, and %s is connected to %s through a different infrastructure dimension (%s).", target, first.to, first.correlation.Type, first.to, second.to, second.correlation.Type),
+				WhyItMatters:            "KEM3T found a multi-hop infrastructure path that is easy to miss when relationships are inspected one correlation at a time. The intermediate entity may be a useful pivot for discovering infrastructure or ownership context around the target.",
 				AlternativeExplanations: "Shared providers, CDNs, certificate-management platforms, common hosting, mirrored datasets, or unrelated tenants can create a path without any meaningful relationship between the endpoints.",
 				Verification: []string{
 					"Inspect both correlations and their evidence timestamps before treating the path as meaningful.",
@@ -122,13 +134,17 @@ func (e *DiscoveryEngine) DiscoverPaths(correlations []Correlation, target strin
 					"Look for an independent signal that connects the endpoints directly before asserting a relationship between them.",
 				},
 			}
-			if err := path.Validate(); err != nil { return nil, err }
+			if err := path.Validate(); err != nil {
+				return nil, err
+			}
 			resultsByID[id] = path
 		}
 	}
 
 	results := make([]DiscoveryPath, 0, len(resultsByID))
-	for _, result := range resultsByID { results = append(results, result) }
+	for _, result := range resultsByID {
+		results = append(results, result)
+	}
 	sort.Slice(results, func(i, j int) bool { return results[i].ID < results[j].ID })
 	return results, nil
 }

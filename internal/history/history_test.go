@@ -152,3 +152,33 @@ func TestBuildUnifiedInvestigationSnapshotIncludesMultipleCollectorTypes(t *test
 		t.Fatalf("expected root, subdomain, linked-IP, TCP, and CT evidence in one snapshot, got %+v", snapshot.Records)
 	}
 }
+
+func TestBuildSnapshotUsesExplicitRunProvenanceOverTimestampWindows(t *testing.T) {
+	start := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	run := evidence.CollectionRun{
+		ID: "dns-current", Target: "example.test", StartedAt: start,
+		FinishedAt: start.Add(time.Minute), Status: evidence.CollectionRunCompleted,
+	}
+	current := evidence.Evidence{ID: "dns-current-evidence", EntityID: "example.test", Type: evidence.TypeDNSAddress, Value: "192.0.2.10"}
+	otherRun := evidence.Evidence{ID: "dns-other-evidence", EntityID: "example.test", Type: evidence.TypeDNSAddress, Value: "192.0.2.11"}
+	legacy := evidence.Evidence{ID: "dns-legacy-evidence", EntityID: "example.test", Type: evidence.TypeDNSAddress, Value: "192.0.2.12"}
+	observations := []evidence.Observation{
+		{ID: "current-outside-window", EvidenceID: current.ID, CollectionRunID: run.ID, ObservedAt: start.Add(-time.Hour)},
+		{ID: "other-run-inside-window", EvidenceID: otherRun.ID, CollectionRunID: "dns-previous", ObservedAt: start.Add(time.Second)},
+		{ID: "legacy-inside-window", EvidenceID: legacy.ID, ObservedAt: start.Add(2 * time.Second)},
+	}
+	snapshot, err := BuildSnapshot(run, []evidence.Evidence{current, otherRun, legacy}, observations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Records) != 2 {
+		t.Fatalf("expected explicit current-run record plus legacy timestamp record, got %+v", snapshot.Records)
+	}
+	for _, record := range snapshot.Records {
+		for _, id := range record.ObservationIDs {
+			if id == "other-run-inside-window" {
+				t.Fatalf("observation from another run leaked into snapshot: %+v", snapshot.Records)
+			}
+		}
+	}
+}

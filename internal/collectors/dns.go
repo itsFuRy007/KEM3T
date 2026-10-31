@@ -25,6 +25,12 @@ type DNS struct {
 
 // Run resolves the target and emits one event per IP address.
 func (d *DNS) Run(ctx context.Context, output chan<- events.Event) error {
+	if ctx == nil {
+		return fmt.Errorf("context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	target := strings.TrimSpace(d.Target)
 	if target == "" {
 		return fmt.Errorf("DNS target is required")

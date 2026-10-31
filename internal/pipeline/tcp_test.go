@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/history"
 )
 
@@ -138,8 +139,14 @@ func TestRunTCPPersistsClosedStateWithoutCreatingOpenPortRelationship(t *testing
 	if len(result.Observations) != 1 {
 		t.Fatalf("observations = %d, want 1", len(result.Observations))
 	}
-	if len(result.Graph.Edges) != 0 {
-		t.Fatalf("closed port created graph relationships: %+v", result.Graph.Edges)
+	if len(result.Graph.Edges) != 1 || result.Graph.Edges[0].Type != graph.EdgeObservedTCPPortState ||
+		result.Graph.Edges[0].State != "closed" {
+		t.Fatalf("closed port should create only an evidence-backed closed-state relationship, got: %+v", result.Graph.Edges)
+	}
+	for _, edge := range result.Graph.Edges {
+		if edge.Type == graph.EdgeHasOpenPort {
+			t.Fatalf("closed port was incorrectly represented as open: %+v", edge)
+		}
 	}
 	if len(result.Normalized.Services) != 1 || result.Normalized.Services[0].State != "closed" {
 		t.Fatalf("normalized services = %+v, want closed state", result.Normalized.Services)

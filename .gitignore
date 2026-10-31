@@ -1,1 +1,15 @@
 .kem3t/
+
+# Local build and generated data
+/kem3t
+/kem3t.exe
+/dist/
+/reports/
+/snapshots/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm

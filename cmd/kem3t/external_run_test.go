@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -293,5 +295,28 @@ func TestRunExternalCollectionNormalizesTargetAndCountsNewDNSAddresses(t *testin
 	}
 	if runs[0].EventCount != 0 {
 		t.Fatalf("event count = %d, want 0", runs[0].EventCount)
+	}
+}
+
+func TestRunExternalCollectionMarksRunFailedWhenHistoryPersistenceFails(t *testing.T) {
+	snapshotDir := t.TempDir()
+	err := runExternalCollection("example.com", snapshotDir, "ct", 5*time.Second,
+		func(context.Context, *evidence.Registry, string) error {
+			return os.WriteFile(filepath.Join(snapshotDir, "history"), []byte("not a directory"), 0600)
+		})
+	if err == nil || !strings.Contains(err.Error(), "persist external collection history snapshot") {
+		t.Fatalf("expected history persistence error, got %v", err)
+	}
+	registry, openErr := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
+	if openErr != nil {
+		t.Fatalf("open evidence registry: %v", openErr)
+	}
+	defer registry.Close()
+	runs, loadErr := registry.CollectionRuns("example.com")
+	if loadErr != nil || len(runs) != 1 {
+		t.Fatalf("expected one finalized collection run, got %+v, %v", runs, loadErr)
+	}
+	if runs[0].Status != evidence.CollectionRunFailed || !strings.Contains(runs[0].ErrorMessage, "persist external collection history snapshot") {
+		t.Fatalf("history persistence failure was not reflected in run status: %+v", runs[0])
 	}
 }

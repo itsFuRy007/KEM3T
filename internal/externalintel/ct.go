@@ -3,9 +3,8 @@ package externalintel
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"encoding/hex"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,7 +17,7 @@ import (
 )
 
 const (
-	defaultCTEndpoint = "https://crt.sh/"
+	defaultCTEndpoint  = "https://crt.sh/"
 	maxCTResponseBytes = 4 << 20
 )
 
@@ -85,11 +84,6 @@ func (c *CTClient) LookupDomain(ctx context.Context, target string) (CTReport, e
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
 		return CTReport{}, fmt.Errorf("CT endpoint must be an absolute HTTPS URL")
 	}
-	query := parsed.Query()
-	query.Set("q", "%."+target)
-	query.Set("output", "json")
-	parsed.RawQuery = query.Encode()
-
 	timeout := c.Timeout
 	if timeout <= 0 {
 		timeout = 15 * time.Second
@@ -97,39 +91,50 @@ func (c *CTClient) LookupDomain(ctx context.Context, target string) (CTReport, e
 	requestCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, parsed.String(), nil)
-	if err != nil {
-		return CTReport{}, fmt.Errorf("create CT request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "KEM3T-External-Intelligence/1.0 (research)")
-
 	client := c.HTTPClient
 	if client == nil {
 		client = &http.Client{Timeout: timeout}
 	}
-	resp, err := doExternalRequest(ctx, client, req)
-	if err != nil {
-		return CTReport{}, fmt.Errorf("query Certificate Transparency source: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return CTReport{}, fmt.Errorf("CT source returned HTTP %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxCTResponseBytes+1))
-	if err != nil {
-		return CTReport{}, fmt.Errorf("read CT response: %w", err)
-	}
-	if len(body) > maxCTResponseBytes {
-		return CTReport{}, fmt.Errorf("CT response exceeds %d bytes", maxCTResponseBytes)
-	}
-	var rows []crtSHRow
-	if err := json.Unmarshal(body, &rows); err != nil {
-		return CTReport{}, fmt.Errorf("decode CT response: %w", err)
+	rows := make([]crtSHRow, 0)
+	for _, queryValue := range []string{target, "%." + target} {
+		queryURL := *parsed
+		query := queryURL.Query()
+		query.Set("q", queryValue)
+		query.Set("output", "json")
+		queryURL.RawQuery = query.Encode()
+
+		req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, queryURL.String(), nil)
+		if err != nil {
+			return CTReport{}, fmt.Errorf("create CT request for %q: %w", queryValue, err)
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", "KEM3T-External-Intelligence/1.0 (research)")
+
+		resp, err := doExternalRequest(requestCtx, client, req)
+		if err != nil {
+			return CTReport{}, fmt.Errorf("query Certificate Transparency source for %q: %w", queryValue, err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+			_ = resp.Body.Close()
+			return CTReport{}, fmt.Errorf("CT source returned HTTP %d for query %q", resp.StatusCode, queryValue)
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxCTResponseBytes+1))
+		_ = resp.Body.Close()
+		if err != nil {
+			return CTReport{}, fmt.Errorf("read CT response for %q: %w", queryValue, err)
+		}
+		if len(body) > maxCTResponseBytes {
+			return CTReport{}, fmt.Errorf("CT response for %q exceeds %d bytes", queryValue, maxCTResponseBytes)
+		}
+		var queryRows []crtSHRow
+		if err := json.Unmarshal(body, &queryRows); err != nil {
+			return CTReport{}, fmt.Errorf("decode CT response for %q: %w", queryValue, err)
+		}
+		rows = append(rows, queryRows...)
 	}
 
-	recordsByID := make(map[int]CTRecord)
+	recordsByID := make(map[string]CTRecord)
 	names := make(map[string]struct{})
 	issuers := make(map[string]struct{})
 	for _, row := range rows {
@@ -168,15 +173,25 @@ func (c *CTClient) LookupDomain(ctx context.Context, target string) (CTReport, e
 			NotBefore:     strings.TrimSpace(row.NotBefore),
 			NotAfter:      strings.TrimSpace(row.NotAfter),
 		}
-		if row.ID <= 0 {
-			// Some compatible endpoints omit IDs. Preserve the row deterministically
-			// without pretending it is a verified unique certificate.
-			record.CertificateID = 0
-			recordsByID[len(recordsByID)*-1-1] = record
-		} else if prior, exists := recordsByID[row.ID]; exists {
-			recordsByID[row.ID] = mergeCTRecords(prior, record)
+		key := ""
+		if row.ID > 0 {
+			key = fmt.Sprintf("id:%d", row.ID)
 		} else {
-			recordsByID[row.ID] = record
+			// Compatible endpoints may omit certificate IDs. Deduplicate identical
+			// rows returned by the apex and wildcard queries using normalized content,
+			// while keeping ID-less records distinct from provider-identified records.
+			record.CertificateID = 0
+			fingerprint, err := json.Marshal(record)
+			if err != nil {
+				return CTReport{}, fmt.Errorf("fingerprint CT row without certificate ID: %w", err)
+			}
+			sum := sha256.Sum256(fingerprint)
+			key = "content:" + hex.EncodeToString(sum[:])
+		}
+		if prior, exists := recordsByID[key]; exists {
+			recordsByID[key] = mergeCTRecords(prior, record)
+		} else {
+			recordsByID[key] = record
 		}
 		if issuer := strings.TrimSpace(row.IssuerName); issuer != "" {
 			issuers[issuer] = struct{}{}
@@ -225,23 +240,36 @@ func inDomainScope(name, target string) bool {
 
 func mergeCTRecords(a, b CTRecord) CTRecord {
 	names := make(map[string]struct{}, len(a.DNSNames)+len(b.DNSNames))
-	for _, name := range a.DNSNames { names[name] = struct{}{} }
-	for _, name := range b.DNSNames { names[name] = struct{}{} }
+	for _, name := range a.DNSNames {
+		names[name] = struct{}{}
+	}
+	for _, name := range b.DNSNames {
+		names[name] = struct{}{}
+	}
 	a.DNSNames = a.DNSNames[:0]
-	for name := range names { a.DNSNames = append(a.DNSNames, name) }
+	for name := range names {
+		a.DNSNames = append(a.DNSNames, name)
+	}
 	sort.Strings(a.DNSNames)
-	if a.CommonName == "" { a.CommonName = b.CommonName }
-	if a.IssuerName == "" { a.IssuerName = b.IssuerName }
-	if a.NotBefore == "" { a.NotBefore = b.NotBefore }
-	if a.NotAfter == "" { a.NotAfter = b.NotAfter }
+	if a.CommonName == "" {
+		a.CommonName = b.CommonName
+	}
+	if a.IssuerName == "" {
+		a.IssuerName = b.IssuerName
+	}
+	if a.NotBefore == "" {
+		a.NotBefore = b.NotBefore
+	}
+	if a.NotAfter == "" {
+		a.NotAfter = b.NotAfter
+	}
 	return a
 }
 
- 
 // RegisterCTReport persists certificate-name observations with stable evidence
 // IDs and timestamped observation IDs, allowing repeated queries to extend
 // provenance history without duplicating the underlying fact.
-func RegisterCTReport(registry *evidence.Registry, report CTReport) (int, error) {
+func RegisterCTReport(registry *evidence.Registry, report CTReport, provenance ...evidence.ObservationProvenance) (int, error) {
 	if registry == nil {
 		return 0, fmt.Errorf("evidence registry is required")
 	}
@@ -257,22 +285,23 @@ func RegisterCTReport(registry *evidence.Registry, report CTReport) (int, error)
 		return 0, fmt.Errorf("CT report retrieval timestamp is required")
 	}
 
-	added := 0
+	pendingEvidence := make([]evidence.Evidence, 0)
+	pendingObservations := make([]evidence.Observation, 0)
 	for _, record := range report.Records {
 		for _, rawName := range record.DNSNames {
 			name := normalizeDomain(rawName)
 			if !evidence.IsValidDomain(name) || !inDomainScope(name, target) {
-				return added, fmt.Errorf("CT report contains out-of-scope name %q", rawName)
+				return 0, fmt.Errorf("CT report contains out-of-scope name %q", rawName)
 			}
 			details := evidence.CTDNSNameDetails{
 				Target: target, DNSName: name, CertificateID: record.CertificateID,
 				IssuerName: strings.TrimSpace(record.IssuerName),
-				NotBefore: strings.TrimSpace(record.NotBefore), NotAfter: strings.TrimSpace(record.NotAfter),
+				NotBefore:  strings.TrimSpace(record.NotBefore), NotAfter: strings.TrimSpace(record.NotAfter),
 				Source: source, RetrievedAt: report.RetrievedAt.UTC(),
 			}
 			value, err := json.Marshal(details)
 			if err != nil {
-				return added, fmt.Errorf("encode CT evidence: %w", err)
+				return 0, fmt.Errorf("encode CT evidence: %w", err)
 			}
 			sum := sha256.Sum256(value)
 			factKey := hex.EncodeToString(sum[:])
@@ -280,22 +309,19 @@ func RegisterCTReport(registry *evidence.Registry, report CTReport) (int, error)
 				ID: "ct-dns-name:" + factKey, EntityID: target,
 				Type: evidence.TypeCTDNSName, Value: string(value),
 			}
-			if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
-				return added, fmt.Errorf("register CT evidence: %w", err)
-			}
 			eventID := "ct:" + factKey + ":" + fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
 			observation := evidence.Observation{
 				ID: "observation:" + eventID, EvidenceID: item.ID, Source: source,
 				ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID},
 			}
-			if err := registry.AddObservation(observation); err != nil {
-				if errors.Is(err, evidence.ErrObservationExists) {
-					continue
-				}
-				return added, fmt.Errorf("register CT observation: %w", err)
-			}
-			added++
+			applyRegistrationProvenance(&observation, provenance)
+			pendingEvidence = append(pendingEvidence, item)
+			pendingObservations = append(pendingObservations, observation)
 		}
+	}
+	added, err := registerEvidenceObservations(registry, pendingEvidence, pendingObservations)
+	if err != nil {
+		return 0, fmt.Errorf("register CT evidence batch: %w", err)
 	}
 	return added, nil
 }

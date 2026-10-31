@@ -11,6 +11,28 @@ import (
 func sampleMarkdownReport() IntelligenceReport {
 	return IntelligenceReport{
 		Target: "example.com",
+		ServiceSurfaces: []ServiceSurface{{
+			ID: "service-surface:example.com:443", Target: "example.com", Port: 443,
+			TCPStates: []string{"open"}, Protocols: []string{"tcp", "https"},
+			HTTP: []ServiceHTTPObservation{{
+				EvidenceID: "evidence:http", Scheme: "https", StatusCode: 200, Title: "Example",
+				Server: "test-server", FinalURL: "https://example.com/", TLSVersion: "TLS 1.3", TLSVerified: true,
+			}},
+			TLS: []ServiceTLSObservation{{
+				EvidenceID: "evidence:tls", Fingerprint: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				Subject: "CN=example.com", Issuer: "CN=Example CA", TLSVersion: "TLS 1.3",
+				Verified: true, NotAfter: testTimestamp().Add(365 * 24 * time.Hour),
+			}},
+			EvidenceIDs:    []string{"evidence:http", "evidence:tls"},
+			ObservationIDs: []string{"observation:http", "observation:tls"},
+			ObservationRefs: []ServiceObservationRef{{
+				EvidenceID: "evidence:http", ObservationID: "observation:http",
+				Source: "http-collector", ObservedAt: testTimestamp(),
+			}},
+			Summary:     "HTTPS service observed on example.com:443.",
+			Limitations: []string{"The Server header is not proof of the underlying software."},
+			NextSteps:   []string{"Review the certificate and endpoint behavior."},
+		}},
 		Narrative: ResearchNarrative{
 			Summary: "Two independent-looking signals deserve review.\nDo not treat this as proof.",
 			Signals: []NarrativeSignal{
@@ -31,16 +53,16 @@ func sampleMarkdownReport() IntelligenceReport {
 		}},
 		Discoveries: []Discovery{{
 			ID: "discovery:1", Type: DiscoveryConvergentInfrastructure, Entities: []string{"example.com", "api.example.net"},
-			SignalTypes: []CorrelationType{CorrelationSharedIPAddress, CorrelationSharedTLSCertificateFingerprint},
+			SignalTypes:    []CorrelationType{CorrelationSharedIPAddress, CorrelationSharedTLSCertificateFingerprint},
 			CorrelationIDs: []string{"correlation:1"}, Confidence: "LOW", Statement: "Signals converge across dimensions.",
 			WhyItMatters: "This is worth independent review.", AlternativeExplanations: "A shared provider may explain it.",
 			Verification: []string{"Inspect the source records."},
 		}},
 		DiscoveryPaths: []DiscoveryPath{{
 			ID: "path:2", Type: DiscoveryConvergentInfrastructure,
-			Entities: []string{"example.com", "pivot.example.com", "other.example.net"},
-			CorrelationIDs: []string{"correlation:1", "correlation:2"},
-			SignalTypes: []CorrelationType{CorrelationSharedIPAddress, CorrelationSharedTLSCertificateFingerprint},
+			Entities:        []string{"example.com", "pivot.example.com", "other.example.net"},
+			CorrelationIDs:  []string{"correlation:1", "correlation:2"},
+			SignalTypes:     []CorrelationType{CorrelationSharedIPAddress, CorrelationSharedTLSCertificateFingerprint},
 			SignalDiversity: 2, Confidence: "LOW", Statement: "A two-hop path reaches another host.",
 			WhyItMatters: "The intermediate entity may be useful.", AlternativeExplanations: "A CDN may explain the path.",
 			Verification: []string{"Inspect both hops."},
@@ -48,7 +70,7 @@ func sampleMarkdownReport() IntelligenceReport {
 		DiscoveryPivots: []DiscoveryPivot{{
 			ID: "pivot:1", Type: "DISCOVERY_PIVOT", Pivot: "pivot.example.com",
 			ConnectedEntities: []string{"example.com", "other.example.net"}, PathIDs: []string{"path:2", "path:3"},
-			SignalTypes: []CorrelationType{CorrelationSharedIPAddress, CorrelationSharedTLSCertificateFingerprint},
+			SignalTypes:     []CorrelationType{CorrelationSharedIPAddress, CorrelationSharedTLSCertificateFingerprint},
 			SignalDiversity: 2, Confidence: "LOW", Statement: "The pivot recurs across paths.",
 			WhyItMatters: "It may reveal a shared infrastructure hub.", AlternativeExplanations: "Shared hosting may explain it.",
 			Verification: []string{"Check the pivot independently."},
@@ -91,27 +113,37 @@ func testTimestamp() time.Time {
 func TestRenderMarkdownReportIncludesResearcherSectionsAndTraceability(t *testing.T) {
 	report := sampleMarkdownReport()
 	got, err := RenderMarkdownReport(report)
-	if err != nil { t.Fatalf("RenderMarkdownReport() error = %v", err) }
+	if err != nil {
+		t.Fatalf("RenderMarkdownReport() error = %v", err)
+	}
 	for _, want := range []string{
 		"# KEM3T Intelligence Dossier", "## Executive summary", "## Key signals",
+		"## Service surfaces", "Observation provenance", "TLS 1.3",
 		"## Direct correlations", "## Convergent discoveries", "## Multi-hop discovery paths",
-		"## Recurring infrastructure pivots", "## Hypotheses", "## Verification assessments",
-		"## Unresolved intelligence gaps", "## Prioritized findings", "## Researcher next steps",
-		"## Adaptive investigation plan", "## Interpretation limits", "`evidence:1`",
-		"`verification:yes`", "qualitative, not a probability",
+		"Signal types", "## Recurring infrastructure pivots", "## Hypotheses", "## Verification assessments",
+		"Supporting facts", "Contradicting facts", "## Unresolved intelligence gaps",
+		"## Prioritized findings", "## Researcher next steps", "## Adaptive investigation plan",
+		"## Interpretation limits", "`evidence:1`", "`verification:yes`",
+		"qualitative, not a probability",
 	} {
-		if !strings.Contains(got, want) { t.Errorf("Markdown report missing %q", want) }
+		if !strings.Contains(got, want) {
+			t.Errorf("Markdown report missing %q", want)
+		}
 	}
 }
 
 func TestRenderMarkdownReportEscapesUntrustedInlineText(t *testing.T) {
 	report := IntelligenceReport{
-		Target: "example.com",
+		Target:    "example.com",
 		Narrative: ResearchNarrative{Summary: "Heading\n<script>alert(1)</script> *not bold*"},
 	}
 	got, err := RenderMarkdownReport(report)
-	if err != nil { t.Fatal(err) }
-	if strings.Contains(got, "<script>") { t.Fatal("raw HTML was not escaped") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "<script>") {
+		t.Fatal("raw HTML was not escaped")
+	}
 	if !strings.Contains(got, "&lt;script&gt;") || !strings.Contains(got, "\\*not bold\\*") {
 		t.Fatalf("inline content was not safely escaped: %s", got)
 	}
@@ -121,11 +153,19 @@ func TestRenderMarkdownReportIsDeterministicAndDoesNotMutateInput(t *testing.T) 
 	report := sampleMarkdownReport()
 	firstID := report.Narrative.Signals[0].ID
 	first, err := RenderMarkdownReport(report)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	second, err := RenderMarkdownReport(report)
-	if err != nil { t.Fatal(err) }
-	if first != second { t.Fatal("Markdown rendering is not deterministic") }
-	if report.Narrative.Signals[0].ID != firstID { t.Fatal("renderer mutated report slices") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatal("Markdown rendering is not deterministic")
+	}
+	if report.Narrative.Signals[0].ID != firstID {
+		t.Fatal("renderer mutated report slices")
+	}
 }
 
 func TestRenderMarkdownReportRejectsMissingTarget(t *testing.T) {
@@ -146,7 +186,9 @@ func TestRenderMarkdownReportPreservesFeedbackAndPrioritizesActiveTasks(t *testi
 		},
 	}
 	got, err := RenderMarkdownReport(report)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	activeAt := strings.Index(got, "Collect an independent source.")
 	completedAt := strings.Index(got, "Review completed evidence.")
 	if activeAt < 0 || completedAt < 0 || activeAt > completedAt {

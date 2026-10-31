@@ -8,6 +8,8 @@ import (
 	"sync"
 )
 
+const MaxWorkers = 64
+
 type Result[T any, R any] struct {
 	Index int
 	Input T
@@ -21,14 +23,30 @@ type Result[T any, R any] struct {
 // Cancellation prevents queued items from starting. Started functions should
 // observe ctx themselves.
 func Run[T any, R any](ctx context.Context, inputs []T, workers int, fn func(context.Context, T) (R, error)) ([]Result[T, R], error) {
-	if ctx == nil { return nil, fmt.Errorf("context is required") }
-	if workers < 1 { return nil, fmt.Errorf("worker count must be at least one") }
-	if fn == nil { return nil, fmt.Errorf("work function is required") }
+	if ctx == nil {
+		return nil, fmt.Errorf("context is required")
+	}
+	if workers < 1 {
+		return nil, fmt.Errorf("worker count must be at least one")
+	}
+	if fn == nil {
+		return nil, fmt.Errorf("work function is required")
+	}
 	results := make([]Result[T, R], len(inputs))
-	if len(inputs) == 0 { return results, nil }
-	if workers > len(inputs) { workers = len(inputs) }
+	if len(inputs) == 0 {
+		return results, nil
+	}
+	if workers > len(inputs) {
+		workers = len(inputs)
+	}
+	if workers > MaxWorkers {
+		return nil, fmt.Errorf("worker count %d exceeds maximum %d", workers, MaxWorkers)
+	}
 
-	type job struct { index int; input T }
+	type job struct {
+		index int
+		input T
+	}
 	jobs := make(chan job)
 	var wg sync.WaitGroup
 	wg.Add(workers)
@@ -36,7 +54,7 @@ func Run[T any, R any](ctx context.Context, inputs []T, workers int, fn func(con
 		go func() {
 			defer wg.Done()
 			for item := range jobs {
-				result := Result[T, R]{Index:item.index, Input:item.input}
+				result := Result[T, R]{Index: item.index, Input: item.input}
 				if err := ctx.Err(); err != nil {
 					result.Err = err
 				} else {
@@ -48,10 +66,10 @@ func Run[T any, R any](ctx context.Context, inputs []T, workers int, fn func(con
 	}
 	for i, input := range inputs {
 		select {
-		case jobs <- job{index:i, input:input}:
+		case jobs <- job{index: i, input: input}:
 		case <-ctx.Done():
 			for j := i; j < len(inputs); j++ {
-				results[j] = Result[T, R]{Index:j, Input:inputs[j], Err:ctx.Err()}
+				results[j] = Result[T, R]{Index: j, Input: inputs[j], Err: ctx.Err()}
 			}
 			close(jobs)
 			wg.Wait()

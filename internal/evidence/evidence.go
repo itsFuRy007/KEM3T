@@ -46,6 +46,7 @@ type TLSCertificateDetails struct {
 	PublicKeyAlgorithm string    `json:"public_key_algorithm"`
 	TLSVersion         string    `json:"tls_version"`
 	Verified           bool      `json:"verified"`
+	VerificationError  string    `json:"verification_error,omitempty"`
 }
 
 // CTDNSNameDetails records a domain name observed in a CT certificate entry.
@@ -111,6 +112,7 @@ type PassiveDNSDetails struct {
 	LastSeen   string `json:"last_seen,omitempty"`
 	ASN        string `json:"asn,omitempty"`
 	Source     string `json:"source"`
+	Truncated  bool   `json:"truncated,omitempty"`
 }
 
 type ASNOriginRecord struct {
@@ -336,8 +338,16 @@ func validateTCPPortObservationEvidence(e Evidence) error {
 	return nil
 }
 
+func normalizeEvidenceHost(raw string) string {
+	host := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(raw)), ".")
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.String()
+	}
+	return host
+}
+
 func validateHTTPServiceEvidence(e Evidence) error {
-	target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(e.EntityID)), ".")
+	target := normalizeEvidenceHost(e.EntityID)
 	if !IsValidDomain(target) && net.ParseIP(target) == nil {
 		return errors.New("HTTP evidence entity ID must be a valid domain or IP address")
 	}
@@ -361,6 +371,12 @@ func validateHTTPServiceEvidence(e Evidence) error {
 		u, err := url.Parse(strings.TrimSpace(raw))
 		if err != nil || u == nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") {
 			return fmt.Errorf("HTTP service %s must be an absolute HTTP(S) URL", label)
+		}
+		if u.User != nil {
+			return fmt.Errorf("HTTP service %s cannot contain URL credentials", label)
+		}
+		if normalizeEvidenceHost(u.Hostname()) != target {
+			return fmt.Errorf("HTTP service %s host must match evidence target", label)
 		}
 	}
 	if d.RedirectCount < 0 {
@@ -524,21 +540,25 @@ func validateIPRDAPNetworkEvidence(e Evidence) error {
 	if err != nil {
 		return errors.New("IP RDAP evidence entity ID must be an IP address")
 	}
+	if target.Zone() != "" || target.Is4In6() || target.String() != strings.TrimSpace(e.EntityID) {
+		return errors.New("IP RDAP evidence entity ID must be normalized and cannot include a zone or mapped IPv4 address")
+	}
 	var d IPRDAPNetworkDetails
 	if err := json.Unmarshal([]byte(e.Value), &d); err != nil {
 		return fmt.Errorf("IP RDAP evidence value must be valid JSON: %w", err)
 	}
 	reportTarget, err := netip.ParseAddr(d.Target)
-	if err != nil || reportTarget != target {
-		return errors.New("IP RDAP target must match evidence entity ID")
+	if err != nil || reportTarget.Zone() != "" || reportTarget.Is4In6() ||
+		reportTarget.String() != d.Target || reportTarget != target {
+		return errors.New("IP RDAP target must match the normalized evidence entity ID")
 	}
 	start, err := netip.ParseAddr(d.StartAddress)
-	if err != nil {
-		return errors.New("IP RDAP start address is invalid")
+	if err != nil || start.Zone() != "" || start.Is4In6() || start.String() != d.StartAddress {
+		return errors.New("IP RDAP start address must be normalized and cannot include a zone or mapped IPv4 address")
 	}
 	end, err := netip.ParseAddr(d.EndAddress)
-	if err != nil {
-		return errors.New("IP RDAP end address is invalid")
+	if err != nil || end.Zone() != "" || end.Is4In6() || end.String() != d.EndAddress {
+		return errors.New("IP RDAP end address must be normalized and cannot include a zone or mapped IPv4 address")
 	}
 	if start.Is4() != target.Is4() || end.Is4() != target.Is4() || start.Compare(end) > 0 || target.Compare(start) < 0 || target.Compare(end) > 0 {
 		return errors.New("IP RDAP range must contain target and use a consistent address family")

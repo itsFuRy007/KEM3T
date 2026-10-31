@@ -36,6 +36,7 @@ const (
 	EdgeResolvesTo                EdgeType = "RESOLVES_TO"
 	EdgePresentsCertificate       EdgeType = "PRESENTS_CERTIFICATE"
 	EdgeHasOpenPort               EdgeType = "HAS_OPEN_PORT"
+	EdgeObservedTCPPortState      EdgeType = "OBSERVED_TCP_PORT_STATE"
 	EdgeServesHTTP                EdgeType = "SERVES_HTTP"
 	EdgeHostsService              EdgeType = "HOSTS_SERVICE"
 	EdgeCTSearchResult            EdgeType = "CT_SEARCH_RESULT"
@@ -61,6 +62,7 @@ type Edge struct {
 	Source         string   `json:"source"`
 	Target         string   `json:"target"`
 	Port           int      `json:"port,omitempty"`
+	State          string   `json:"state,omitempty"`
 	EvidenceIDs    []string `json:"evidence_ids"`
 	ObservationIDs []string `json:"observation_ids"`
 }
@@ -172,6 +174,36 @@ func Build(records []evidence.Evidence, observations []evidence.Observation) (Gr
 			edge, exists := edgesByID[edgeID]
 			if !exists {
 				edge = &Edge{ID: edgeID, Type: EdgeHasOpenPort, Source: host.ID, Target: portNode.ID, Port: details.Port}
+				edgesByID[edgeID] = edge
+			}
+			edge.EvidenceIDs = appendUnique(edge.EvidenceIDs, record.ID)
+			for _, observationID := range observationByEvidence[record.ID] {
+				edge.ObservationIDs = appendUnique(edge.ObservationIDs, observationID)
+			}
+
+		case evidence.TypeTCPPortObservation:
+			var details evidence.TCPPortObservationDetails
+			if err := json.Unmarshal([]byte(record.Value), &details); err != nil {
+				return Graph{}, fmt.Errorf("decode TCP state evidence %q: %w", record.ID, err)
+			}
+			target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(record.EntityID)), ".")
+			var host Node
+			if ip := net.ParseIP(target); ip != nil {
+				host = Node{ID: "ip:" + ip.String(), Type: NodeIP, Value: ip.String()}
+			} else {
+				if !evidence.IsValidDomain(target) {
+					return Graph{}, fmt.Errorf("TCP state evidence %q has an invalid target", record.ID)
+				}
+				host = Node{ID: "domain:" + target, Type: NodeDomain, Value: target}
+			}
+			state := strings.ToLower(strings.TrimSpace(details.State))
+			portNode := Node{ID: fmt.Sprintf("tcp-port:%s:%d", target, details.Port), Type: NodeTCPPort, Value: fmt.Sprintf("%s:%d", target, details.Port)}
+			nodesByID[host.ID] = host
+			nodesByID[portNode.ID] = portNode
+			edgeID := fmt.Sprintf("observed-tcp-port-state:%s:%d:%s", target, details.Port, state)
+			edge, exists := edgesByID[edgeID]
+			if !exists {
+				edge = &Edge{ID: edgeID, Type: EdgeObservedTCPPortState, Source: host.ID, Target: portNode.ID, Port: details.Port, State: state}
 				edgesByID[edgeID] = edge
 			}
 			edge.EvidenceIDs = appendUnique(edge.EvidenceIDs, record.ID)
@@ -625,6 +657,19 @@ func (g Graph) Validate() error {
 			if edge.ID != expectedID || target.ID != fmt.Sprintf("tcp-port:%s:%d", source.Value, edge.Port) || target.Value != fmt.Sprintf("%s:%d", source.Value, edge.Port) {
 				return fmt.Errorf("edge %q has an invalid TCP identity", edge.ID)
 			}
+		case EdgeObservedTCPPortState:
+			if (source.Type != NodeDomain && source.Type != NodeIP) || target.Type != NodeTCPPort {
+				return fmt.Errorf("edge %q has invalid TCP state endpoints", edge.ID)
+			}
+			if edge.Port < 1 || edge.Port > 65535 || (edge.State != "closed" && edge.State != "unknown") {
+				return fmt.Errorf("edge %q has an invalid TCP state or port", edge.ID)
+			}
+			expectedID := fmt.Sprintf("observed-tcp-port-state:%s:%d:%s", source.Value, edge.Port, edge.State)
+			if edge.ID != expectedID || target.ID != fmt.Sprintf("tcp-port:%s:%d", source.Value, edge.Port) ||
+				target.Value != fmt.Sprintf("%s:%d", source.Value, edge.Port) {
+				return fmt.Errorf("edge %q has an invalid TCP state identity", edge.ID)
+			}
+
 		case EdgeServesHTTP:
 			if (source.Type != NodeDomain && source.Type != NodeIP) || target.Type != NodeHTTPService {
 				return fmt.Errorf("edge %q has invalid HTTP endpoints", edge.ID)
