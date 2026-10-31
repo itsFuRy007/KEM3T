@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -132,7 +133,7 @@ func (e *HypothesisEngine) Generate(
 		}
 
 		switch correlation.Type {
-		case CorrelationSharedIPAddress, CorrelationSharedTLSCertificateFingerprint:
+		case CorrelationSharedIPAddress, CorrelationSharedTLSCertificateFingerprint, CorrelationSharedCTCertificateRecord, CorrelationSharedHistoricalIPAddress:
 			if err := validateHypothesisCorrelation(correlation); err != nil {
 				return nil, fmt.Errorf("invalid correlation %q: %w", correlation.ID, err)
 			}
@@ -204,6 +205,42 @@ func (e *HypothesisEngine) Generate(
 					"Check for wildcard certificates, shared hosting, centralized TLS termination, or managed certificate deployment before inferring a relationship.",
 					"Keep the hypothesis at LOW confidence unless independent evidence supports a more specific relationship, and record contradictory observations.",
 				}
+			} else if correlation.Type == CorrelationSharedHistoricalIPAddress {
+				title = "Potential historical infrastructure overlap"
+				statement = fmt.Sprintf(
+					"The entities %s had historical passive-DNS observations associated with IP address %s; this may indicate past use of the same address, but does not establish current connectivity or a present-day relationship.",
+					strings.Join(entities, ", "), correlation.SharedValue,
+				)
+				supportingFact = fmt.Sprintf(
+					"%d distinct entities have historical passive-DNS evidence referencing IP address %s.",
+					len(entities), correlation.SharedValue,
+				)
+				alternative = "The address may have been reassigned, used by shared hosting or a CDN, or reported by providers that mirror the same upstream dataset."
+				limitations = "Historical passive-DNS overlap does not establish simultaneous use, current resolution, common ownership, control, or a vulnerability. Provider timestamps may be incomplete, and source labels do not prove independent corroboration. Confidence is qualitative and is not a probability."
+				verification = []string{
+					"Inspect first-seen and last-seen timestamps for each supporting passive-DNS record and preserve the original provider data.",
+					"Compare the historical observations with current DNS and authorized service observations collected at known times.",
+					"Check address allocation, reassignment, shared hosting, CDN, and provider-mirroring explanations before inferring a relationship.",
+					"Seek an independent organizational or infrastructure signal; keep the hypothesis LOW confidence without it.",
+				}
+			} else if correlation.Type == CorrelationSharedCTCertificateRecord {
+				title = "Potential shared Certificate Transparency record"
+				statement = fmt.Sprintf(
+					"The entities %s are associated with the same Certificate Transparency record key (%s); this indicates a shared certificate-record reference, not necessarily shared hosting or current service deployment.",
+					strings.Join(entities, ", "), correlation.SharedValue,
+				)
+				supportingFact = fmt.Sprintf(
+					"%d distinct target scopes returned the same CT record key %s.",
+					len(entities), correlation.SharedValue,
+				)
+				alternative = "A single certificate may contain multiple unrelated names, and CT providers may expose the same underlying record for different names or mirror the same dataset."
+				limitations = "A shared CT record does not prove that the entities currently resolve to the same host, share ownership, are operated by the same party, or have a vulnerability. The record key is scoped to its CT source. Confidence is qualitative and is not a probability."
+				verification = []string{
+					"Retrieve and compare the underlying certificate, including SANs, validity period, issuer, and exact CT source and record identifier.",
+					"Correlate the certificate names with timestamped current DNS and authorized TLS observations; do not infer current hosting from CT data alone.",
+					"Check whether the names are unrelated tenants, wildcard coverage, or certificate-management artifacts.",
+					"Seek an independent organizational or service-level signal before making a stronger relationship claim.",
+				}
 			}
 			hypothesis := Hypothesis{
 				ID: "hypothesis:" + correlation.ID, Title: title, Statement: statement,
@@ -256,7 +293,22 @@ func validateHypothesisCorrelation(correlation Correlation) error {
 		if _, err := hex.DecodeString(fingerprint); err != nil || strings.ToLower(fingerprint) != fingerprint {
 			return fmt.Errorf("TLS certificate fingerprint must be lowercase hexadecimal")
 		}
-	}
+	case CorrelationSharedHistoricalIPAddress:
+		expectedScope = "OBSERVED_HISTORICAL_SHARED_ADDRESS"
+		ip := net.ParseIP(strings.TrimSpace(correlation.SharedValue))
+		if ip == nil || ip.String() != strings.TrimSpace(correlation.SharedValue) {
+			return fmt.Errorf("historical shared IP address must be valid and canonical")
+		}
+	case CorrelationSharedCTCertificateRecord:
+		expectedScope = "OBSERVED_SHARED_CT_CERTIFICATE_RECORD"
+		parts := strings.Split(strings.TrimSpace(correlation.SharedValue), "#")
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+			return fmt.Errorf("CT record key must contain a source and positive certificate ID")
+		}
+		certificateID, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || certificateID <= 0 || strconv.FormatInt(certificateID, 10) != parts[1] {
+			return fmt.Errorf("CT record key must contain a canonical positive certificate ID")
+		}
 	if correlation.ConfidenceScope != expectedScope {
 		return fmt.Errorf("confidence scope %q does not match correlation type", correlation.ConfidenceScope)
 	}
