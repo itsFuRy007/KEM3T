@@ -11,34 +11,34 @@ import (
 // InvestigationPlan is a deterministic, evidence-linked queue of next actions.
 // Rebuilding it against a newer report adapts the queue to newly observed facts.
 type InvestigationPlan struct {
-	Target   string         `json:"target"`
-	Revision string         `json:"revision"`
-	Summary  string         `json:"summary"`
+	Target   string              `json:"target"`
+	Revision string              `json:"revision"`
+	Summary  string              `json:"summary"`
 	Items    []InvestigationTask `json:"items"`
 }
 
 // InvestigationTask is one actionable unit in an investigation plan.
 type InvestigationTask struct {
-	ID           string   `json:"id"`
-	SourceID     string   `json:"source_id"`
-	SourceKind   string   `json:"source_kind"`
-	Action       string   `json:"action"`
-	Rationale    string   `json:"rationale"`
-	Priority     int      `json:"priority"`
-	PriorityLabel string  `json:"priority_label"`
-	Status       string   `json:"status"`
-	References   []string `json:"references"`
-	OutcomeNote  string   `json:"outcome_note,omitempty"`
-	EvidenceIDs  []string `json:"evidence_ids,omitempty"`
+	ID            string   `json:"id"`
+	SourceID      string   `json:"source_id"`
+	SourceKind    string   `json:"source_kind"`
+	Action        string   `json:"action"`
+	Rationale     string   `json:"rationale"`
+	Priority      int      `json:"priority"`
+	PriorityLabel string   `json:"priority_label"`
+	Status        string   `json:"status"`
+	References    []string `json:"references"`
+	OutcomeNote   string   `json:"outcome_note,omitempty"`
+	EvidenceIDs   []string `json:"evidence_ids,omitempty"`
 }
 
 const (
-	TaskRecommended    = "RECOMMENDED"
-	TaskCompleted      = "COMPLETED"
-	TaskInconclusive   = "INCONCLUSIVE"
-	TaskBlocked        = "BLOCKED"
-	TaskNotApplicable  = "NOT_APPLICABLE"
-	TaskStale          = "NO_LONGER_SUGGESTED"
+	TaskRecommended   = "RECOMMENDED"
+	TaskCompleted     = "COMPLETED"
+	TaskInconclusive  = "INCONCLUSIVE"
+	TaskBlocked       = "BLOCKED"
+	TaskNotApplicable = "NOT_APPLICABLE"
+	TaskStale         = "NO_LONGER_SUGGESTED"
 
 	FeedbackCompleted     = "COMPLETED"
 	FeedbackInconclusive  = "INCONCLUSIVE"
@@ -67,7 +67,9 @@ func BuildAdaptiveInvestigationPlan(
 		return InvestigationPlan{}, fmt.Errorf("investigation plan target is required")
 	}
 	if previous != nil {
-		if err := previous.Validate(); err != nil { return InvestigationPlan{}, fmt.Errorf("previous plan is invalid: %w", err) }
+		if err := previous.Validate(); err != nil {
+			return InvestigationPlan{}, fmt.Errorf("previous plan is invalid: %w", err)
+		}
 		if normalizeFindingTarget(previous.Target) != target {
 			return InvestigationPlan{}, fmt.Errorf("previous plan target does not match report target")
 		}
@@ -128,7 +130,9 @@ func BuildAdaptiveInvestigationPlan(
 		for _, old := range previous.Items {
 			if current, exists := items[old.ID]; exists {
 				current.Status = old.Status
-				if current.Status == TaskStale { current.Status = TaskRecommended }
+				if current.Status == TaskStale {
+					current.Status = TaskRecommended
+				}
 				current.OutcomeNote = old.OutcomeNote
 				current.EvidenceIDs = append([]string(nil), old.EvidenceIDs...)
 				items[old.ID] = current
@@ -171,17 +175,24 @@ func BuildAdaptiveInvestigationPlan(
 	sort.Slice(ordered, func(i, j int) bool {
 		leftActive, rightActive := ordered[i].Status == TaskRecommended || ordered[i].Status == TaskInconclusive,
 			ordered[j].Status == TaskRecommended || ordered[j].Status == TaskInconclusive
-		if leftActive != rightActive { return leftActive }
-		if ordered[i].Priority != ordered[j].Priority { return ordered[i].Priority > ordered[j].Priority }
+		if leftActive != rightActive {
+			return leftActive
+		}
+		if ordered[i].Priority != ordered[j].Priority {
+			return ordered[i].Priority > ordered[j].Priority
+		}
 		return ordered[i].ID < ordered[j].ID
 	})
 
 	active, completed, blocked := 0, 0, 0
 	for _, item := range ordered {
 		switch item.Status {
-		case TaskRecommended, TaskInconclusive: active++
-		case TaskCompleted: completed++
-		case TaskBlocked: blocked++
+		case TaskRecommended, TaskInconclusive:
+			active++
+		case TaskCompleted:
+			completed++
+		case TaskBlocked:
+			blocked++
 		}
 	}
 	plan := InvestigationPlan{
@@ -215,16 +226,25 @@ func (p InvestigationPlan) Validate() error {
 		}
 		switch item.Status {
 		case TaskRecommended, TaskCompleted, TaskInconclusive, TaskBlocked, TaskNotApplicable, TaskStale:
-		default: return fmt.Errorf("plan item %q has unsupported status %q", item.ID, item.Status)
+		default:
+			return fmt.Errorf("plan item %q has unsupported status %q", item.ID, item.Status)
 		}
-		if len(item.References) == 0 { return fmt.Errorf("plan item %q has no evidence references", item.ID) }
+		if len(item.References) == 0 {
+			return fmt.Errorf("plan item %q has no evidence references", item.ID)
+		}
 		for _, ref := range item.References {
-			if strings.TrimSpace(ref) == "" { return fmt.Errorf("plan item %q has an empty reference", item.ID) }
+			if strings.TrimSpace(ref) == "" {
+				return fmt.Errorf("plan item %q has an empty reference", item.ID)
+			}
 		}
 		for _, evidenceID := range item.EvidenceIDs {
-			if strings.TrimSpace(evidenceID) == "" { return fmt.Errorf("plan item %q has an empty evidence ID", item.ID) }
+			if strings.TrimSpace(evidenceID) == "" {
+				return fmt.Errorf("plan item %q has an empty evidence ID", item.ID)
+			}
 		}
-		if _, exists := seen[item.ID]; exists { return fmt.Errorf("duplicate plan item ID %q", item.ID) }
+		if _, exists := seen[item.ID]; exists {
+			return fmt.Errorf("duplicate plan item ID %q", item.ID)
+		}
 		seen[item.ID] = struct{}{}
 	}
 	return nil
@@ -233,32 +253,45 @@ func (p InvestigationPlan) Validate() error {
 func validateFeedback(feedback InvestigationFeedback) error {
 	switch feedback.Outcome {
 	case FeedbackCompleted:
-		if len(feedback.EvidenceIDs) == 0 { return fmt.Errorf("completed feedback requires evidence IDs") }
+		if len(feedback.EvidenceIDs) == 0 {
+			return fmt.Errorf("completed feedback requires evidence IDs")
+		}
 	case FeedbackInconclusive, FeedbackBlocked, FeedbackNotApplicable:
-		if strings.TrimSpace(feedback.Note) == "" { return fmt.Errorf("%s feedback requires an explanatory note", feedback.Outcome) }
+		if strings.TrimSpace(feedback.Note) == "" {
+			return fmt.Errorf("%s feedback requires an explanatory note", feedback.Outcome)
+		}
 	default:
 		return fmt.Errorf("unsupported outcome %q", feedback.Outcome)
 	}
 	for _, id := range feedback.EvidenceIDs {
-		if strings.TrimSpace(id) == "" { return fmt.Errorf("feedback contains an empty evidence ID") }
+		if strings.TrimSpace(id) == "" {
+			return fmt.Errorf("feedback contains an empty evidence ID")
+		}
 	}
 	return nil
 }
 
 func gapPriority(priority string) (int, string) {
 	switch priority {
-	case "HIGH": return 90, "HIGH"
-	case "MEDIUM": return 65, "MEDIUM"
-	default: return 40, "LOW"
+	case "HIGH":
+		return 90, "HIGH"
+	case "MEDIUM":
+		return 65, "MEDIUM"
+	default:
+		return 40, "LOW"
 	}
 }
 
 func findingPriorityScore(priority Priority) (int, string) {
 	switch priority {
-	case PriorityHigh: return 85, "HIGH"
-	case PriorityInterest: return 65, "MEDIUM"
-	case PriorityInfo: return 40, "LOW"
-	default: return 25, "LOW"
+	case PriorityHigh:
+		return 85, "HIGH"
+	case PriorityInterest:
+		return 65, "MEDIUM"
+	case PriorityInfo:
+		return 40, "LOW"
+	default:
+		return 25, "LOW"
 	}
 }
 
@@ -276,10 +309,9 @@ func planRevision(plan InvestigationPlan) string {
 	return hex.EncodeToString(sum[:12])
 }
 
- 
 // InvestigationPlanState persists the previous plan and feedback between runs.
 type InvestigationPlanState struct {
-	PreviousPlan *InvestigationPlan       `json:"previous_plan,omitempty"`
+	PreviousPlan *InvestigationPlan      `json:"previous_plan,omitempty"`
 	Feedback     []InvestigationFeedback `json:"feedback"`
 }
 

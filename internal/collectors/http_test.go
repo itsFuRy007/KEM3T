@@ -27,13 +27,27 @@ func TestHTTPCollectsResponseMetadataAndBoundsBody(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 	event := <-out
-	if event.Type != events.EventHTTPObserved { t.Fatalf("event type = %s", event.Type) }
-	if event.Data["status_code"] != "201" { t.Fatalf("status = %q", event.Data["status_code"]) }
-	if event.Data["title"] != "Test Page" { t.Fatalf("title = %q", event.Data["title"]) }
-	if event.Data["server"] != "test-server" { t.Fatalf("server = %q", event.Data["server"]) }
-	if event.Data["powered_by"] != "test-framework" { t.Fatalf("powered_by = %q", event.Data["powered_by"]) }
-	if event.Data["scheme"] != "http" { t.Fatalf("scheme = %q", event.Data["scheme"]) }
-	if event.Data["body_truncated"] != "false" { t.Fatalf("truncated = %q", event.Data["body_truncated"]) }
+	if event.Type != events.EventHTTPObserved {
+		t.Fatalf("event type = %s", event.Type)
+	}
+	if event.Data["status_code"] != "201" {
+		t.Fatalf("status = %q", event.Data["status_code"])
+	}
+	if event.Data["title"] != "Test Page" {
+		t.Fatalf("title = %q", event.Data["title"])
+	}
+	if event.Data["server"] != "test-server" {
+		t.Fatalf("server = %q", event.Data["server"])
+	}
+	if event.Data["powered_by"] != "test-framework" {
+		t.Fatalf("powered_by = %q", event.Data["powered_by"])
+	}
+	if event.Data["scheme"] != "http" {
+		t.Fatalf("scheme = %q", event.Data["scheme"])
+	}
+	if event.Data["body_truncated"] != "false" {
+		t.Fatalf("truncated = %q", event.Data["body_truncated"])
+	}
 }
 
 func TestHTTPFollowsRedirectAndRecordsFinalURL(t *testing.T) {
@@ -48,15 +62,26 @@ func TestHTTPFollowsRedirectAndRecordsFinalURL(t *testing.T) {
 	})
 	out := make(chan events.Event, 1)
 	c := &HTTP{Target: server.URL + "/start", Scheme: "auto", Timeout: time.Second}
-	if err := c.Run(context.Background(), out); err != nil { t.Fatalf("Run() error = %v", err) }
+	if err := c.Run(context.Background(), out); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
 	event := <-out
-	if event.Data["redirect_count"] != "1" { t.Fatalf("redirect_count = %q", event.Data["redirect_count"]) }
-	if !strings.HasSuffix(event.Data["final_url"], "/final") { t.Fatalf("final_url = %q", event.Data["final_url"]) }
-	if event.Data["status_code"] != "204" { t.Fatalf("status = %q", event.Data["status_code"]) }
+	if event.Data["redirect_count"] != "1" {
+		t.Fatalf("redirect_count = %q", event.Data["redirect_count"])
+	}
+	if !strings.HasSuffix(event.Data["final_url"], "/final") {
+		t.Fatalf("final_url = %q", event.Data["final_url"])
+	}
+	if event.Data["status_code"] != "204" {
+		t.Fatalf("status = %q", event.Data["status_code"])
+	}
 }
 
 func TestHTTPRejectsInvalidInput(t *testing.T) {
-	tests := []struct { name string; collector HTTP }{
+	tests := []struct {
+		name      string
+		collector HTTP
+	}{
 		{name: "empty target", collector: HTTP{Scheme: "auto"}},
 		{name: "invalid scheme", collector: HTTP{Target: "example.com", Scheme: "ftp"}},
 		{name: "invalid port", collector: HTTP{Target: "example.com", Scheme: "http", Port: 65536}},
@@ -75,7 +100,9 @@ func TestHTTPHonorsCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	err := (&HTTP{Target: "127.0.0.1", Scheme: "http"}).Run(ctx, make(chan events.Event, 1))
-	if err == nil { t.Fatal("expected context cancellation") }
+	if err == nil {
+		t.Fatal("expected context cancellation")
+	}
 }
 
 func TestHTTPMarksBoundedBodyAsTruncated(t *testing.T) {

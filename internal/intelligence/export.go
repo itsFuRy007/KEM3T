@@ -29,11 +29,11 @@ type ExportInvestigation struct {
 
 // ExportCollection preserves the temporal context for one DNS collection.
 type ExportCollection struct {
-	BaselineCreated  bool                   `json:"baseline_created"`
-	CurrentSnapshot  snapshots.Snapshot     `json:"current_snapshot"`
-	PreviousSnapshot *snapshots.Snapshot    `json:"previous_snapshot,omitempty"`
-	Changes          []ExportChange         `json:"changes"`
-	History          *ExportDNSHistory      `json:"history,omitempty"`
+	BaselineCreated  bool                `json:"baseline_created"`
+	CurrentSnapshot  snapshots.Snapshot  `json:"current_snapshot"`
+	PreviousSnapshot *snapshots.Snapshot `json:"previous_snapshot,omitempty"`
+	Changes          []ExportChange      `json:"changes"`
+	History          *ExportDNSHistory   `json:"history,omitempty"`
 }
 
 // ExportChange describes a difference between two observed snapshots.
@@ -46,12 +46,12 @@ type ExportChange struct {
 // ExportDNSHistory uses explicit JSON names and clarifies that removed addresses
 // were absent from the newer snapshot, not proven absent from global infrastructure.
 type ExportDNSHistory struct {
-	Target                   string   `json:"target"`
-	Added                    []string `json:"added_between_snapshots"`
-	Removed                  []string `json:"removed_between_snapshots"`
-	Unchanged                []string `json:"unchanged_between_snapshots"`
-	PreviousObservedCount    int      `json:"previous_observed_count"`
-	CurrentObservedCount     int      `json:"current_observed_count"`
+	Target                string   `json:"target"`
+	Added                 []string `json:"added_between_snapshots"`
+	Removed               []string `json:"removed_between_snapshots"`
+	Unchanged             []string `json:"unchanged_between_snapshots"`
+	PreviousObservedCount int      `json:"previous_observed_count"`
+	CurrentObservedCount  int      `json:"current_observed_count"`
 }
 
 // Validate rejects incomplete exports and mismatched scope before data leaves KEM3T.

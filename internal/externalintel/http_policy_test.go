@@ -13,7 +13,9 @@ import (
 func TestDoExternalRequestRetriesTransientStatus(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet { t.Errorf("method=%s, want GET", r.Method) }
+		if r.Method != http.MethodGet {
+			t.Errorf("method=%s, want GET", r.Method)
+		}
 		if calls.Add(1) == 1 {
 			w.Header().Set("Retry-After", "0")
 			http.Error(w, "temporary", http.StatusServiceUnavailable)
@@ -23,12 +25,20 @@ func TestDoExternalRequestRetriesTransientStatus(t *testing.T) {
 	}))
 	defer server.Close()
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	resp, err := doExternalRequest(context.Background(), server.Client(), req)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK { t.Fatalf("status=%d, want 200", resp.StatusCode) }
-	if got := calls.Load(); got != 2 { t.Fatalf("calls=%d, want 2", got) }
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d, want 200", resp.StatusCode)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("calls=%d, want 2", got)
+	}
 }
 
 func TestDoExternalRequestDoesNotRetryPermanentClientError(t *testing.T) {
@@ -40,9 +50,13 @@ func TestDoExternalRequestDoesNotRetryPermanentClientError(t *testing.T) {
 	defer server.Close()
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
 	resp, err := doExternalRequest(context.Background(), server.Client(), req)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	resp.Body.Close()
-	if got := calls.Load(); got != 1 { t.Fatalf("calls=%d, want 1", got) }
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("calls=%d, want 1", got)
+	}
 }
 
 func TestDoExternalRequestCancellationInterruptsRetryWait(t *testing.T) {
@@ -62,14 +76,22 @@ func TestDoExternalRequestCancellationInterruptsRetryWait(t *testing.T) {
 	cancel()
 	select {
 	case err := <-done:
-		if err == nil { t.Fatal("expected cancellation error") }
+		if err == nil {
+			t.Fatal("expected cancellation error")
+		}
 	case <-time.After(time.Second):
 		t.Fatal("request retry wait did not honor cancellation")
 	}
 }
 
 func TestRetryDelayHonorsAndCapsRetryAfter(t *testing.T) {
-	if got := retryDelay(0, "2"); got != 2*time.Second { t.Fatalf("got %v, want 2s", got) }
-	if got := retryDelay(0, "999"); got != externalMaxRetryDelay { t.Fatalf("got %v, want capped delay", got) }
-	if got := retryDelay(0, "invalid"); got <= 0 { t.Fatalf("expected fallback delay, got %v", got) }
+	if got := retryDelay(0, "2"); got != 2*time.Second {
+		t.Fatalf("got %v, want 2s", got)
+	}
+	if got := retryDelay(0, "999"); got != externalMaxRetryDelay {
+		t.Fatalf("got %v, want capped delay", got)
+	}
+	if got := retryDelay(0, "invalid"); got <= 0 {
+		t.Fatalf("expected fallback delay, got %v", got)
+	}
 }

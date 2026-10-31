@@ -41,8 +41,12 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 		sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 		for _, item := range items {
 			fmt.Fprintf(&b, "### %s — %s\n\n", mdText(item.Kind), mdText(item.Summary))
-			if item.Confidence != "" { fmt.Fprintf(&b, "- **Confidence:** %s\n", mdText(item.Confidence)) }
-			if item.AlternativeExplanations != "" { fmt.Fprintf(&b, "- **Alternative explanations / limitations:** %s\n", mdText(item.AlternativeExplanations)) }
+			if item.Confidence != "" {
+				fmt.Fprintf(&b, "- **Confidence:** %s\n", mdText(item.Confidence))
+			}
+			if item.AlternativeExplanations != "" {
+				fmt.Fprintf(&b, "- **Alternative explanations / limitations:** %s\n", mdText(item.AlternativeExplanations))
+			}
 			writeMarkdownRefs(&b, "References", item.References)
 			b.WriteString("\n")
 		}
@@ -56,8 +60,12 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 			fmt.Fprintf(&b, "### %s\n\n", mdCode(item.ID))
 			fmt.Fprintf(&b, "- **Signal:** %s\n- **Entities:** %s\n- **Shared value:** %s\n- **Confidence scope:** %s\n",
 				mdText(string(item.Type)), mdText(strings.Join(item.Entities, ", ")), mdCode(item.SharedValue), mdText(item.Confidence+" ("+item.ConfidenceScope+")"))
-			if item.Explanation != "" { fmt.Fprintf(&b, "- **Interpretation:** %s\n", mdText(item.Explanation)) }
-			if item.Limitations != "" { fmt.Fprintf(&b, "- **Limitations:** %s\n", mdText(item.Limitations)) }
+			if item.Explanation != "" {
+				fmt.Fprintf(&b, "- **Interpretation:** %s\n", mdText(item.Explanation))
+			}
+			if item.Limitations != "" {
+				fmt.Fprintf(&b, "- **Limitations:** %s\n", mdText(item.Limitations))
+			}
 			writeMarkdownRefs(&b, "Evidence", item.EvidenceIDs)
 			writeMarkdownRefs(&b, "Observations", item.ObservationIDs)
 			b.WriteString("\n")
@@ -129,7 +137,9 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 			writeMarkdownRefs(&b, "Supporting evidence", item.SupportingEvidenceIDs)
 			writeMarkdownRefs(&b, "Contradicting evidence", item.ContradictingEvidenceIDs)
 			writeMarkdownRefs(&b, "Excluded / non-independent evidence", item.ExcludedEvidenceIDs)
-			if item.Limitations != "" { fmt.Fprintf(&b, "- **Limitations:** %s\n", mdText(item.Limitations)) }
+			if item.Limitations != "" {
+				fmt.Fprintf(&b, "- **Limitations:** %s\n", mdText(item.Limitations))
+			}
 			b.WriteString("\n")
 		}
 	}
@@ -151,14 +161,22 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 		b.WriteString("## Prioritized findings\n\n")
 		items := append([]PrioritizedFinding(nil), report.PrioritizedFindings...)
 		sort.Slice(items, func(i, j int) bool {
-			if items[i].Priority != items[j].Priority { return items[i].Priority > items[j].Priority }
+			if items[i].Priority != items[j].Priority {
+				return items[i].Priority > items[j].Priority
+			}
 			return items[i].Finding.Title < items[j].Finding.Title
 		})
 		for _, item := range items {
 			fmt.Fprintf(&b, "### [%s] %s\n\n**Fact:** %s\n\n", mdText(string(item.Priority)), mdText(item.Finding.Title), mdText(item.Finding.Fact))
-			if item.Finding.Observation != "" { fmt.Fprintf(&b, "**Observation:** %s\n\n", mdText(item.Finding.Observation)) }
-			if item.Finding.PossibleSignificance != "" { fmt.Fprintf(&b, "**Possible significance:** %s\n\n", mdText(item.Finding.PossibleSignificance)) }
-			if item.Reason != "" { fmt.Fprintf(&b, "**Priority rationale:** %s\n\n", mdText(item.Reason)) }
+			if item.Finding.Observation != "" {
+				fmt.Fprintf(&b, "**Observation:** %s\n\n", mdText(item.Finding.Observation))
+			}
+			if item.Finding.PossibleSignificance != "" {
+				fmt.Fprintf(&b, "**Possible significance:** %s\n\n", mdText(item.Finding.PossibleSignificance))
+			}
+			if item.Reason != "" {
+				fmt.Fprintf(&b, "**Priority rationale:** %s\n\n", mdText(item.Reason))
+			}
 			writeMarkdownRefs(&b, "Source events", eventIDs(item.Finding.Evidence))
 			writeMarkdownSteps(&b, "Suggested next steps", item.Finding.NextSteps)
 			b.WriteString("\n")
@@ -185,13 +203,19 @@ func RenderMarkdownReport(report IntelligenceReport) (string, error) {
 		sort.Slice(items, func(i, j int) bool {
 			leftActive := items[i].Status == TaskRecommended || items[i].Status == TaskInconclusive
 			rightActive := items[j].Status == TaskRecommended || items[j].Status == TaskInconclusive
-			if leftActive != rightActive { return leftActive }
-			if items[i].Priority != items[j].Priority { return items[i].Priority > items[j].Priority }
+			if leftActive != rightActive {
+				return leftActive
+			}
+			if items[i].Priority != items[j].Priority {
+				return items[i].Priority > items[j].Priority
+			}
 			return items[i].ID < items[j].ID
 		})
 		for _, item := range items {
 			fmt.Fprintf(&b, "### [%s | %s] %s\n\n%s\n\n", mdText(item.Status), mdText(item.PriorityLabel), mdText(item.Action), mdText(item.Rationale))
-			if item.OutcomeNote != "" { fmt.Fprintf(&b, "- **Investigator note:** %s\n", mdText(item.OutcomeNote)) }
+			if item.OutcomeNote != "" {
+				fmt.Fprintf(&b, "- **Investigator note:** %s\n", mdText(item.OutcomeNote))
+			}
 			writeMarkdownRefs(&b, "References", item.References)
 			writeMarkdownRefs(&b, "Outcome evidence", item.EvidenceIDs)
 			b.WriteString("\n")
@@ -234,30 +258,44 @@ func markdownRefValues(values []string) string {
 }
 
 func writeMarkdownRefs(b *strings.Builder, label string, values []string) {
-	if len(values) == 0 { return }
+	if len(values) == 0 {
+		return
+	}
 	items := append([]string(nil), values...)
 	sort.Strings(items)
 	items = uniqueStrings(items)
 	fmt.Fprintf(b, "- **%s:** ", label)
 	for i, item := range items {
-		if i > 0 { b.WriteString(", ") }
+		if i > 0 {
+			b.WriteString(", ")
+		}
 		b.WriteString(mdCode(item))
 	}
 	b.WriteString("\n")
 }
 
 func writeMarkdownSteps(b *strings.Builder, label string, values []string) {
-	if len(values) == 0 { return }
-	if label != "" { fmt.Fprintf(b, "- **%s:**\n", label) }
+	if len(values) == 0 {
+		return
+	}
+	if label != "" {
+		fmt.Fprintf(b, "- **%s:**\n", label)
+	}
 	for _, value := range values {
-		if label == "" { fmt.Fprintf(b, "- %s\n", mdText(value)) } else { fmt.Fprintf(b, "  - %s\n", mdText(value)) }
+		if label == "" {
+			fmt.Fprintf(b, "- %s\n", mdText(value))
+		} else {
+			fmt.Fprintf(b, "  - %s\n", mdText(value))
+		}
 	}
 }
 
 func eventIDs(events []events.Event) []string {
 	ids := make([]string, 0, len(events))
 	for _, event := range events {
-		if strings.TrimSpace(event.ID) != "" { ids = append(ids, event.ID) }
+		if strings.TrimSpace(event.ID) != "" {
+			ids = append(ids, event.ID)
+		}
 	}
 	sort.Strings(ids)
 	return uniqueStrings(ids)

@@ -15,8 +15,8 @@ import (
 // gate prevents concurrent modes from independently overwhelming one provider.
 const (
 	externalMinRequestInterval = 150 * time.Millisecond
-	externalMaxAttempts = 4
-	externalMaxRetryDelay = 10 * time.Second
+	externalMaxAttempts        = 4
+	externalMaxRetryDelay      = 10 * time.Second
 )
 
 var providerGate = struct {

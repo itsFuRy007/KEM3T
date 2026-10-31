@@ -31,20 +31,32 @@ func TestCTLookupNormalizesDeduplicatesAndScopesNames(t *testing.T) {
 	defer server.Close()
 
 	client := &CTClient{
-		Endpoint: server.URL,
+		Endpoint:   server.URL,
 		HTTPClient: server.Client(),
-		Now: func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) },
+		Now:        func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) },
 	}
 	report, err := client.LookupDomain(context.Background(), "Example.COM.")
-	if err != nil { t.Fatal(err) }
-	if report.Target != "example.com" { t.Fatalf("target = %q", report.Target) }
-	if report.CertificateRecords != 2 { t.Fatalf("records = %d", report.CertificateRecords) }
-	if report.UniqueDNSNames != 4 { t.Fatalf("unique names = %d (%v)", report.UniqueDNSNames, report.DNSNames) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Target != "example.com" {
+		t.Fatalf("target = %q", report.Target)
+	}
+	if report.CertificateRecords != 2 {
+		t.Fatalf("records = %d", report.CertificateRecords)
+	}
+	if report.UniqueDNSNames != 4 {
+		t.Fatalf("unique names = %d (%v)", report.UniqueDNSNames, report.DNSNames)
+	}
 	if strings.Join(report.DNSNames, ",") != "admin.example.com,api.example.com,shop.example.com,www.example.com" {
 		t.Fatalf("unexpected names: %v", report.DNSNames)
 	}
-	if report.UniqueIssuers != 2 { t.Fatalf("issuers = %d", report.UniqueIssuers) }
-	if len(report.Limitations) < 2 { t.Fatal("expected explicit limitations") }
+	if report.UniqueIssuers != 2 {
+		t.Fatalf("issuers = %d", report.UniqueIssuers)
+	}
+	if len(report.Limitations) < 2 {
+		t.Fatal("expected explicit limitations")
+	}
 }
 
 func TestCTRejectsInvalidTargetAndNonHTTPSEndpoint(t *testing.T) {
@@ -68,7 +80,9 @@ func TestCTRejectsOversizedAndInvalidResponses(t *testing.T) {
 		client := &CTClient{Endpoint: server.URL, HTTPClient: server.Client()}
 		_, err := client.LookupDomain(context.Background(), "example.com")
 		server.Close()
-		if err == nil { t.Fatal("expected response error") }
+		if err == nil {
+			t.Fatal("expected response error")
+		}
 	}
 }
 
@@ -96,13 +110,23 @@ func TestRegisterCTReportBuildsEvidenceBackedGraph(t *testing.T) {
 		}},
 	}
 	added, err := RegisterCTReport(registry, report)
-	if err != nil { t.Fatal(err) }
-	if added != 3 { t.Fatalf("registered observations = %d, want 3", added) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if added != 3 {
+		t.Fatalf("registered observations = %d, want 3", added)
+	}
 
 	g, err := graph.BuildFromRegistry(registry)
-	if err != nil { t.Fatal(err) }
-	if len(g.Nodes) != 4 { t.Fatalf("graph nodes = %d, want 4", len(g.Nodes)) }
-	if len(g.Edges) != 4 { t.Fatalf("graph edges = %d, want 4", len(g.Edges)) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g.Nodes) != 4 {
+		t.Fatalf("graph nodes = %d, want 4", len(g.Nodes))
+	}
+	if len(g.Edges) != 4 {
+		t.Fatalf("graph edges = %d, want 4", len(g.Edges))
+	}
 	for _, edge := range g.Edges {
 		if len(edge.EvidenceIDs) == 0 || len(edge.ObservationIDs) == 0 {
 			t.Fatalf("CT graph edge lacks provenance: %+v", edge)
@@ -110,8 +134,12 @@ func TestRegisterCTReportBuildsEvidenceBackedGraph(t *testing.T) {
 	}
 
 	added, err = RegisterCTReport(registry, report)
-	if err != nil { t.Fatal(err) }
-	if added != 0 { t.Fatalf("duplicate report added %d observations, want 0", added) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if added != 0 {
+		t.Fatalf("duplicate report added %d observations, want 0", added)
+	}
 }
 
 func TestRegisterCTReportRejectsOutOfScopeName(t *testing.T) {

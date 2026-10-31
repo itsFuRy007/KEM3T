@@ -138,22 +138,27 @@ func BenchmarkSQLiteLoadCollectionRuns(b *testing.B) {
 	}
 }
 
-
 func BenchmarkSQLiteSaveBatch100(b *testing.B) {
-	store,err:=OpenSQLiteStore(":memory:");if err!=nil{b.Fatal(err)};defer store.Close()
-	ctx:=context.Background()
-	observedAt:=time.Date(2026,10,29,12,0,0,0,time.UTC)
-	const batchSize=100
+	store, err := OpenSQLiteStore(":memory:")
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	observedAt := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	const batchSize = 100
 	b.ReportAllocs()
 	b.ResetTimer()
-	for batch:=0;batch<b.N;batch++{
-		records:=make([]Evidence,batchSize)
-		observations:=make([]Observation,batchSize)
-		for i:=0;i<batchSize;i++{
-			id:=batch*batchSize+i
-			records[i]=Evidence{ID:fmt.Sprintf("batch-evidence-%d",id),EntityID:"example.com",Type:TypeDNSAddress,Value:"192.0.2.10"}
-			observations[i]=Observation{ID:fmt.Sprintf("batch-observation-%d",id),EvidenceID:records[i].ID,Source:"benchmark",ObservedAt:observedAt,EventIDs:[]string{fmt.Sprintf("batch-event-%d",id)}}
+	for batch := 0; batch < b.N; batch++ {
+		records := make([]Evidence, batchSize)
+		observations := make([]Observation, batchSize)
+		for i := 0; i < batchSize; i++ {
+			id := batch*batchSize + i
+			records[i] = Evidence{ID: fmt.Sprintf("batch-evidence-%d", id), EntityID: "example.com", Type: TypeDNSAddress, Value: "192.0.2.10"}
+			observations[i] = Observation{ID: fmt.Sprintf("batch-observation-%d", id), EvidenceID: records[i].ID, Source: "benchmark", ObservedAt: observedAt, EventIDs: []string{fmt.Sprintf("batch-event-%d", id)}}
 		}
-		if err:=store.SaveBatch(ctx,records,observations);err!=nil{b.Fatal(err)}
+		if err := store.SaveBatch(ctx, records, observations); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

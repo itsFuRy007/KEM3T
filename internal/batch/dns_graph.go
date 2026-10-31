@@ -17,12 +17,12 @@ const DNSGraphSchemaVersion = 1
 // batch DNS run. It retains observation timestamps and evidence-store references
 // so consumers can trace each edge back to the original per-target evidence.
 type DNSInvestigationGraph struct {
-	SchemaVersion int                `json:"schema_version"`
-	GeneratedAt   time.Time          `json:"generated_at"`
-	Summary       DNSGraphSummary    `json:"summary"`
-	Nodes         []DNSGraphNode     `json:"nodes"`
-	Edges         []DNSGraphEdge     `json:"edges"`
-	Limitations   []string           `json:"limitations"`
+	SchemaVersion int             `json:"schema_version"`
+	GeneratedAt   time.Time       `json:"generated_at"`
+	Summary       DNSGraphSummary `json:"summary"`
+	Nodes         []DNSGraphNode  `json:"nodes"`
+	Edges         []DNSGraphEdge  `json:"edges"`
+	Limitations   []string        `json:"limitations"`
 }
 
 type DNSGraphSummary struct {
@@ -52,20 +52,19 @@ type DNSGraphEdge struct {
 	Interpretation string    `json:"interpretation,omitempty"`
 }
 
-
 // DNSGraphChanges compares consecutive graph snapshots while avoiding false
 // disappearance claims for targets that failed or were omitted from the new run.
 type DNSGraphChanges struct {
-	SchemaVersion             int           `json:"schema_version"`
-	BaselineAvailable         bool          `json:"baseline_available"`
-	BaselineGeneratedAt       time.Time     `json:"baseline_generated_at,omitempty"`
-	CurrentGeneratedAt        time.Time     `json:"current_generated_at"`
-	AddedResolutionEdges      []DNSGraphEdge `json:"added_resolution_edges"`
-	NoLongerObservedEdges     []DNSGraphEdge `json:"no_longer_observed_edges"`
-	AddedSharedAddressGroups  []string      `json:"added_shared_address_groups"`
-	RemovedSharedAddressGroups []string     `json:"removed_shared_address_groups"`
-	SkippedRemovalsForTargets []string      `json:"skipped_removals_for_targets"`
-	Limitations               []string      `json:"limitations"`
+	SchemaVersion              int            `json:"schema_version"`
+	BaselineAvailable          bool           `json:"baseline_available"`
+	BaselineGeneratedAt        time.Time      `json:"baseline_generated_at,omitempty"`
+	CurrentGeneratedAt         time.Time      `json:"current_generated_at"`
+	AddedResolutionEdges       []DNSGraphEdge `json:"added_resolution_edges"`
+	NoLongerObservedEdges      []DNSGraphEdge `json:"no_longer_observed_edges"`
+	AddedSharedAddressGroups   []string       `json:"added_shared_address_groups"`
+	RemovedSharedAddressGroups []string       `json:"removed_shared_address_groups"`
+	SkippedRemovalsForTargets  []string       `json:"skipped_removals_for_targets"`
+	Limitations                []string       `json:"limitations"`
 }
 
 // BuildDNSGraphChanges detects changes between consecutive DNS graph snapshots.
@@ -74,13 +73,13 @@ type DNSGraphChanges struct {
 // explicitly skipped rather than misrepresented as negative DNS evidence.
 func BuildDNSGraphChanges(previous *DNSInvestigationGraph, current DNSInvestigationGraph) DNSGraphChanges {
 	changes := DNSGraphChanges{
-		SchemaVersion: DNSGraphSchemaVersion,
-		CurrentGeneratedAt: current.GeneratedAt,
-		AddedResolutionEdges: make([]DNSGraphEdge, 0),
-		NoLongerObservedEdges: make([]DNSGraphEdge, 0),
-		AddedSharedAddressGroups: make([]string, 0),
+		SchemaVersion:              DNSGraphSchemaVersion,
+		CurrentGeneratedAt:         current.GeneratedAt,
+		AddedResolutionEdges:       make([]DNSGraphEdge, 0),
+		NoLongerObservedEdges:      make([]DNSGraphEdge, 0),
+		AddedSharedAddressGroups:   make([]string, 0),
 		RemovedSharedAddressGroups: make([]string, 0),
-		SkippedRemovalsForTargets: make([]string, 0),
+		SkippedRemovalsForTargets:  make([]string, 0),
 		Limitations: []string{
 			"DNS relationship changes compare collection snapshots; they do not prove infrastructure ownership, causation, or malicious activity.",
 			"A relationship absent from a snapshot means it was not observed in that run, not necessarily that it ceased to exist globally.",
@@ -195,9 +194,9 @@ func BuildDNSInvestigationGraph(outcomes []DNSOutcome, generatedAt time.Time) DN
 	}
 	graph := DNSInvestigationGraph{
 		SchemaVersion: DNSGraphSchemaVersion,
-		GeneratedAt: generatedAt,
-		Nodes: make([]DNSGraphNode, 0),
-		Edges: make([]DNSGraphEdge, 0),
+		GeneratedAt:   generatedAt,
+		Nodes:         make([]DNSGraphNode, 0),
+		Edges:         make([]DNSGraphEdge, 0),
 		Limitations: []string{
 			"Observed DNS resolution is time-scoped and does not guarantee current resolution.",
 			"A shared address is a correlation lead only; CDNs, shared hosting, reverse proxies, cloud platforms, and unrelated tenants can share an IP.",

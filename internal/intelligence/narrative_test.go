@@ -37,33 +37,65 @@ func TestBuildResearchNarrativeTraceability(t *testing.T) {
 		}},
 	}
 	narrative, err := BuildResearchNarrative(report)
-	if err != nil { t.Fatalf("BuildResearchNarrative() error = %v", err) }
-	if !strings.Contains(narrative.Summary, "example.com") { t.Fatalf("target missing from summary: %q", narrative.Summary) }
-	if len(narrative.Signals) != 4 { t.Fatalf("signals = %d, want 4", len(narrative.Signals)) }
+	if err != nil {
+		t.Fatalf("BuildResearchNarrative() error = %v", err)
+	}
+	if !strings.Contains(narrative.Summary, "example.com") {
+		t.Fatalf("target missing from summary: %q", narrative.Summary)
+	}
+	if len(narrative.Signals) != 4 {
+		t.Fatalf("signals = %d, want 4", len(narrative.Signals))
+	}
 	var evidenceRef, mixedAssessment bool
 	for _, signal := range narrative.Signals {
-		for _, ref := range signal.References { if ref == "evidence:evidence-a" { evidenceRef = true } }
-		if signal.Kind == "VERIFICATION_ASSESSMENT" && strings.Contains(signal.Summary, "MIXED") { mixedAssessment = true }
+		for _, ref := range signal.References {
+			if ref == "evidence:evidence-a" {
+				evidenceRef = true
+			}
+		}
+		if signal.Kind == "VERIFICATION_ASSESSMENT" && strings.Contains(signal.Summary, "MIXED") {
+			mixedAssessment = true
+		}
 	}
-	if !evidenceRef { t.Fatal("original evidence reference was not preserved") }
-	if !mixedAssessment { t.Fatal("mixed verification status was not surfaced") }
-	if len(narrative.NextSteps) != 3 { t.Fatalf("next steps = %d, want 3", len(narrative.NextSteps)) }
-	for _, step := range narrative.NextSteps { if len(step.References) == 0 { t.Errorf("step %q has no references", step.ID) } }
-	if err := narrative.Validate(); err != nil { t.Fatalf("Validate() error = %v", err) }
+	if !evidenceRef {
+		t.Fatal("original evidence reference was not preserved")
+	}
+	if !mixedAssessment {
+		t.Fatal("mixed verification status was not surfaced")
+	}
+	if len(narrative.NextSteps) != 3 {
+		t.Fatalf("next steps = %d, want 3", len(narrative.NextSteps))
+	}
+	for _, step := range narrative.NextSteps {
+		if len(step.References) == 0 {
+			t.Errorf("step %q has no references", step.ID)
+		}
+	}
+	if err := narrative.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
 }
 
 func TestBuildResearchNarrativeEmptyReport(t *testing.T) {
 	narrative, err := BuildResearchNarrative(IntelligenceReport{Target: "example.com"})
-	if err != nil { t.Fatalf("BuildResearchNarrative() error = %v", err) }
-	if !strings.Contains(narrative.Summary, "No evidence-backed signals") { t.Fatalf("unexpected summary: %q", narrative.Summary) }
-	if narrative.Signals == nil || narrative.NextSteps == nil { t.Fatal("empty collections must be arrays") }
+	if err != nil {
+		t.Fatalf("BuildResearchNarrative() error = %v", err)
+	}
+	if !strings.Contains(narrative.Summary, "No evidence-backed signals") {
+		t.Fatalf("unexpected summary: %q", narrative.Summary)
+	}
+	if narrative.Signals == nil || narrative.NextSteps == nil {
+		t.Fatal("empty collections must be arrays")
+	}
 }
 
 func TestResearchNarrativeRejectsUnlinkedSignal(t *testing.T) {
 	err := (ResearchNarrative{
-		Summary: "A summary.",
-		Signals: []NarrativeSignal{{ID: "signal", Kind: "TEST", Summary: "Unlinked signal."}},
+		Summary:   "A summary.",
+		Signals:   []NarrativeSignal{{ID: "signal", Kind: "TEST", Summary: "Unlinked signal."}},
 		NextSteps: []NarrativeNextStep{},
 	}).Validate()
-	if err == nil { t.Fatal("expected unlinked signal to be rejected") }
+	if err == nil {
+		t.Fatal("expected unlinked signal to be rejected")
+	}
 }

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/events"
+	"github.com/itsFuRy007/kem3t/internal/evidence"
 )
 
 func TestReportEngineRejectsMissingTarget(t *testing.T) {
@@ -231,7 +231,6 @@ func TestReportEngineExcludesCorrelationsUnrelatedToTarget(t *testing.T) {
 	}
 }
 
-
 func reportScopeFinding(id, target string) Finding {
 	return Finding{
 		Title:    "Observed asset " + target,
@@ -240,7 +239,7 @@ func reportScopeFinding(id, target string) Finding {
 		Evidence: []events.Event{{
 			ID: id, Type: events.EventSubdomainDiscovered,
 			Timestamp: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-			Target: target, Source: "test",
+			Target:    target, Source: "test",
 		}},
 	}
 }
@@ -291,14 +290,13 @@ func TestReportEngineRejectsMixedScopeAggregateFinding(t *testing.T) {
 	finding.Evidence = append(finding.Evidence, events.Event{
 		ID: "out-of-scope", Type: events.EventSubdomainDiscovered,
 		Timestamp: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		Target: "other.example.net", Source: "test",
+		Target:    "other.example.net", Source: "test",
 	})
 	_, err := (&ReportEngine{}).Build("example.com", []Finding{finding}, registry)
 	if err == nil {
 		t.Fatal("expected mixed-scope aggregate finding to be rejected")
 	}
 }
-
 
 func TestReportEngineIncludesSharedTLSCertificateIntelligence(t *testing.T) {
 	registry := evidence.NewRegistry()
@@ -335,7 +333,6 @@ func TestReportEngineIncludesSharedTLSCertificateIntelligence(t *testing.T) {
 		t.Fatalf("expected conservative LOW confidence, got %q", report.Hypotheses[0].Confidence)
 	}
 }
-
 
 // TestReportEngineIntegratesEvidenceCorrelationHypothesisAndVerification exercises
 // the complete Phase 5 path and ensures original evidence cannot corroborate itself.
@@ -429,7 +426,6 @@ func TestReportEngineRejectsVerificationForUnknownHypothesis(t *testing.T) {
 		t.Fatal("expected unknown hypothesis verification to be rejected")
 	}
 }
-
 
 func TestReportEngineBuildsMultiHopPathsAndRecurringPivots(t *testing.T) {
 	registry := evidence.NewRegistry()

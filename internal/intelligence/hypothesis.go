@@ -237,7 +237,6 @@ func (e *HypothesisEngine) Generate(
 	return results, nil
 }
 
-
 // validateHypothesisCorrelation prevents malformed correlation objects from
 // being promoted into apparently authoritative intelligence.
 func validateHypothesisCorrelation(correlation Correlation) error {
@@ -283,14 +282,13 @@ func uniqueStrings(values []string) []string {
 	return result
 }
 
-
 // VerificationRelation records whether an independently collected fact supports
 // or contradicts a hypothesis. The engine never infers this relation itself.
 type VerificationRelation string
 
 const (
-	VerificationSupports     VerificationRelation = "SUPPORTS"
-	VerificationContradicts  VerificationRelation = "CONTRADICTS"
+	VerificationSupports    VerificationRelation = "SUPPORTS"
+	VerificationContradicts VerificationRelation = "CONTRADICTS"
 )
 
 // VerificationStatus is an evidence assessment, not a probability or a verdict
@@ -309,24 +307,24 @@ const (
 // investigator. Independent must be true only when the fact is independent of
 // the evidence that originally generated the hypothesis.
 type VerificationEvidence struct {
-	ID          string              `json:"id"`
-	Fact        string              `json:"fact"`
+	ID          string               `json:"id"`
+	Fact        string               `json:"fact"`
 	Relation    VerificationRelation `json:"relation"`
-	Independent bool                `json:"independent"`
+	Independent bool                 `json:"independent"`
 }
 
 // VerificationAssessment preserves both corroboration and contradiction so
 // that conflicting evidence is not silently collapsed into a single score.
 type VerificationAssessment struct {
-	HypothesisID           string              `json:"hypothesis_id"`
-	Status                 VerificationStatus  `json:"status"`
-	SupportingEvidenceIDs  []string            `json:"supporting_evidence_ids"`
-	SupportingFacts        []string            `json:"supporting_facts"`
-	ContradictingEvidenceIDs []string          `json:"contradicting_evidence_ids"`
-	ContradictingFacts     []string            `json:"contradicting_facts"`
-	ExcludedEvidenceIDs    []string            `json:"excluded_evidence_ids"`
-	Explanation            string              `json:"explanation"`
-	Limitations            string              `json:"limitations"`
+	HypothesisID             string             `json:"hypothesis_id"`
+	Status                   VerificationStatus `json:"status"`
+	SupportingEvidenceIDs    []string           `json:"supporting_evidence_ids"`
+	SupportingFacts          []string           `json:"supporting_facts"`
+	ContradictingEvidenceIDs []string           `json:"contradicting_evidence_ids"`
+	ContradictingFacts       []string           `json:"contradicting_facts"`
+	ExcludedEvidenceIDs      []string           `json:"excluded_evidence_ids"`
+	Explanation              string             `json:"explanation"`
+	Limitations              string             `json:"limitations"`
 }
 
 // Assess evaluates investigator-classified verification evidence without
@@ -341,14 +339,14 @@ func (e *HypothesisEngine) Assess(
 	}
 
 	assessment := VerificationAssessment{
-		HypothesisID: hypothesis.ID,
-		Status: VerificationUnverified,
-		SupportingEvidenceIDs: []string{},
-		SupportingFacts: []string{},
+		HypothesisID:             hypothesis.ID,
+		Status:                   VerificationUnverified,
+		SupportingEvidenceIDs:    []string{},
+		SupportingFacts:          []string{},
 		ContradictingEvidenceIDs: []string{},
-		ContradictingFacts: []string{},
-		ExcludedEvidenceIDs: []string{},
-		Limitations: "Assessment status summarizes explicitly classified evidence only; it is not a probability or proof. Independence is supplied by the investigator and cannot be established from an evidence ID alone.",
+		ContradictingFacts:       []string{},
+		ExcludedEvidenceIDs:      []string{},
+		Limitations:              "Assessment status summarizes explicitly classified evidence only; it is not a probability or proof. Independence is supplied by the investigator and cannot be established from an evidence ID alone.",
 	}
 	originalIDs := make(map[string]struct{}, len(hypothesis.SupportingIDs))
 	for _, id := range hypothesis.SupportingIDs {

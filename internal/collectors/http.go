@@ -2,8 +2,8 @@ package collectors
 
 import (
 	"context"
-	"crypto/tls"
 	"crypto/sha256"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -136,7 +136,11 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 	}
 	port, err := strconv.Atoi(requestURL.Port())
 	if requestURL.Port() == "" {
-		if scheme == "https" { port = 443 } else { port = 80 }
+		if scheme == "https" {
+			port = 443
+		} else {
+			port = 80
+		}
 	} else if err != nil || port < 1 || port > 65535 {
 		return events.Event{}, fmt.Errorf("invalid HTTP URL port")
 	}
@@ -145,13 +149,13 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 
 	redirectCount := 0
 	transport := &http.Transport{
-		Proxy: nil,
+		Proxy:           nil,
 		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 	}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{
 		Transport: transport,
-		Timeout: timeout,
+		Timeout:   timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
 				return fmt.Errorf("redirect to unsupported scheme")
@@ -189,7 +193,9 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 	title := ""
 	if match := titlePattern.FindSubmatch(body); len(match) == 2 {
 		title = strings.Join(strings.Fields(string(match[1])), " ")
-		if len(title) > 512 { title = title[:512] }
+		if len(title) > 512 {
+			title = title[:512]
+		}
 	}
 	tlsVersion, tlsVerified := "", false
 	if resp.TLS != nil {
@@ -198,21 +204,23 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 	}
 	finalURL := resp.Request.URL.String()
 	location := strings.TrimSpace(resp.Header.Get("Location"))
-	if location != "" && len(location) > 2048 { location = location[:2048] }
+	if location != "" && len(location) > 2048 {
+		location = location[:2048]
+	}
 	data := map[string]string{
 		"scheme": scheme, "port": strconv.Itoa(port), "url": requestURL.String(),
 		"final_url": finalURL, "status_code": strconv.Itoa(resp.StatusCode),
 		"content_type": boundedHeader(resp.Header.Get("Content-Type")),
-		"server": boundedHeader(resp.Header.Get("Server")),
-		"powered_by": boundedHeader(resp.Header.Get("X-Powered-By")),
-		"title": title, "location": location,
+		"server":       boundedHeader(resp.Header.Get("Server")),
+		"powered_by":   boundedHeader(resp.Header.Get("X-Powered-By")),
+		"title":        title, "location": location,
 		"redirect_count": strconv.Itoa(redirectCount),
 		"body_truncated": strconv.FormatBool(truncated),
-		"tls_version": tlsVersion, "tls_verified": strconv.FormatBool(tlsVerified),
+		"tls_version":    tlsVersion, "tls_verified": strconv.FormatBool(tlsVerified),
 	}
 	now := time.Now().UTC()
 	return events.Event{
-		ID: fmt.Sprintf("http-%d-%x", now.UnixNano(), hashPrefix(requestURL.String())),
+		ID:   fmt.Sprintf("http-%d-%x", now.UnixNano(), hashPrefix(requestURL.String())),
 		Type: events.EventHTTPObserved, Timestamp: now, Target: host,
 		Source: "http-collector", Data: data,
 	}, nil
@@ -220,15 +228,20 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 
 func boundedHeader(value string) string {
 	value = strings.TrimSpace(value)
-	if len(value) > 512 { return value[:512] }
+	if len(value) > 512 {
+		return value[:512]
+	}
 	return value
 }
 
 func tlsVersionLabel(version uint16) string {
 	switch version {
-	case tls.VersionTLS12: return "TLS 1.2"
-	case tls.VersionTLS13: return "TLS 1.3"
-	default: return fmt.Sprintf("unknown (0x%04x)", version)
+	case tls.VersionTLS12:
+		return "TLS 1.2"
+	case tls.VersionTLS13:
+		return "TLS 1.3"
+	default:
+		return fmt.Sprintf("unknown (0x%04x)", version)
 	}
 }
 

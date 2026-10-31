@@ -3,8 +3,8 @@ package externalintel
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	defaultCTEndpoint = "https://crt.sh/"
+	defaultCTEndpoint  = "https://crt.sh/"
 	maxCTResponseBytes = 4 << 20
 )
 
@@ -225,19 +225,32 @@ func inDomainScope(name, target string) bool {
 
 func mergeCTRecords(a, b CTRecord) CTRecord {
 	names := make(map[string]struct{}, len(a.DNSNames)+len(b.DNSNames))
-	for _, name := range a.DNSNames { names[name] = struct{}{} }
-	for _, name := range b.DNSNames { names[name] = struct{}{} }
+	for _, name := range a.DNSNames {
+		names[name] = struct{}{}
+	}
+	for _, name := range b.DNSNames {
+		names[name] = struct{}{}
+	}
 	a.DNSNames = a.DNSNames[:0]
-	for name := range names { a.DNSNames = append(a.DNSNames, name) }
+	for name := range names {
+		a.DNSNames = append(a.DNSNames, name)
+	}
 	sort.Strings(a.DNSNames)
-	if a.CommonName == "" { a.CommonName = b.CommonName }
-	if a.IssuerName == "" { a.IssuerName = b.IssuerName }
-	if a.NotBefore == "" { a.NotBefore = b.NotBefore }
-	if a.NotAfter == "" { a.NotAfter = b.NotAfter }
+	if a.CommonName == "" {
+		a.CommonName = b.CommonName
+	}
+	if a.IssuerName == "" {
+		a.IssuerName = b.IssuerName
+	}
+	if a.NotBefore == "" {
+		a.NotBefore = b.NotBefore
+	}
+	if a.NotAfter == "" {
+		a.NotAfter = b.NotAfter
+	}
 	return a
 }
 
- 
 // RegisterCTReport persists certificate-name observations with stable evidence
 // IDs and timestamped observation IDs, allowing repeated queries to extend
 // provenance history without duplicating the underlying fact.
@@ -267,7 +280,7 @@ func RegisterCTReport(registry *evidence.Registry, report CTReport) (int, error)
 			details := evidence.CTDNSNameDetails{
 				Target: target, DNSName: name, CertificateID: record.CertificateID,
 				IssuerName: strings.TrimSpace(record.IssuerName),
-				NotBefore: strings.TrimSpace(record.NotBefore), NotAfter: strings.TrimSpace(record.NotAfter),
+				NotBefore:  strings.TrimSpace(record.NotBefore), NotAfter: strings.TrimSpace(record.NotAfter),
 				Source: source, RetrievedAt: report.RetrievedAt.UTC(),
 			}
 			value, err := json.Marshal(details)

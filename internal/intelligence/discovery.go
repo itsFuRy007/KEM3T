@@ -17,18 +17,18 @@ const (
 // Discovery represents a cross-signal lead surfaced by combining distinct
 // correlation dimensions. It is deliberately not a verdict or probability.
 type Discovery struct {
-	ID                     string           `json:"id"`
-	Type                   DiscoveryType    `json:"type"`
-	Entities               []string         `json:"entities"`
-	SignalTypes            []CorrelationType `json:"signal_types"`
-	CorrelationIDs         []string         `json:"correlation_ids"`
-	SharedValues           []string         `json:"shared_values"`
-	SignalDiversity        int              `json:"signal_diversity"`
-	Confidence             string           `json:"confidence"`
-	Statement              string           `json:"statement"`
-	WhyItMatters           string           `json:"why_it_matters"`
-	AlternativeExplanations string          `json:"alternative_explanations"`
-	Verification            []string         `json:"verification_steps"`
+	ID                      string            `json:"id"`
+	Type                    DiscoveryType     `json:"type"`
+	Entities                []string          `json:"entities"`
+	SignalTypes             []CorrelationType `json:"signal_types"`
+	CorrelationIDs          []string          `json:"correlation_ids"`
+	SharedValues            []string          `json:"shared_values"`
+	SignalDiversity         int               `json:"signal_diversity"`
+	Confidence              string            `json:"confidence"`
+	Statement               string            `json:"statement"`
+	WhyItMatters            string            `json:"why_it_matters"`
+	AlternativeExplanations string            `json:"alternative_explanations"`
+	Verification            []string          `json:"verification_steps"`
 }
 
 // Validate checks that a discovery is complete and traceable to correlations.
@@ -135,16 +135,16 @@ func (e *DiscoveryEngine) Discover(correlations []Correlation, target string) ([
 		sort.Strings(entities)
 
 		discovery := Discovery{
-			ID: "discovery:convergent:" + strings.Join(entities, "|"),
-			Type: DiscoveryConvergentInfrastructure,
-			Entities: entities,
-			SignalTypes: allTypes,
-			CorrelationIDs: correlationIDs,
-			SharedValues: sharedValues,
-			SignalDiversity: len(dimensions),
-			Confidence: "MODERATE",
-			Statement: fmt.Sprintf("%s and %s are connected by infrastructure signals across %d distinct dimensions: %s.", entities[0], entities[1], len(dimensions), strings.Join(sortedStrings(dimensions), ", ")),
-			WhyItMatters: "No single correlation had to be decisive: KEM3T surfaced this relationship because the same pair reappears across different evidence dimensions. This is a higher-value investigation lead than an isolated shared-IP or shared-certificate observation.",
+			ID:                      "discovery:convergent:" + strings.Join(entities, "|"),
+			Type:                    DiscoveryConvergentInfrastructure,
+			Entities:                entities,
+			SignalTypes:             allTypes,
+			CorrelationIDs:          correlationIDs,
+			SharedValues:            sharedValues,
+			SignalDiversity:         len(dimensions),
+			Confidence:              "MODERATE",
+			Statement:               fmt.Sprintf("%s and %s are connected by infrastructure signals across %d distinct dimensions: %s.", entities[0], entities[1], len(dimensions), strings.Join(sortedStrings(dimensions), ", ")),
+			WhyItMatters:            "No single correlation had to be decisive: KEM3T surfaced this relationship because the same pair reappears across different evidence dimensions. This is a higher-value investigation lead than an isolated shared-IP or shared-certificate observation.",
 			AlternativeExplanations: "Managed hosting, CDN or reverse-proxy infrastructure, wildcard or centrally managed certificates, certificate transparency reuse, mirrored provider data, or unrelated tenants can create convergent signals without common ownership.",
 			Verification: []string{
 				"Inspect the supporting correlations and their evidence timestamps rather than treating the discovery itself as evidence.",
@@ -183,7 +183,9 @@ func containsEntity(entities []string, target string) bool {
 }
 
 func pairKey(a, b string) string {
-	if a > b { a, b = b, a }
+	if a > b {
+		a, b = b, a
+	}
 	return a + "\x00" + b
 }
 
@@ -206,7 +208,9 @@ func uniqueCorrelationTypes(values []CorrelationType) []CorrelationType {
 	seen := make(map[CorrelationType]struct{}, len(values))
 	result := make([]CorrelationType, 0, len(values))
 	for _, value := range values {
-		if _, ok := seen[value]; ok { continue }
+		if _, ok := seen[value]; ok {
+			continue
+		}
 		seen[value] = struct{}{}
 		result = append(result, value)
 	}
@@ -216,7 +220,9 @@ func uniqueCorrelationTypes(values []CorrelationType) []CorrelationType {
 
 func sortedStrings(values map[string]struct{}) []string {
 	result := make([]string, 0, len(values))
-	for value := range values { result = append(result, value) }
+	for value := range values {
+		result = append(result, value)
+	}
 	sort.Strings(result)
 	return result
 }

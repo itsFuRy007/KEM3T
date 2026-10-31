@@ -116,7 +116,6 @@ func TestPersistDNSBatchReportWritesGraphAndReferencesIt(t *testing.T) {
 	}
 }
 
-
 func TestBuildDNSGraphChangesDoesNotTreatFailedOrMissingScopesAsDisappearance(t *testing.T) {
 	when := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
 	previous := BuildDNSInvestigationGraph([]DNSOutcome{
