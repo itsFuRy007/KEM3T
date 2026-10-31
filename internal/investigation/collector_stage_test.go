@@ -98,3 +98,37 @@ func TestEventTargetScopeAllowsSubdomainsButNotSiblingDomains(t *testing.T) {
 		t.Fatal("different IP was accepted")
 	}
 }
+
+
+type failingCollector struct {
+	event events.Event
+	err error
+}
+
+func (c failingCollector) Run(ctx context.Context, out chan<- events.Event) error {
+	select {
+	case out <- c.event:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return c.err
+}
+
+func TestCollectorStageDoesNotCommitPartialOutputOnCollectorFailure(t *testing.T) {
+	registry := evidence.NewRegistry()
+	stage := CollectorStage{
+		StageName: "dns-failing",
+		Collector: failingCollector{event: dnsEvent("event-partial", "example.com", "203.0.113.20"), err: errors.New("simulated collector failure")},
+		Convert: evidence.FromDNSEvent,
+	}
+	result, err := stage.Run(context.Background(), "example.com", registry)
+	if err == nil {
+		t.Fatal("expected collector failure")
+	}
+	if len(registry.AllEvidence()) != 0 || len(registry.AllObservations()) != 0 {
+		t.Fatalf("failed stage left partial registry state: evidence=%d observations=%d", len(registry.AllEvidence()), len(registry.AllObservations()))
+	}
+	if len(result.Findings) != 0 {
+		t.Fatalf("failed stage returned uncommitted findings: %+v", result.Findings)
+	}
+}

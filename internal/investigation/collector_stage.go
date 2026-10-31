@@ -55,6 +55,10 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 	}()
 
 	result := StageResult{}
+	pendingEvidence := make([]evidence.Evidence, 0)
+	pendingObservations := make([]evidence.Observation, 0)
+	seenEvidence := make(map[string]struct{})
+	seenObservations := make(map[string]struct{})
 	var registrationErr error
 	for event := range eventCh {
 		if err := stageCtx.Err(); err != nil {
@@ -94,35 +98,50 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 			cancel()
 			break
 		}
-		evidenceErr := registry.AddEvidence(item)
-		if evidenceErr != nil && !errors.Is(evidenceErr, evidence.ErrEvidenceExists) {
-			registrationErr = fmt.Errorf("register %s evidence: %w", s.Name(), evidenceErr)
-			cancel()
-			break
+
+		// Buffer stage output and commit it atomically only after the collector
+		// completes successfully. A failed stage must not leave partial evidence
+		// that later stages or reports could mistake for a complete collection.
+		if _, exists := seenEvidence[item.ID]; !exists {
+			if _, lookupErr := registry.GetEvidence(item.ID); errors.Is(lookupErr, evidence.ErrEvidenceNotFound) {
+				pendingEvidence = append(pendingEvidence, item)
+				seenEvidence[item.ID] = struct{}{}
+			} else if lookupErr != nil {
+				registrationErr = fmt.Errorf("check existing %s evidence: %w", s.Name(), lookupErr)
+				cancel()
+				break
+			}
 		}
-		observationErr := registry.AddObservation(observation)
-		if observationErr != nil && !errors.Is(observationErr, evidence.ErrObservationExists) {
-			registrationErr = fmt.Errorf("register %s observation: %w", s.Name(), observationErr)
-			cancel()
-			break
-		}
-		if evidenceErr == nil {
-			result.Evidence++
-		}
-		if observationErr == nil {
-			result.Observations++
+		if _, exists := seenObservations[observation.ID]; !exists {
+			if _, lookupErr := registry.GetObservation(observation.ID); errors.Is(lookupErr, evidence.ErrObservationNotFound) {
+				pendingObservations = append(pendingObservations, observation)
+				seenObservations[observation.ID] = struct{}{}
+			} else if lookupErr != nil {
+				registrationErr = fmt.Errorf("check existing %s observation: %w", s.Name(), lookupErr)
+				cancel()
+				break
+			}
 		}
 	}
 	collectorErr := <-done
 	if registrationErr != nil {
+		result.Findings = nil
 		return result, registrationErr
 	}
 	if err := stageCtx.Err(); err != nil {
+		result.Findings = nil
 		return result, err
 	}
 	if collectorErr != nil {
+		result.Findings = nil
 		return result, fmt.Errorf("%s collector: %w", s.Name(), collectorErr)
 	}
+	if err := registry.AddBatch(ctx, pendingEvidence, pendingObservations); err != nil {
+		result.Findings = nil
+		return result, fmt.Errorf("commit %s stage evidence atomically: %w", s.Name(), err)
+	}
+	result.Evidence = len(pendingEvidence)
+	result.Observations = len(pendingObservations)
 	return result, nil
 }
 

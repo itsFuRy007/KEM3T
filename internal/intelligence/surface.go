@@ -67,9 +67,22 @@ func BuildServiceSurfaces(target string, records []evidence.Evidence, observatio
 		return nil, fmt.Errorf("service-surface target is required")
 	}
 
+	// Validate and retain observations only when they belong to evidence that
+	// can contribute to this target's service surfaces. Historical records for
+	// unrelated targets must not poison an otherwise valid target report.
+	scopedEvidenceIDs := make(map[string]struct{}, len(records))
+	for _, item := range records {
+		entity := normalizeFindingTarget(item.EntityID)
+		if entity != "" && serviceTargetInScope(entity, target) {
+			scopedEvidenceIDs[item.ID] = struct{}{}
+		}
+	}
 	observationsByEvidence := make(map[string][]evidence.Observation)
 	seenObservationIDs := make(map[string]struct{}, len(observations))
 	for _, observation := range observations {
+		if _, relevant := scopedEvidenceIDs[observation.EvidenceID]; !relevant {
+			continue
+		}
 		if err := observation.Validate(); err != nil {
 			return nil, fmt.Errorf("invalid service-surface observation %q: %w", observation.ID, err)
 		}

@@ -178,3 +178,28 @@ func TestReportEngineIncludesCrossLayerServiceSurfaceAndHypothesis(t *testing.T)
 		t.Fatal("investigation plan did not receive service-surface verification steps")
 	}
 }
+
+
+func TestBuildServiceSurfacesIgnoresInvalidUnrelatedObservations(t *testing.T) {
+	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	records := []evidence.Evidence{
+		{ID: "target-tcp", EntityID: "lab.example", Type: evidence.TypeTCPPort, Value: `{"target":"lab.example","protocol":"tcp","port":443,"state":"open"}`},
+		{ID: "unrelated-tcp", EntityID: "other.example", Type: evidence.TypeTCPPort, Value: `{"target":"other.example","protocol":"tcp","port":443,"state":"open"}`},
+	}
+	observations := []evidence.Observation{
+		{ID: "target-observation", EvidenceID: "target-tcp", Source: "controlled-lab", ObservedAt: now, EventIDs: []string{"target-event"}},
+		// This malformed historical row is outside the requested target scope.
+		{ID: "broken-unrelated-observation", EvidenceID: "unrelated-tcp"},
+	}
+
+	surfaces, err := BuildServiceSurfaces("lab.example", records, observations)
+	if err != nil {
+		t.Fatalf("unrelated malformed observation poisoned target report: %v", err)
+	}
+	if len(surfaces) != 1 || surfaces[0].Target != "lab.example" || surfaces[0].Port != 443 {
+		t.Fatalf("unexpected target surfaces: %+v", surfaces)
+	}
+	if len(surfaces[0].ObservationIDs) != 1 || surfaces[0].ObservationIDs[0] != "target-observation" {
+		t.Fatalf("unrelated observation leaked into target surface: %+v", surfaces[0].ObservationIDs)
+	}
+}

@@ -46,19 +46,17 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 		limit = 16
 	}
 	known := make(map[string]struct{})
-	used := 0
 	for _, name := range state.Scheduled {
 		if strings.HasPrefix(name, "dns-subdomain:") {
 			known[strings.TrimPrefix(name, "dns-subdomain:")] = struct{}{}
-			used++
 		}
 	}
 	for _, outcome := range state.Completed {
 		if strings.HasPrefix(outcome.Name, "dns-subdomain:") {
 			known[strings.TrimPrefix(outcome.Name, "dns-subdomain:")] = struct{}{}
-			used++
 		}
 	}
+	used := len(known)
 	candidates := make(map[string]struct{})
 	for _, item := range state.NewEvidence {
 		if item.Type != evidence.TypeCTDNSName {
@@ -94,26 +92,13 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 	for _, name := range names {
 		stages = append(stages, NewDNSSubdomainStage(name))
 	}
-	if omitted := candidateCount - len(names); omitted > 0 && len(stages) > 0 {
-		limitation := fmt.Sprintf(
-			"CT returned %d additional in-scope names; DNS expansion is capped at %d names per investigation, so %d candidate name(s) were not queried. Selected names are ordered lexicographically.",
-			candidateCount+used,
+	if omitted := candidateCount - len(names); omitted > 0 && state.Limitations != nil {
+		*state.Limitations = append(*state.Limitations, fmt.Sprintf(
+			"CT expansion discovered %d new in-scope candidate name(s), but the per-investigation DNS cap is %d and %d candidate name(s) were not queried. Selected names are ordered lexicographically.",
+			candidateCount,
 			limit,
 			omitted,
-		)
-		last := stages[len(stages)-1]
-		stages[len(stages)-1] = limitedStage{Stage: last, limitation: limitation}
+		))
 	}
 	return stages, nil
-}
-
-type limitedStage struct {
-	Stage
-	limitation string
-}
-
-func (s limitedStage) Run(ctx context.Context, target string, registry *evidence.Registry) (StageResult, error) {
-	result, err := s.Stage.Run(ctx, target, registry)
-	result.Limitations = append(result.Limitations, s.limitation)
-	return result, err
 }

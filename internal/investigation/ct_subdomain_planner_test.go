@@ -39,7 +39,8 @@ func TestCTSubdomainPlannerSchedulesOnlyNewInScopeNames(t *testing.T) {
 
 func TestCTSubdomainPlannerEnforcesConfiguredCap(t *testing.T) {
 	planner := NewCTSubdomainDNSPlanner(2)
-	state := PlanningState{Target: "example.com", NewEvidence: []evidence.Evidence{
+	limitations := make([]string, 0)
+	state := PlanningState{Target: "example.com", Limitations: &limitations, NewEvidence: []evidence.Evidence{
 		ctNameEvidence("ct-1", "a.example.com"), ctNameEvidence("ct-2", "b.example.com"), ctNameEvidence("ct-3", "c.example.com"),
 	}, Scheduled: []string{"dns-subdomain:a.example.com"}}
 	stages, err := planner.Next(context.Background(), state)
@@ -49,8 +50,49 @@ func TestCTSubdomainPlannerEnforcesConfiguredCap(t *testing.T) {
 	if len(stages) != 1 {
 		t.Fatalf("expected only one remaining stage under cap, got %d", len(stages))
 	}
-	limited, ok := stages[0].(limitedStage)
-	if !ok || !strings.Contains(limited.limitation, "1 candidate name(s) were not queried") {
-		t.Fatalf("expected explicit truncation limitation, got %#v", stages[0])
+	if len(limitations) != 1 || !strings.Contains(limitations[0], "1 candidate name(s) were not queried") {
+		t.Fatalf("expected explicit truncation limitation, got %v", limitations)
+	}
+}
+
+
+func TestCTSubdomainPlannerReportsCapWhenNoStageCanBeScheduled(t *testing.T) {
+	planner := NewCTSubdomainDNSPlanner(1)
+	limitations := make([]string, 0)
+	state := PlanningState{
+		Target: "example.com",
+		Scheduled: []string{"dns-subdomain:a.example.com"},
+		NewEvidence: []evidence.Evidence{ctNameEvidence("ct-b", "b.example.com")},
+		Limitations: &limitations,
+	}
+	stages, err := planner.Next(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stages) != 0 {
+		t.Fatalf("expected no stages when cap is exhausted, got %+v", stages)
+	}
+	if len(limitations) != 1 || !strings.Contains(limitations[0], "1 candidate name(s) were not queried") {
+		t.Fatalf("cap exhaustion was not reported: %v", limitations)
+	}
+}
+
+func TestCTSubdomainPlannerCountsScheduledAndCompletedNamesOnce(t *testing.T) {
+	planner := NewCTSubdomainDNSPlanner(2)
+	state := PlanningState{
+		Target: "example.com",
+		Scheduled: []string{"dns-subdomain:a.example.com"},
+		Completed: []StageOutcome{{Name: "dns-subdomain:a.example.com"}},
+		NewEvidence: []evidence.Evidence{
+			ctNameEvidence("ct-b", "b.example.com"),
+			ctNameEvidence("ct-c", "c.example.com"),
+		},
+	}
+	stages, err := planner.Next(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stages) != 1 || stages[0].Name() != "dns-subdomain:c.example.com" {
+		t.Fatalf("duplicate scheduled/completed name consumed cap twice: %+v", stages)
 	}
 }

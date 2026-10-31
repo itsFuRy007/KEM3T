@@ -51,6 +51,9 @@ type PlanningState struct {
 	Findings     []intelligence.Finding
 	Completed    []StageOutcome
 	Scheduled    []string
+	// Limitations lets planners report decisions even when they cannot enqueue
+	// a stage (for example, when an expansion cap has no remaining capacity).
+	Limitations *[]string
 }
 
 type Planner interface {
@@ -119,6 +122,7 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 	}
 	result = Result{Target: target, RunID: run.ID, Stages: make([]StageOutcome, 0, len(e.Stages))}
 	queue := append([]Stage(nil), e.Stages...)
+	plannerLimitations := make([]string, 0)
 
 	for index := 0; index < len(queue); index++ {
 		stage := queue[index]
@@ -152,6 +156,7 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 				Target: target, Evidence: allEvidence, NewEvidence: newEvidence,
 				Observations: e.Registry.AllObservations(), Findings: findings,
 				Completed: append([]StageOutcome(nil), result.Stages...), Scheduled: scheduled,
+				Limitations: &plannerLimitations,
 			})
 			if planErr != nil {
 				retErr = fmt.Errorf("plan next investigation stages: %w", planErr)
@@ -201,6 +206,12 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		retErr = errors.Join(retErr, fmt.Errorf("build intelligence report: %w", err))
 	} else {
 		result.Report = report
+		for _, limitation := range plannerLimitations {
+			result.Report.Narrative.Limitations = appendUniqueLimitation(
+				result.Report.Narrative.Limitations,
+				"planner: "+limitation,
+			)
+		}
 		for _, outcome := range result.Stages {
 			for _, limitation := range outcome.Result.Limitations {
 				result.Report.Narrative.Limitations = appendUniqueLimitation(
