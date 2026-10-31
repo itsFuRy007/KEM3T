@@ -24,8 +24,8 @@ func TestASNLookupCombinesOriginMappingAndRDAP(t *testing.T) {
 				t.Errorf("query name=%q", got)
 			}
 			fmt.Fprint(w, `{"Status":0,"Answer":[
-				{"name":"origin.asn.cymru.com","type":16,"data":"\\"15169 | 8.8.8.0/24 | US | arin | 2000-03-30\\""},
-				{"name":"origin.asn.cymru.com","type":16,"data":"\\"15169 | 8.8.8.0/25 | US | arin | 2000-03-30\\""}
+				{"name":"origin.asn.cymru.com","type":16,"data":"\"15169 | 8.8.8.0/24 | US | arin | 2000-03-30\""},
+				{"name":"origin.asn.cymru.com","type":16,"data":"\"15169 | 8.8.8.0/25 | US | arin | 2000-03-30\""}
 			]}`)
 
 		case "/asn-bootstrap":
