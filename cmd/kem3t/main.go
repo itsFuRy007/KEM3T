@@ -30,7 +30,7 @@ import (
 var commandContext = context.Background()
 
 func main() {
-	ctx, stop := signal.NotifyContext(commandContext, os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	commandContext = ctx
 	if err := run(); err != nil {
