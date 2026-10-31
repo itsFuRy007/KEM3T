@@ -216,3 +216,114 @@ func TestSanitizeTerminalTextRemovesControlAndFormatCharacters(t *testing.T) {
 		t.Fatalf("sanitizeTerminalText() = %q, want %q", got, want)
 	}
 }
+
+func TestPrintIntelligenceReportShowsAllResearchSections(t *testing.T) {
+	report := intelligence.IntelligenceReport{
+		Target: "example.com",
+		Findings: []intelligence.Finding{{
+			Priority: intelligence.PriorityInfo,
+			Title:    "DNS observation",
+			Fact:     "example.com resolved to 192.0.2.10",
+			Evidence: []events.Event{{
+				ID:     "event-1",
+				Type:   events.EventDNSRecordFound,
+				Target: "example.com",
+				Source: "test-dns",
+			}},
+		}},
+		Correlations: []intelligence.Correlation{
+			{
+				ID: "corr-1", Type: intelligence.CorrelationSharedIPAddress,
+				SharedValue: "192.0.2.10", Entities: []string{"example.com", "www.example.com"},
+				EvidenceIDs: []string{"evidence-1"}, ObservationIDs: []string{"observation-1"},
+				Confidence: "LOW", ConfidenceScope: "OBSERVED_SHARED_ADDRESS",
+				Explanation: "Both names were observed at the same address.",
+				Limitations: "Shared hosting may explain this result.",
+			},
+			{
+				ID: "corr-2", Type: intelligence.CorrelationSharedTLSCertificateFingerprint,
+				SharedValue: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				Entities: []string{"example.com", "www.example.com"},
+				EvidenceIDs: []string{"evidence-2"}, ObservationIDs: []string{"observation-2"},
+				Confidence: "LOW", ConfidenceScope: "OBSERVED_SHARED_CERTIFICATE_FINGERPRINT",
+				Explanation: "Both names presented the same certificate.",
+				Limitations: "A shared certificate does not prove common ownership.",
+			},
+		},
+		Discoveries: []intelligence.Discovery{{
+			ID: "discovery-1", Type: intelligence.DiscoveryConvergentInfrastructure,
+			Entities: []string{"example.com", "www.example.com"},
+			SignalTypes: []intelligence.CorrelationType{intelligence.CorrelationSharedIPAddress, intelligence.CorrelationSharedTLSCertificateFingerprint},
+			CorrelationIDs: []string{"corr-1", "corr-2"}, SharedValues: []string{"192.0.2.10", "fingerprint"},
+			SignalDiversity: 2, Confidence: "MODERATE", Statement: "Signals converge across two dimensions.",
+			WhyItMatters: "This is a higher-value lead.", AlternativeExplanations: "Shared hosting may explain it.",
+			Verification: []string{"Inspect original evidence."},
+		}},
+		DiscoveryPaths: []intelligence.DiscoveryPath{{
+			ID: "path-1", Type: intelligence.DiscoveryConvergentInfrastructure,
+			Entities: []string{"example.com", "192.0.2.10", "other.example"},
+			CorrelationIDs: []string{"corr-1", "corr-2"},
+			SignalTypes: []intelligence.CorrelationType{intelligence.CorrelationSharedIPAddress, intelligence.CorrelationSharedTLSCertificateFingerprint},
+			SignalDiversity: 2, Confidence: "LOW", Statement: "A two-hop path was observed.",
+			WhyItMatters: "The pivot may be useful.", AlternativeExplanations: "A shared provider may explain it.",
+			Verification: []string{"Verify each hop independently."},
+		}},
+		DiscoveryPivots: []intelligence.DiscoveryPivot{{
+			ID: "pivot-1", Type: "DISCOVERY_PIVOT", Pivot: "192.0.2.10",
+			ConnectedEntities: []string{"other.example", "www.example.com"}, PathIDs: []string{"path-1", "path-2"},
+			SignalTypes: []intelligence.CorrelationType{intelligence.CorrelationSharedIPAddress, intelligence.CorrelationSharedTLSCertificateFingerprint},
+			SignalDiversity: 2, Confidence: "LOW", Statement: "The address recurs as a pivot.",
+			WhyItMatters: "It may connect separate observations.", AlternativeExplanations: "CDN hosting may explain it.",
+			Verification: []string{"Inspect the supporting paths."},
+		}},
+		VerificationAssessments: []intelligence.VerificationAssessment{{
+			HypothesisID: "hypothesis-1", Status: intelligence.VerificationMixed,
+			SupportingEvidenceIDs: []string{"independent-support-1"}, SupportingFacts: []string{"An independent record supports the hypothesis."},
+			ContradictingEvidenceIDs: []string{"independent-contradiction-1"}, ContradictingFacts: []string{"An independent record contradicts it."},
+			ExcludedEvidenceIDs: []string{"reused-evidence-1"}, Explanation: "Evidence is mixed.",
+			Limitations: "This is not proof or a probability.",
+		}},
+		Narrative: intelligence.ResearchNarrative{
+			Summary: "The investigation found several evidence-backed leads.",
+			Signals: []intelligence.NarrativeSignal{{ID: "signal-1", Kind: "MULTI_HOP_PATH", Summary: "A path needs review.", Confidence: "LOW", References: []string{"path:path-1"}}},
+			NextSteps: []intelligence.NarrativeNextStep{{ID: "next-1", Action: "Verify the path.", Reason: "The pivot may be shared infrastructure.", References: []string{"path:path-1"}}},
+			Limitations: []string{"Correlations do not prove common ownership."},
+		},
+	}
+
+	oldStdout := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe() error = %v", err)
+	}
+	os.Stdout = writer
+	printIntelligenceReport(report)
+	if err := writer.Close(); err != nil {
+		t.Fatalf("writer.Close() error = %v", err)
+	}
+	os.Stdout = oldStdout
+	defer reader.Close()
+
+	output, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("reading captured output: %v", err)
+	}
+	for _, expected := range []string{
+		"[FINDINGS]",
+		"Event ref: event-1",
+		"[HIGHER-ORDER DISCOVERIES]",
+		"[MULTI-HOP DISCOVERY PATHS]",
+		"[RECURRING INVESTIGATION PIVOTS]",
+		"[VERIFICATION ASSESSMENTS]",
+		"Supporting evidence: independent-support-1",
+		"Contradicting evidence: independent-contradiction-1",
+		"Excluded/reused evidence: reused-evidence-1",
+		"[RESEARCH NARRATIVE SIGNALS]",
+		"[RESEARCHER NEXT STEPS]",
+		"[REPORT LIMITATIONS]",
+	} {
+		if !strings.Contains(string(output), expected) {
+			t.Errorf("report output missing %q; got:\n%s", expected, output)
+		}
+	}
+}
