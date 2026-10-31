@@ -54,8 +54,8 @@ type ServiceTLSObservation struct {
 }
 
 type ServiceObservationRef struct {
-	EvidenceID    string    `json:"evidence_id"`
-	ObservationID string    `json:"observation_id"`
+	EvidenceID      string    `json:"evidence_id"`
+	ObservationID   string    `json:"observation_id"`
 	Source          string    `json:"source"`
 	CollectionRunID string    `json:"collection_run_id,omitempty"`
 	Stage           string    `json:"stage,omitempty"`

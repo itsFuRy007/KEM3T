@@ -36,7 +36,7 @@ func TestSQLiteRegistryPersistsEvidenceAndObservations(t *testing.T) {
 		CollectionRunID: "dns-run-001",
 		Stage:           "dns",
 		ObservedAt:      observedAt,
-		EventIDs:   []string{"event-001"},
+		EventIDs:        []string{"event-001"},
 	}
 
 	if err := registry.AddObservation(o); err != nil {

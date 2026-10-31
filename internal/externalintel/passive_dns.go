@@ -232,7 +232,7 @@ func RegisterPassiveDNSReport(registry *evidence.Registry, report PassiveDNSRepo
 		eventID := "passive-dns:" + key + ":" + fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
 		observation := evidence.Observation{ID: "observation:" + eventID, EvidenceID: item.ID, Source: source, ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID}}
 		applyRegistrationProvenance(&observation, provenance)
-	if err := registry.AddObservation(observation); err != nil {
+		if err := registry.AddObservation(observation); err != nil {
 			if errors.Is(err, evidence.ErrObservationExists) {
 				continue
 			}

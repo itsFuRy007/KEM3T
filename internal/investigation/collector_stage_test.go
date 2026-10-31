@@ -104,10 +104,9 @@ func TestEventTargetScopeAllowsSubdomainsButNotSiblingDomains(t *testing.T) {
 	}
 }
 
-
 type failingCollector struct {
 	event events.Event
-	err error
+	err   error
 }
 
 func (c failingCollector) Run(ctx context.Context, out chan<- events.Event) error {

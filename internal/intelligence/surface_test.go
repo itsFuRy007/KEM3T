@@ -179,7 +179,6 @@ func TestReportEngineIncludesCrossLayerServiceSurfaceAndHypothesis(t *testing.T)
 	}
 }
 
-
 func TestBuildServiceSurfacesIgnoresInvalidUnrelatedObservations(t *testing.T) {
 	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
 	records := []evidence.Evidence{
@@ -203,7 +202,6 @@ func TestBuildServiceSurfacesIgnoresInvalidUnrelatedObservations(t *testing.T) {
 		t.Fatalf("unrelated observation leaked into target surface: %+v", surfaces[0].ObservationIDs)
 	}
 }
-
 
 func TestBuildServiceSurfacesLabelsReferenceAndHistoricalEvidence(t *testing.T) {
 	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)

@@ -55,7 +55,6 @@ func TestCTSubdomainPlannerEnforcesConfiguredCap(t *testing.T) {
 	}
 }
 
-
 func TestCTSubdomainPlannerReportsCapWhenNoStageCanBeScheduled(t *testing.T) {
 	planner := NewCTSubdomainDNSPlanner(1)
 	limitations := make([]string, 0)

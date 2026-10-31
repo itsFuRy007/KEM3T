@@ -471,7 +471,6 @@ func TestReportEngineBuildsMultiHopPathsAndRecurringPivots(t *testing.T) {
 	}
 }
 
-
 func TestReportEngineKeepsTargetReportWhenUnrelatedHistoricalEvidenceIsMalformed(t *testing.T) {
 	registry := evidence.NewRegistry()
 	t.Cleanup(func() {
@@ -502,7 +501,6 @@ func TestReportEngineKeepsTargetReportWhenUnrelatedHistoricalEvidenceIsMalformed
 		t.Fatalf("report did not disclose reduced multi-hop coverage: %s", limitations)
 	}
 }
-
 
 func TestReportEngineIdentifiesLatestCollectionRunAndServiceTemporalScope(t *testing.T) {
 	registry := evidence.NewRegistry()

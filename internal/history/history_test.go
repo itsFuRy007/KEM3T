@@ -153,7 +153,6 @@ func TestBuildUnifiedInvestigationSnapshotIncludesMultipleCollectorTypes(t *test
 	}
 }
 
-
 func TestBuildSnapshotUsesExplicitRunProvenanceOverTimestampWindows(t *testing.T) {
 	start := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
 	run := evidence.CollectionRun{

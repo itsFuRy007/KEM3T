@@ -88,7 +88,7 @@ ON collection_runs(target, started_at DESC, id DESC);
 		return fmt.Errorf("initialize evidence schema: %w", err)
 	}
 	for _, column := range []struct {
-		name string
+		name       string
 		definition string
 	}{
 		{name: "collection_run_id", definition: "TEXT NOT NULL DEFAULT ''"},

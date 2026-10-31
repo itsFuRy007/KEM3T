@@ -318,7 +318,7 @@ func RegisterCTReport(registry *evidence.Registry, report CTReport, provenance .
 				ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID},
 			}
 			applyRegistrationProvenance(&observation, provenance)
-	if err := registry.AddObservation(observation); err != nil {
+			if err := registry.AddObservation(observation); err != nil {
 				if errors.Is(err, evidence.ErrObservationExists) {
 					continue
 				}

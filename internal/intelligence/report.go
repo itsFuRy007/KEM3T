@@ -219,8 +219,6 @@ func (e *ReportEngine) BuildWithInvestigationFeedback(
 	return report, nil
 }
 
-
-
 func appendUniqueReportLimitation(values []string, value string) []string {
 	for _, existing := range values {
 		if existing == value {
