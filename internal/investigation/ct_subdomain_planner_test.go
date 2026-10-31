@@ -59,8 +59,8 @@ func TestCTSubdomainPlannerReportsCapWhenNoStageCanBeScheduled(t *testing.T) {
 	planner := NewCTSubdomainDNSPlanner(1)
 	limitations := make([]string, 0)
 	state := PlanningState{
-		Target: "example.com",
-		Scheduled: []string{"dns-subdomain:a.example.com"},
+		Target:      "example.com",
+		Scheduled:   []string{"dns-subdomain:a.example.com"},
 		NewEvidence: []evidence.Evidence{ctNameEvidence("ct-b", "b.example.com")},
 		Limitations: &limitations,
 	}
@@ -79,7 +79,7 @@ func TestCTSubdomainPlannerReportsCapWhenNoStageCanBeScheduled(t *testing.T) {
 func TestCTSubdomainPlannerCountsScheduledAndCompletedNamesOnce(t *testing.T) {
 	planner := NewCTSubdomainDNSPlanner(2)
 	state := PlanningState{
-		Target: "example.com",
+		Target:    "example.com",
 		Scheduled: []string{"dns-subdomain:a.example.com"},
 		Completed: []StageOutcome{{Name: "dns-subdomain:a.example.com"}},
 		NewEvidence: []evidence.Evidence{
