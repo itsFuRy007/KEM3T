@@ -30,8 +30,8 @@ func TestSQLiteRegistryPersistsEvidenceAndObservations(t *testing.T) {
 
 	observedAt := time.Date(2026, 10, 27, 10, 0, 0, 0, time.UTC)
 	o := Observation{
-		ID:         "observation:event-001",
-		EvidenceID: e.ID,
+		ID:              "observation:event-001",
+		EvidenceID:      e.ID,
 		Source:          "dns",
 		CollectionRunID: "dns-run-001",
 		Stage:           "dns",
