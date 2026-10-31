@@ -270,7 +270,7 @@ func mergeCTRecords(a, b CTRecord) CTRecord {
 // RegisterCTReport persists certificate-name observations with stable evidence
 // IDs and timestamped observation IDs, allowing repeated queries to extend
 // provenance history without duplicating the underlying fact.
-func RegisterCTReport(registry *evidence.Registry, report CTReport) (int, error) {
+func RegisterCTReport(registry *evidence.Registry, report CTReport), provenance ...evidence.ObservationProvenance (int, error) {
 	if registry == nil {
 		return 0, fmt.Errorf("evidence registry is required")
 	}
@@ -317,7 +317,8 @@ func RegisterCTReport(registry *evidence.Registry, report CTReport) (int, error)
 				ID: "observation:" + eventID, EvidenceID: item.ID, Source: source,
 				ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID},
 			}
-			if err := registry.AddObservation(observation); err != nil {
+			applyRegistrationProvenance(&observation, provenance)
+	if err := registry.AddObservation(observation); err != nil {
 				if errors.Is(err, evidence.ErrObservationExists) {
 					continue
 				}

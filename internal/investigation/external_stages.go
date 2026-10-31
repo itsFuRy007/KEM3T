@@ -54,7 +54,7 @@ func NewCTStageWithClient(client *externalintel.CTClient) Stage {
 		if err != nil {
 			return StageResult{}, err
 		}
-		count, err := externalintel.RegisterCTReport(registry, report)
+		count, err := externalintel.RegisterCTReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 		return StageResult{Evidence: count, Observations: count, Limitations: append([]string(nil), report.Limitations...)}, err
 	}}
 }
@@ -69,7 +69,7 @@ func NewRDAPDomainStageWithClient(client *externalintel.RDAPClient) Stage {
 		if err != nil {
 			return StageResult{}, err
 		}
-		registered, err := externalintel.RegisterRDAPReport(registry, report)
+		registered, err := externalintel.RegisterRDAPReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 		count := 0
 		if registered {
 			count = 1
@@ -88,7 +88,7 @@ func NewPassiveDNSStageWithClient(client *externalintel.PassiveDNSClient) Stage 
 		if err != nil {
 			return StageResult{}, err
 		}
-		count, err := externalintel.RegisterPassiveDNSReport(registry, report)
+		count, err := externalintel.RegisterPassiveDNSReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 		return StageResult{Evidence: count, Observations: count, Limitations: stageLimitations(report.Limitations, "Passive DNS", report.Truncated)}, err
 	}}
 }
@@ -103,7 +103,7 @@ func NewThreatIntelStageWithClient(client *externalintel.ThreatIntelClient) Stag
 		if err != nil {
 			return StageResult{}, err
 		}
-		registered, err := externalintel.RegisterThreatIntelReport(registry, report)
+		registered, err := externalintel.RegisterThreatIntelReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 		count := 0
 		if registered {
 			count = 1
@@ -122,7 +122,7 @@ func NewIPRDAPStageWithClient(client *externalintel.RDAPClient) Stage {
 		if err != nil {
 			return StageResult{}, err
 		}
-		registered, err := externalintel.RegisterIPRDAPReport(registry, report)
+		registered, err := externalintel.RegisterIPRDAPReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 		count := 0
 		if registered {
 			count = 1
@@ -141,7 +141,7 @@ func NewASNStageWithClient(client *externalintel.ASNClient) Stage {
 		if err != nil {
 			return StageResult{}, err
 		}
-		registered, err := externalintel.RegisterASNReport(registry, report)
+		registered, err := externalintel.RegisterASNReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 		count := 0
 		if registered {
 			count = 1
@@ -160,7 +160,7 @@ func NewIPRDAPStageForIP(ip string) Stage {
 		if err != nil {
 			return StageResult{}, err
 		}
-		registered, err := externalintel.RegisterIPRDAPReport(registry, report)
+		registered, err := externalintel.RegisterIPRDAPReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 		count := 0
 		if registered {
 			count = 1
@@ -178,7 +178,7 @@ func NewASNStageForIP(ip string) Stage {
 		if err != nil {
 			return StageResult{}, err
 		}
-		registered, err := externalintel.RegisterASNReport(registry, report)
+		registered, err := externalintel.RegisterASNReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 		count := 0
 		if registered {
 			count = 1

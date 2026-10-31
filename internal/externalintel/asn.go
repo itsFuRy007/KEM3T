@@ -341,7 +341,7 @@ func sortUint32(values []uint32) {
 	}
 }
 
-func RegisterASNReport(registry *evidence.Registry, report ASNReport) (bool, error) {
+func RegisterASNReport(registry *evidence.Registry, report ASNReport), provenance ...evidence.ObservationProvenance (bool, error) {
 	if registry == nil {
 		return false, fmt.Errorf("evidence registry is required")
 	}
@@ -383,6 +383,7 @@ func RegisterASNReport(registry *evidence.Registry, report ASNReport) (bool, err
 	}
 	eventID := "asn-origin:" + key + ":" + fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
 	observation := evidence.Observation{ID: "observation:" + eventID, EvidenceID: item.ID, Source: "Team Cymru origin DNS; IANA RDAP", ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID}}
+	applyRegistrationProvenance(&observation, provenance)
 	if err := registry.AddObservation(observation); err != nil {
 		if errors.Is(err, evidence.ErrObservationExists) {
 			return false, nil

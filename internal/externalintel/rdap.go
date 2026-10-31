@@ -485,7 +485,7 @@ func selectIPRDAPService(bootstrap rdapBootstrap, ip net.IP) (string, error) {
 	return bestURL, nil
 }
 
-func RegisterRDAPReport(registry *evidence.Registry, report RDAPReport) (bool, error) {
+func RegisterRDAPReport(registry *evidence.Registry, report RDAPReport), provenance ...evidence.ObservationProvenance (bool, error) {
 	if registry == nil {
 		return false, fmt.Errorf("evidence registry is required")
 	}
@@ -531,6 +531,7 @@ func RegisterRDAPReport(registry *evidence.Registry, report RDAPReport) (bool, e
 	}
 	eventID := "rdap:" + key + ":" + fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
 	observation := evidence.Observation{ID: "observation:" + eventID, EvidenceID: item.ID, Source: source, ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID}}
+	applyRegistrationProvenance(&observation, provenance)
 	if err := registry.AddObservation(observation); err != nil {
 		if errors.Is(err, evidence.ErrObservationExists) {
 			return false, nil
@@ -540,7 +541,7 @@ func RegisterRDAPReport(registry *evidence.Registry, report RDAPReport) (bool, e
 	return true, nil
 }
 
-func RegisterIPRDAPReport(registry *evidence.Registry, report IPRDAPReport) (bool, error) {
+func RegisterIPRDAPReport(registry *evidence.Registry, report IPRDAPReport), provenance ...evidence.ObservationProvenance (bool, error) {
 	if registry == nil {
 		return false, fmt.Errorf("evidence registry is required")
 	}
@@ -566,6 +567,7 @@ func RegisterIPRDAPReport(registry *evidence.Registry, report IPRDAPReport) (boo
 	}
 	eventID := "ip-rdap-network:" + key + ":" + fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
 	observation := evidence.Observation{ID: "observation:" + eventID, EvidenceID: item.ID, Source: source, ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID}}
+	applyRegistrationProvenance(&observation, provenance)
 	if err := registry.AddObservation(observation); err != nil {
 		if errors.Is(err, evidence.ErrObservationExists) {
 			return false, nil

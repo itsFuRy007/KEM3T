@@ -189,7 +189,7 @@ func (c *PassiveDNSClient) LookupDomain(ctx context.Context, rawTarget string) (
 }
 
 // RegisterPassiveDNSReport stores each passive-DNS fact and a timestamped observation.
-func RegisterPassiveDNSReport(registry *evidence.Registry, report PassiveDNSReport) (int, error) {
+func RegisterPassiveDNSReport(registry *evidence.Registry, report PassiveDNSReport), provenance ...evidence.ObservationProvenance (int, error) {
 	if registry == nil {
 		return 0, fmt.Errorf("evidence registry is required")
 	}
@@ -231,7 +231,8 @@ func RegisterPassiveDNSReport(registry *evidence.Registry, report PassiveDNSRepo
 		}
 		eventID := "passive-dns:" + key + ":" + fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
 		observation := evidence.Observation{ID: "observation:" + eventID, EvidenceID: item.ID, Source: source, ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID}}
-		if err := registry.AddObservation(observation); err != nil {
+		applyRegistrationProvenance(&observation, provenance)
+	if err := registry.AddObservation(observation); err != nil {
 			if errors.Is(err, evidence.ErrObservationExists) {
 				continue
 			}
