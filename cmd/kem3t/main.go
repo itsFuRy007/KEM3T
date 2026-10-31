@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"time"
@@ -25,7 +26,12 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/pipeline"
 )
 
+var commandContext = context.Background()
+
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	commandContext = ctx
 	if err := run(); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return
@@ -192,7 +198,7 @@ func runInvestigation(target, snapshotDir string, enableActive bool, startPort, 
 		)
 	}
 	engine := investigation.Engine{Registry: registry, Stages: stages, Planner: investigation.NewCTSubdomainDNSPlanner(8), SnapshotDir: snapshotDir}
-	result, runErr := engine.Run(context.Background(), target)
+	result, runErr := engine.Run(commandContext, target)
 	if runErr != nil {
 		if strings.TrimSpace(result.RunID) == "" {
 			return fmt.Errorf("investigation: %w", runErr)
@@ -261,7 +267,7 @@ func runInvestigation(target, snapshotDir string, enableActive bool, startPort, 
 }
 
 func runDemo() error {
-	ctx := context.Background()
+	ctx := commandContext
 	collector := &collectors.Demo{}
 	eventCh := make(chan events.Event)
 	collectorErr := make(chan error, 1)
@@ -296,7 +302,7 @@ func runDemo() error {
 
 func runTCP(target string, startPort, endPort int, snapshotDir string) error {
 	result, err := pipeline.RunTCP(
-		context.Background(),
+		commandContext,
 		target,
 		startPort,
 		endPort,
@@ -373,7 +379,7 @@ func runTLS(target string, port int, snapshotDir string) error {
 }
 
 func runHTTP(target, scheme string, port int, snapshotDir string) error {
-	result, err := pipeline.RunHTTP(context.Background(), target, scheme, port, snapshotDir)
+	result, err := pipeline.RunHTTP(commandContext, target, scheme, port, snapshotDir)
 	if err != nil {
 		return err
 	}
@@ -1294,7 +1300,7 @@ func runBatchDNS(targetsFile, snapshotDir string, workers int) error {
 	if err != nil {
 		return err
 	}
-	results, err := batch.RunDNS(context.Background(), targets, workers, snapshotDir)
+	results, err := batch.RunDNS(commandContext, targets, workers, snapshotDir)
 	if err != nil {
 		return err
 	}
