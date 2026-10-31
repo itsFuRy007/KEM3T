@@ -68,10 +68,12 @@ func TestPrintInfrastructureGraph(t *testing.T) {
 		},
 		Edges: []graph.Edge{
 			{
-				ID:     "resolves-to:example.com:192.0.2.10",
-				Type:   graph.EdgeResolvesTo,
-				Source: "domain:example.com",
-				Target: "ip:192.0.2.10",
+				ID:              "resolves-to:example.com:192.0.2.10",
+				Type:            graph.EdgeResolvesTo,
+				Source:          "domain:example.com",
+				Target:          "ip:192.0.2.10",
+				EvidenceIDs:     []string{"evidence-1"},
+				ObservationIDs:  []string{"observation-1"},
 			},
 		},
 	}
@@ -107,6 +109,8 @@ func TestPrintInfrastructureGraph(t *testing.T) {
 		"Nodes: 2",
 		"Relationships: 1",
 		"[RESOLVES_TO] example.com -> 192.0.2.10",
+		"Evidence refs: evidence-1",
+		"Observation refs: observation-1",
 	} {
 		if !strings.Contains(string(output), expected) {
 			t.Errorf("output missing %q; got:\n%s", expected, output)
