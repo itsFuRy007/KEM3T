@@ -23,15 +23,15 @@ func sampleMarkdownReport() IntelligenceReport {
 				Subject: "CN=example.com", Issuer: "CN=Example CA", TLSVersion: "TLS 1.3",
 				Verified: true, NotAfter: testTimestamp().Add(365 * 24 * time.Hour),
 			}},
-			EvidenceIDs: []string{"evidence:http", "evidence:tls"},
+			EvidenceIDs:    []string{"evidence:http", "evidence:tls"},
 			ObservationIDs: []string{"observation:http", "observation:tls"},
 			ObservationRefs: []ServiceObservationRef{{
 				EvidenceID: "evidence:http", ObservationID: "observation:http",
 				Source: "http-collector", ObservedAt: testTimestamp(),
 			}},
-			Summary: "HTTPS service observed on example.com:443.",
+			Summary:     "HTTPS service observed on example.com:443.",
 			Limitations: []string{"The Server header is not proof of the underlying software."},
-			NextSteps: []string{"Review the certificate and endpoint behavior."},
+			NextSteps:   []string{"Review the certificate and endpoint behavior."},
 		}},
 		Narrative: ResearchNarrative{
 			Summary: "Two independent-looking signals deserve review.\nDo not treat this as proof.",
