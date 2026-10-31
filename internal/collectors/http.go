@@ -160,6 +160,9 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
 				return fmt.Errorf("redirect to unsupported scheme")
 			}
+			if req.URL.User != nil {
+				return fmt.Errorf("redirect URLs containing credentials are not allowed")
+			}
 			if !strings.EqualFold(req.URL.Hostname(), requestURL.Hostname()) {
 				return fmt.Errorf("cross-host redirect rejected to preserve target scope")
 			}
@@ -178,7 +181,7 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8")
 	resp, err := client.Do(req)
 	if err != nil {
-		return events.Event{}, fmt.Errorf("request %s: %w", requestURL.Redacted(), err)
+		return events.Event{}, fmt.Errorf("request %s: %w", redactHTTPURL(&requestURL), err)
 	}
 	defer resp.Body.Close()
 
@@ -202,13 +205,16 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 		tlsVersion = tlsVersionLabel(resp.TLS.Version)
 		tlsVerified = len(resp.TLS.VerifiedChains) > 0
 	}
-	finalURL := resp.Request.URL.String()
+	finalURL := redactHTTPURL(resp.Request.URL)
 	location := strings.TrimSpace(resp.Header.Get("Location"))
+	if location != "" {
+		location = redactHTTPURLString(location)
+	}
 	if location != "" && len(location) > 2048 {
 		location = location[:2048]
 	}
 	data := map[string]string{
-		"scheme": scheme, "port": strconv.Itoa(port), "url": requestURL.String(),
+		"scheme": scheme, "port": strconv.Itoa(port), "url": redactHTTPURL(&requestURL),
 		"final_url": finalURL, "status_code": strconv.Itoa(resp.StatusCode),
 		"content_type": boundedHeader(resp.Header.Get("Content-Type")),
 		"server":       boundedHeader(resp.Header.Get("Server")),
@@ -224,6 +230,34 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 		Type: events.EventHTTPObserved, Timestamp: now, Target: host,
 		Source: "http-collector", Data: data,
 	}, nil
+}
+
+func redactHTTPURL(raw *url.URL) string {
+	if raw == nil {
+		return ""
+	}
+	safe := *raw
+	safe.User = nil
+	safe.Fragment = ""
+	if safe.RawQuery != "" {
+		query := safe.Query()
+		for key, values := range query {
+			for i := range values {
+				values[i] = "[redacted]"
+			}
+			query[key] = values
+		}
+		safe.RawQuery = query.Encode()
+	}
+	return safe.String()
+}
+
+func redactHTTPURLString(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "[redacted]"
+	}
+	return redactHTTPURL(parsed)
 }
 
 func boundedHeader(value string) string {

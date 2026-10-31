@@ -2,6 +2,7 @@ package externalintel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,8 +17,11 @@ import (
 const (
 	externalMinRequestInterval = 150 * time.Millisecond
 	externalMaxAttempts        = 4
+	externalMaxRedirects       = 4
 	externalMaxRetryDelay      = 10 * time.Second
 )
+
+var errExternalRedirectPolicy = errors.New("external redirect rejected by policy")
 
 var providerGate = struct {
 	sync.Mutex
@@ -70,6 +74,29 @@ func doExternalRequest(ctx context.Context, client *http.Client, req *http.Reque
 	if client == nil {
 		client = http.DefaultClient
 	}
+	safeClient := *client
+	previousCheckRedirect := safeClient.CheckRedirect
+	safeClient.CheckRedirect = func(redirect *http.Request, via []*http.Request) error {
+		if redirect.URL.User != nil {
+			return fmt.Errorf("%w: credentials in redirect URL are not allowed", errExternalRedirectPolicy)
+		}
+		if len(via) > 0 && strings.EqualFold(via[len(via)-1].URL.Scheme, "https") &&
+			!strings.EqualFold(redirect.URL.Scheme, "https") {
+			return fmt.Errorf("%w: HTTPS redirect cannot downgrade to %q", errExternalRedirectPolicy, redirect.URL.Scheme)
+		}
+		if len(via) >= externalMaxRedirects {
+			return fmt.Errorf("%w: too many redirects", errExternalRedirectPolicy)
+		}
+		if previousCheckRedirect != nil {
+			if err := previousCheckRedirect(redirect, via); err != nil {
+				if errors.Is(err, http.ErrUseLastResponse) {
+					return err
+				}
+				return fmt.Errorf("%w: %v", errExternalRedirectPolicy, err)
+			}
+		}
+		return nil
+	}
 	host := req.URL.Host
 	var lastErr error
 	for attempt := 0; attempt < externalMaxAttempts; attempt++ {
@@ -80,8 +107,11 @@ func doExternalRequest(ctx context.Context, client *http.Client, req *http.Reque
 			return nil, err
 		}
 		attemptReq := req.Clone(ctx)
-		resp, err := client.Do(attemptReq)
+		resp, err := safeClient.Do(attemptReq)
 		if err != nil {
+			if errors.Is(err, errExternalRedirectPolicy) {
+				return nil, err
+			}
 			lastErr = err
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
@@ -116,12 +146,12 @@ func retryableProviderStatus(status int) bool {
 
 func retryDelay(attempt int, retryAfter string) time.Duration {
 	if value := strings.TrimSpace(retryAfter); value != "" {
-		if seconds, err := strconv.Atoi(value); err == nil && seconds >= 0 {
-			delay := time.Duration(seconds) * time.Second
-			if delay > externalMaxRetryDelay {
+		if strings.Trim(value, "0123456789") == "" {
+			seconds, err := strconv.ParseUint(value, 10, 64)
+			if err != nil || seconds > uint64(externalMaxRetryDelay/time.Second) {
 				return externalMaxRetryDelay
 			}
-			return delay
+			return time.Duration(seconds) * time.Second
 		}
 		if when, err := http.ParseTime(value); err == nil {
 			delay := time.Until(when)

@@ -135,3 +135,57 @@ func TestHTTPRejectsCrossHostRedirect(t *testing.T) {
 		t.Fatal("expected cross-host redirect to be rejected")
 	}
 }
+
+func TestHTTPRedactsQueryValuesFromEvidence(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/start":
+			http.Redirect(w, r, "/final?session=redirect-secret", http.StatusFound)
+		case "/final":
+			w.Header().Set("Location", "/next?token=header-secret")
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	out := make(chan events.Event, 1)
+	target := server.URL + "/start?api_key=initial-secret"
+	if err := (&HTTP{Target: target, Scheme: "auto", Timeout: time.Second}).Run(context.Background(), out); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	event := <-out
+	for key, value := range map[string]string{
+		"url":        event.Data["url"],
+		"final_url":  event.Data["final_url"],
+		"location":   event.Data["location"],
+	} {
+		for _, secret := range []string{"initial-secret", "redirect-secret", "header-secret"} {
+			if strings.Contains(value, secret) {
+				t.Fatalf("%s leaked query value %q: %q", key, secret, value)
+			}
+		}
+	}
+	if !strings.Contains(event.Data["url"], "api_key") || !strings.Contains(event.Data["url"], "redacted") {
+		t.Fatalf("initial URL query was not visibly redacted: %q", event.Data["url"])
+	}
+	if !strings.Contains(event.Data["final_url"], "session") || !strings.Contains(event.Data["final_url"], "redacted") {
+		t.Fatalf("final URL query was not visibly redacted: %q", event.Data["final_url"])
+	}
+	if !strings.Contains(event.Data["location"], "token") || !strings.Contains(event.Data["location"], "redacted") {
+		t.Fatalf("Location header query was not visibly redacted: %q", event.Data["location"])
+	}
+}
+
+func TestHTTPRejectsRedirectCredentials(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://user:pass@"+r.Host+"/final", http.StatusFound)
+	}))
+	defer server.Close()
+
+	err := (&HTTP{Target: server.URL, Scheme: "auto", Timeout: time.Second}).Run(context.Background(), make(chan events.Event, 1))
+	if err == nil || !strings.Contains(err.Error(), "credentials") {
+		t.Fatalf("expected credential-bearing redirect to be rejected, got %v", err)
+	}
+}

@@ -136,7 +136,7 @@ jobs:
           draft: false
           prerelease: true
           body: |
-            KEM3T v0.1.0 is an early public preview of an evidence-first network intelligence and infrastructure research tool.
+            KEM3T ${{ github.ref_name }} is an early public preview of an evidence-first network intelligence and infrastructure research tool.
 
             **Validation status:** automated unit/integration, race, fuzz-smoke, vulnerability, build, and controlled localhost TCP/HTTP/TLS checks passed on the tagged source. Real-world coverage and intelligence-quality benchmarking remain ongoing.
 

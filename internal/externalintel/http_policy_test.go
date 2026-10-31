@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -93,5 +94,39 @@ func TestRetryDelayHonorsAndCapsRetryAfter(t *testing.T) {
 	}
 	if got := retryDelay(0, "invalid"); got <= 0 {
 		t.Fatalf("expected fallback delay, got %v", got)
+	}
+}
+
+func TestDoExternalRequestRejectsHTTPSDowngradeWithCustomClient(t *testing.T) {
+	var plainHits atomic.Int32
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		plainHits.Add(1)
+		fmt.Fprint(w, "should not be reached")
+	}))
+	defer plain.Close()
+
+	secure := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, plain.URL+"/redirected", http.StatusFound)
+	}))
+	defer secure.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, secure.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = doExternalRequest(ctx, secure.Client(), req)
+	if err == nil || !strings.Contains(err.Error(), "HTTPS redirect cannot downgrade") {
+		t.Fatalf("expected HTTPS downgrade to be rejected, got %v", err)
+	}
+	if got := plainHits.Load(); got != 0 {
+		t.Fatalf("plain HTTP redirect target received %d requests", got)
+	}
+}
+
+func TestRetryDelayCapsOversizedNumericRetryAfter(t *testing.T) {
+	if got := retryDelay(0, "999999999999999999999999999999999999"); got != externalMaxRetryDelay {
+		t.Fatalf("got %v, want capped delay %v", got, externalMaxRetryDelay)
 	}
 }
