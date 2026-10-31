@@ -133,7 +133,6 @@ func TestRetryDelayCapsOversizedNumericRetryAfter(t *testing.T) {
 	}
 }
 
-
 func TestAuthenticatedProviderRedirectCannotLeakAPIKeyAcrossHosts(t *testing.T) {
 	var received atomic.Int32
 	destination := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
