@@ -75,6 +75,26 @@ func TestCTLookupNormalizesDeduplicatesAndScopesNames(t *testing.T) {
 	}
 }
 
+func TestCTDeduplicatesIDLessRowsAcrossQueries(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"common_name":"www.example.com","name_value":"www.example.com","issuer_name":"Example CA","not_before":"2026-01-01","not_after":"2027-01-01"}]`)
+	}))
+	defer server.Close()
+
+	client := &CTClient{Endpoint: server.URL, HTTPClient: server.Client()}
+	report, err := client.LookupDomain(context.Background(), "example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.CertificateRecords != 1 {
+		t.Fatalf("ID-less duplicate rows produced %d records, want 1", report.CertificateRecords)
+	}
+	if len(report.Records) != 1 || report.Records[0].CertificateID != 0 {
+		t.Fatalf("unexpected ID-less record result: %+v", report.Records)
+	}
+}
+
 func TestCTUsesConfiguredTimeoutWithCustomHTTPClient(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
