@@ -1,0 +1,35 @@
+name: Format all Go sources
+
+on:
+  push:
+    branches:
+      - audit/reliability-hardening-final
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Format every tracked Go file
+        shell: bash
+        run: |
+          mapfile -t files < <(git ls-files '*.go')
+          if [ "${#files[@]}" -eq 0 ]; then exit 0; fi
+          gofmt -w "${files[@]}"
+          if git diff --quiet -- "${files[@]}"; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${files[@]}"
+          git commit -m "Format all tracked Go sources"
+          git push origin HEAD:audit/reliability-hardening-final
