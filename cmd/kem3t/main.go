@@ -668,7 +668,7 @@ func printIntelligenceReport(report intelligence.IntelligenceReport) {
 			safePrintf("  Confidence: %s (scope: %s)\n", item.Confidence, item.ConfidenceScope)
 			safePrintf("  Evidence refs: %s\n", strings.Join(item.EvidenceIDs, ", "))
 			safePrintf("  Observation refs: %s\n", strings.Join(item.ObservationIDs, ", "))
-			safePrintf("  Limitations: %s\n", strings.Join(item.Limitations, "; "))
+			safePrintf("  Limitations: %s\n", item.Limitations)
 		}
 	}
 
@@ -680,7 +680,7 @@ func printIntelligenceReport(report intelligence.IntelligenceReport) {
 			safePrintf("  Supporting evidence refs: %s\n", strings.Join(item.SupportingIDs, ", "))
 			safePrintf("  Supporting facts: %s\n", strings.Join(item.SupportingFacts, " | "))
 			safePrintf("  Alternative explanations: %s\n", item.Alternative)
-			safePrintf("  Limitations: %s\n", strings.Join(item.Limitations, "; "))
+			safePrintf("  Limitations: %s\n", item.Limitations)
 			if len(item.Verification) > 0 {
 				fmt.Println("  Verification steps:")
 				for _, step := range item.Verification {
