@@ -39,7 +39,8 @@ type Result struct {
 	Stages  []StageOutcome                  `json:"stages"`
 	Graph   graph.Graph                     `json:"graph"`
 	Report  intelligence.IntelligenceReport `json:"report"`
-	Partial bool                            `json:"partial"`
+	Partial          bool `json:"partial"`
+	HistoryPersisted bool `json:"history_persisted"`
 }
 
 type PlanningState struct {
@@ -230,12 +231,40 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 	} else {
 		run.Status = evidence.CollectionRunCompleted
 	}
+	if retErr != nil {
+		result.Partial = true
+	}
 	if err := e.Registry.UpdateCollectionRun(run); err != nil {
-		retErr = errors.Join(retErr, fmt.Errorf("finalize investigation run: %w", err))
+		finalizeErr := fmt.Errorf("finalize investigation run: %w", err)
+		retErr = errors.Join(retErr, finalizeErr)
+		result.Partial = true
+		run.Status = evidence.CollectionRunFailed
+		if run.ErrorMessage == "" {
+			run.ErrorMessage = finalizeErr.Error()
+		} else {
+			run.ErrorMessage += "; " + finalizeErr.Error()
+		}
+		if retryErr := e.Registry.UpdateCollectionRun(run); retryErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("mark investigation run failed after finalization error: %w", retryErr))
+		}
+		return result, retErr
 	}
 	if run.Status == evidence.CollectionRunCompleted && strings.TrimSpace(e.SnapshotDir) != "" {
 		if err := history.PersistRunSnapshot(e.SnapshotDir, run, e.Registry); err != nil {
-			retErr = errors.Join(retErr, fmt.Errorf("persist unified investigation history: %w", err))
+			persistErr := fmt.Errorf("persist unified investigation history: %w", err)
+			retErr = errors.Join(retErr, persistErr)
+			result.Partial = true
+			run.Status = evidence.CollectionRunFailed
+			if run.ErrorMessage == "" {
+				run.ErrorMessage = persistErr.Error()
+			} else {
+				run.ErrorMessage += "; " + persistErr.Error()
+			}
+			if updateErr := e.Registry.UpdateCollectionRun(run); updateErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("mark investigation run failed after history persistence error: %w", updateErr))
+			}
+		} else {
+			result.HistoryPersisted = true
 		}
 	}
 	return result, retErr

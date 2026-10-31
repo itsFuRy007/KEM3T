@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,4 +26,14 @@ func TestExternalCTStageRegistersIntoTheSameInvestigation(t *testing.T) {
 	if len(registry.AllEvidence())==0||len(registry.AllObservations())==0 {t.Fatal("external CT evidence was not registered")}
 	if len(result.Graph.Nodes)==0||result.Report.Target!="example.com" {t.Fatalf("external stage did not contribute to shared graph/report: %+v",result)}
 	if result.Stages[0].Result.Evidence==0 {t.Fatalf("external stage contribution was not reported: %+v",result.Stages[0])}
+}
+
+func TestStageLimitationsPreserveProviderCaveatsAndTruncation(t *testing.T) {
+	got := stageLimitations([]string{"provider caveat"}, "Passive DNS", true)
+	if len(got) != 2 || got[0] != "provider caveat" {
+		t.Fatalf("provider limitations were not preserved: %v", got)
+	}
+	if !strings.Contains(got[1], "truncated") {
+		t.Fatalf("truncation limitation missing: %v", got)
+	}
 }

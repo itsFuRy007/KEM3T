@@ -26,6 +26,12 @@ func (s FuncStage) Run(ctx context.Context, target string, registry *evidence.Re
 	return s.Lookup(ctx, target, registry)
 }
 
+func stageLimitations(limitations []string, provider string, truncated bool) []string {
+ result:=append([]string(nil),limitations...)
+ if truncated {result=append(result,provider+" response was truncated; the returned data is a partial provider view.")}
+ return result
+}
+
 func NewCTStage() Stage { return NewCTStageWithClient(nil) }
 func NewCTStageWithClient(client *externalintel.CTClient) Stage {
 	if client == nil { client = &externalintel.CTClient{} }
@@ -41,7 +47,7 @@ func NewRDAPDomainStageWithClient(client *externalintel.RDAPClient) Stage {
 	return FuncStage{StageName:"rdap-domain", Lookup:func(ctx context.Context,target string,registry *evidence.Registry)(StageResult,error){
 		report,err:=client.LookupDomain(ctx,target); if err!=nil{return StageResult{},err}
 		registered,err:=externalintel.RegisterRDAPReport(registry,report); count:=0; if registered {count=1}
-		return StageResult{Evidence:count,Observations:count},err
+		return StageResult{Evidence:count,Observations:count,Limitations:append([]string(nil),report.Limitations...)},err
 	}}
 }
 
@@ -50,7 +56,7 @@ func NewPassiveDNSStageWithClient(client *externalintel.PassiveDNSClient) Stage 
 	if client == nil { client = &externalintel.PassiveDNSClient{} }
 	return FuncStage{StageName:"passive-dns", Lookup:func(ctx context.Context,target string,registry *evidence.Registry)(StageResult,error){
 		report,err:=client.LookupDomain(ctx,target); if err!=nil{return StageResult{},err}
-		count,err:=externalintel.RegisterPassiveDNSReport(registry,report); return StageResult{Evidence:count,Observations:count},err
+		count,err:=externalintel.RegisterPassiveDNSReport(registry,report); return StageResult{Evidence:count,Observations:count,Limitations:stageLimitations(report.Limitations,"Passive DNS",report.Truncated)},err
 	}}
 }
 
@@ -60,7 +66,7 @@ func NewThreatIntelStageWithClient(client *externalintel.ThreatIntelClient) Stag
 	return FuncStage{StageName:"threat-intelligence", Lookup:func(ctx context.Context,target string,registry *evidence.Registry)(StageResult,error){
 		report,err:=client.Lookup(ctx,target); if err!=nil{return StageResult{},err}
 		registered,err:=externalintel.RegisterThreatIntelReport(registry,report); count:=0; if registered {count=1}
-		return StageResult{Evidence:count,Observations:count},err
+		return StageResult{Evidence:count,Observations:count,Limitations:stageLimitations(report.Limitations,"Threat-intelligence",report.Truncated)},err
 	}}
 }
 
@@ -70,7 +76,7 @@ func NewIPRDAPStageWithClient(client *externalintel.RDAPClient) Stage {
 	return FuncStage{StageName:"rdap-ip", Lookup:func(ctx context.Context,target string,registry *evidence.Registry)(StageResult,error){
 		report,err:=client.LookupIP(ctx,target); if err!=nil{return StageResult{},err}
 		registered,err:=externalintel.RegisterIPRDAPReport(registry,report); count:=0; if registered {count=1}
-		return StageResult{Evidence:count,Observations:count},err
+		return StageResult{Evidence:count,Observations:count,Limitations:append([]string(nil),report.Limitations...)},err
 	}}
 }
 
@@ -80,7 +86,7 @@ func NewASNStageWithClient(client *externalintel.ASNClient) Stage {
 	return FuncStage{StageName:"asn", Lookup:func(ctx context.Context,target string,registry *evidence.Registry)(StageResult,error){
 		report,err:=client.LookupIP(ctx,target); if err!=nil{return StageResult{},err}
 		registered,err:=externalintel.RegisterASNReport(registry,report); count:=0; if registered {count=1}
-		return StageResult{Evidence:count,Observations:count},err
+		return StageResult{Evidence:count,Observations:count,Limitations:append([]string(nil),report.Limitations...)},err
 	}}
 }
 
@@ -93,7 +99,7 @@ func NewIPRDAPStageForIP(ip string) Stage {
 	return FuncStage{StageName:"rdap-ip:"+ip,Lookup:func(ctx context.Context,_ string,registry *evidence.Registry)(StageResult,error){
 		report,err:=client.LookupIP(ctx,ip); if err!=nil{return StageResult{},err}
 		registered,err:=externalintel.RegisterIPRDAPReport(registry,report); count:=0; if registered {count=1}
-		return StageResult{Evidence:count,Observations:count},err
+		return StageResult{Evidence:count,Observations:count,Limitations:append([]string(nil),report.Limitations...)},err
 	}}
 }
 
@@ -104,6 +110,6 @@ func NewASNStageForIP(ip string) Stage {
 	return FuncStage{StageName:"asn:"+ip,Lookup:func(ctx context.Context,_ string,registry *evidence.Registry)(StageResult,error){
 		report,err:=client.LookupIP(ctx,ip); if err!=nil{return StageResult{},err}
 		registered,err:=externalintel.RegisterASNReport(registry,report); count:=0; if registered {count=1}
-		return StageResult{Evidence:count,Observations:count},err
+		return StageResult{Evidence:count,Observations:count,Limitations:append([]string(nil),report.Limitations...)},err
 	}}
 }

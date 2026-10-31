@@ -118,7 +118,7 @@ func RegisterPassiveDNSReport(registry *evidence.Registry,report PassiveDNSRepor
   if !evidence.IsValidDomain(hostname)||!inDomainScope(hostname,target){return added,fmt.Errorf("passive-DNS hostname %q is invalid or outside target scope",record.Hostname)}
   if ip==nil{return added,fmt.Errorf("passive-DNS address %q is invalid",record.Address)}
   if typ=="A"&&ip.To4()==nil||typ=="AAAA"&&ip.To4()!=nil||(typ!="A"&&typ!="AAAA"){return added,fmt.Errorf("passive-DNS record type %q does not match address",typ)}
-  details:=evidence.PassiveDNSDetails{Target:target,Hostname:hostname,Address:ip.String(),RecordType:typ,FirstSeen:strings.TrimSpace(record.FirstSeen),LastSeen:strings.TrimSpace(record.LastSeen),ASN:strings.TrimSpace(record.ASN),Source:source}
+  details:=evidence.PassiveDNSDetails{Target:target,Hostname:hostname,Address:ip.String(),RecordType:typ,FirstSeen:strings.TrimSpace(record.FirstSeen),LastSeen:strings.TrimSpace(record.LastSeen),ASN:strings.TrimSpace(record.ASN),Source:source,Truncated:report.Truncated}
   value,err:=json.Marshal(details);if err!=nil{return added,err};sum:=sha256.Sum256(value);key:=hex.EncodeToString(sum[:])
   item:=evidence.Evidence{ID:"passive-dns:"+key,EntityID:target,Type:evidence.TypePassiveDNS,Value:string(value)}
   if err:=registry.AddEvidence(item);err!=nil&&!errors.Is(err,evidence.ErrEvidenceExists){return added,fmt.Errorf("register passive-DNS evidence: %w",err)}

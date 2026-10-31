@@ -111,3 +111,37 @@ func TestRegisterIPRDAPReportPersistsGraphProvenance(t *testing.T){
  g,err:=graph.BuildFromRegistry(registry);if err!=nil{t.Fatal(err)}
  if len(g.Nodes)!=2||len(g.Edges)!=1||g.Edges[0].Type!=graph.EdgeIPInNetworkRange||len(g.Edges[0].EvidenceIDs)!=1||len(g.Edges[0].ObservationIDs)!=1{t.Fatalf("unexpected graph/provenance: %+v",g)}
 }
+
+func TestRegisterIPRDAPReportRejectsInvalidNetworkRanges(t *testing.T) {
+	base := IPRDAPReport{
+		Target: "8.8.8.8", Source: "rdap.example.test",
+		RetrievedAt: time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC),
+		StartAddress: "8.8.8.0", EndAddress: "8.8.8.255",
+	}
+	tests := []struct {
+		name string
+		start string
+		end string
+	}{
+		{name: "missing start", start: "", end: "8.8.8.255"},
+		{name: "invalid start", start: "not-an-ip", end: "8.8.8.255"},
+		{name: "invalid end", start: "8.8.8.0", end: "not-an-ip"},
+		{name: "reversed range", start: "8.8.8.255", end: "8.8.8.0"},
+		{name: "wrong address family", start: "2001:db8::1", end: "2001:db8::2"},
+		{name: "range excludes target", start: "1.1.1.0", end: "1.1.1.255"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			registry := evidence.NewRegistry()
+			report := base
+			report.StartAddress = test.start
+			report.EndAddress = test.end
+			if _, err := RegisterIPRDAPReport(registry, report); err == nil {
+				t.Fatal("expected invalid network range to be rejected")
+			}
+			if len(registry.AllEvidence()) != 0 || len(registry.AllObservations()) != 0 {
+				t.Fatal("invalid IP RDAP report was persisted")
+			}
+		})
+	}
+}

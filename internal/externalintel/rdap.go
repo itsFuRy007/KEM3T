@@ -175,8 +175,9 @@ func uniqueSorted(values []string)[]string{set:=map[string]struct{}{};for _,valu
 // LookupIP discovers the authoritative RIR RDAP service for an IP address.
 func(c *RDAPClient)LookupIP(ctx context.Context,rawTarget string)(IPRDAPReport,error){
  if ctx==nil{return IPRDAPReport{},fmt.Errorf("context is required")}
- ip:=net.ParseIP(strings.TrimSpace(rawTarget));if ip==nil{return IPRDAPReport{},fmt.Errorf("target must be an IP address")}
- target:=ip.String()
+ targetAddr,err:=netip.ParseAddr(strings.TrimSpace(rawTarget));if err!=nil{return IPRDAPReport{},fmt.Errorf("target must be an IP address: %w",err)}
+ target:=targetAddr.String()
+ ip:=net.ParseIP(target)
  timeout:=c.Timeout;if timeout<=0{timeout=12*time.Second}
  ctx,cancel:=context.WithTimeout(ctx,timeout);defer cancel()
  client:=c.HTTPClient
@@ -191,16 +192,21 @@ func(c *RDAPClient)LookupIP(ctx context.Context,rawTarget string)(IPRDAPReport,e
  service.Path=strings.TrimRight(service.Path,"/")+"/ip/"+url.PathEscape(target)
  response,err:=rdapGET(ctx,client,service.String());if err!=nil{return IPRDAPReport{},fmt.Errorf("query IP RDAP: %w",err)}
  var raw rdapIPResponse;if err:=json.Unmarshal(response,&raw);err!=nil{return IPRDAPReport{},fmt.Errorf("decode IP RDAP response: %w",err)}
- start,err:=netip.ParseAddr(strings.TrimSpace(raw.StartAddress));if err!=nil{return IPRDAPReport{},fmt.Errorf("RDAP start address is invalid: %w",err)}
- end,err:=netip.ParseAddr(strings.TrimSpace(raw.EndAddress));if err!=nil{return IPRDAPReport{},fmt.Errorf("RDAP end address is invalid: %w",err)}
- targetAddr,err:=netip.ParseAddr(target);if err!=nil{return IPRDAPReport{},err}
- if start.Is4()!=targetAddr.Is4()||end.Is4()!=targetAddr.Is4()||start.Compare(end)>0||targetAddr.Compare(start)<0||targetAddr.Compare(end)>0{return IPRDAPReport{},fmt.Errorf("RDAP network range does not contain requested IP")}
+ start,end,err:=validateIPRDAPRange(target,raw.StartAddress,raw.EndAddress);if err!=nil{return IPRDAPReport{},err}
  now:=time.Now().UTC();if c.Now!=nil{now=c.Now().UTC()}
  return IPRDAPReport{Target:target,Source:service.Host,RetrievedAt:now,Handle:strings.TrimSpace(raw.Handle),Name:strings.TrimSpace(raw.Name),StartAddress:start.String(),EndAddress:end.String(),Country:strings.TrimSpace(raw.Country),NetworkType:strings.TrimSpace(raw.Type),Status:uniqueSorted(raw.Status),Limitations:[]string{
   "IP RDAP describes a registry allocation/assignment range; it does not prove which customer currently operates a host.",
   "Network names and country fields are registry-provided labels and may be absent, broad, or stale.",
   "A registered network range is context, not a security or reputation verdict.",
  }},nil
+}
+
+func validateIPRDAPRange(target,startAddress,endAddress string)(netip.Addr,netip.Addr,error){
+ targetAddr,err:=netip.ParseAddr(strings.TrimSpace(target));if err!=nil{return netip.Addr{},netip.Addr{},fmt.Errorf("RDAP target IP is invalid: %w",err)}
+ start,err:=netip.ParseAddr(strings.TrimSpace(startAddress));if err!=nil{return netip.Addr{},netip.Addr{},fmt.Errorf("RDAP start address is invalid: %w",err)}
+ end,err:=netip.ParseAddr(strings.TrimSpace(endAddress));if err!=nil{return netip.Addr{},netip.Addr{},fmt.Errorf("RDAP end address is invalid: %w",err)}
+ if start.Is4()!=targetAddr.Is4()||end.Is4()!=targetAddr.Is4()||start.Compare(end)>0||targetAddr.Compare(start)<0||targetAddr.Compare(end)>0{return netip.Addr{},netip.Addr{},fmt.Errorf("RDAP network range does not contain requested IP")}
+ return start,end,nil
 }
 
 func selectIPRDAPService(bootstrap rdapBootstrap,ip net.IP)(string,error){
@@ -241,9 +247,10 @@ func RegisterRDAPReport(registry *evidence.Registry, report RDAPReport) (bool,er
 
 func RegisterIPRDAPReport(registry *evidence.Registry,report IPRDAPReport)(bool,error){
  if registry==nil{return false,fmt.Errorf("evidence registry is required")}
- ip:=net.ParseIP(strings.TrimSpace(report.Target));if ip==nil{return false,fmt.Errorf("IP RDAP target is invalid")}
+ targetAddr,start,end,err:=validateIPRDAPRange(report.Target,report.StartAddress,report.EndAddress);if err!=nil{return false,err}
+ ip:=net.ParseIP(targetAddr.String())
  if strings.TrimSpace(report.Source)==""||report.RetrievedAt.IsZero(){return false,fmt.Errorf("IP RDAP source and retrieval timestamp are required")}
- details:=evidence.IPRDAPNetworkDetails{Target:ip.String(),Handle:strings.TrimSpace(report.Handle),Name:strings.TrimSpace(report.Name),StartAddress:strings.TrimSpace(report.StartAddress),EndAddress:strings.TrimSpace(report.EndAddress),Country:strings.TrimSpace(report.Country),NetworkType:strings.TrimSpace(report.NetworkType),Status:uniqueSorted(report.Status)}
+ details:=evidence.IPRDAPNetworkDetails{Target:ip.String(),Handle:strings.TrimSpace(report.Handle),Name:strings.TrimSpace(report.Name),StartAddress:start.String(),EndAddress:end.String(),Country:strings.TrimSpace(report.Country),NetworkType:strings.TrimSpace(report.NetworkType),Status:uniqueSorted(report.Status)}
  value,err:=json.Marshal(details);if err!=nil{return false,fmt.Errorf("encode IP RDAP evidence: %w",err)}
  sum:=sha256.Sum256(value);key:=hex.EncodeToString(sum[:])
  item:=evidence.Evidence{ID:"ip-rdap-network:"+key,EntityID:ip.String(),Type:evidence.TypeIPRDAPNetwork,Value:string(value)}

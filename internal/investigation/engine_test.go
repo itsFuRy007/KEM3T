@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +35,7 @@ func TestEngineUsesOneRegistryForGraphAndReport(t *testing.T) {
 	engine:=Engine{Registry:registry,Stages:[]Stage{testStage{name:"dns"}},SnapshotDir:snapshotDir,Now:func()time.Time{return time.Date(2026,1,1,0,0,0,0,time.UTC)}}
 	result,err:=engine.Run(context.Background(),"example.com")
 	if err!=nil { t.Fatal(err) }
+	if !result.HistoryPersisted { t.Fatal("expected completed investigation history snapshot to be persisted") }
 	if result.Target!="example.com" || len(result.Graph.Nodes)!=2 || len(result.Graph.Edges)!=1 { t.Fatalf("unexpected graph: %+v",result.Graph) }
 	if result.Report.Target!="example.com" { t.Fatalf("unexpected report target %q",result.Report.Target) }
 	runs,err:=registry.CollectionRuns("example.com")
@@ -131,4 +134,26 @@ func TestEngineGraphExcludesUnrelatedTargetsFromSharedRegistry(t *testing.T) {
 		if node.Value=="other.example"||node.Value=="198.51.100.9" {t.Fatalf("unrelated target leaked into investigation graph: %+v",node)}
 	}
 	if len(result.Graph.Nodes)!=2 {t.Fatalf("expected only target domain and linked IP, got %+v",result.Graph.Nodes)}
+}
+
+func TestEngineMarksRunFailedWhenHistorySnapshotPersistenceFails(t *testing.T) {
+	snapshotPath := filepath.Join(t.TempDir(), "history-is-a-file")
+	if err := os.WriteFile(snapshotPath, []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	registry := evidence.NewRegistry()
+	result, err := (&Engine{Registry: registry, Stages: []Stage{testStage{name: "dns"}}, SnapshotDir: snapshotPath}).Run(context.Background(), "example.com")
+	if err == nil || !strings.Contains(err.Error(), "persist unified investigation history") {
+		t.Fatalf("expected history persistence error, got %v", err)
+	}
+	if !result.Partial || result.HistoryPersisted {
+		t.Fatalf("failed history persistence must be partial and unpersisted: %+v", result)
+	}
+	runs, loadErr := registry.CollectionRuns("example.com")
+	if loadErr != nil || len(runs) != 1 {
+		t.Fatalf("expected one finalized run, got %+v, %v", runs, loadErr)
+	}
+	if runs[0].Status != evidence.CollectionRunFailed || !strings.Contains(runs[0].ErrorMessage, "persist unified investigation history") {
+		t.Fatalf("history persistence failure was not reflected in run status: %+v", runs[0])
+	}
 }

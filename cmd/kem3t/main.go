@@ -191,22 +191,29 @@ func runInvestigation(target, snapshotDir string, enableActive bool, startPort, 
 		)
 	}
 	engine := investigation.Engine{Registry: registry, Stages: stages, Planner: investigation.NewCTSubdomainDNSPlanner(8), SnapshotDir: snapshotDir}
-	result, err := engine.Run(context.Background(), target)
-	if err != nil {
-		return fmt.Errorf("investigation: %w", err)
+	result, runErr := engine.Run(context.Background(), target)
+	if runErr != nil {
+		if strings.TrimSpace(result.RunID) == "" {
+			return fmt.Errorf("investigation: %w", runErr)
+		}
+		retErr = errors.Join(retErr, fmt.Errorf("investigation: %w", runErr))
 	}
 
 	fmt.Println("[UNIFIED INVESTIGATION]")
 	fmt.Printf("Target: %s\nRun ID: %s\nPartial: %t\n", result.Target, result.RunID, result.Partial)
 	if path := strings.TrimSpace(exportMarkdown); path != "" {
-		markdown, err := intelligence.RenderMarkdownReport(result.Report)
-		if err != nil {
-			return fmt.Errorf("render Markdown intelligence dossier: %w", err)
+		if strings.TrimSpace(result.Report.Target) == "" {
+			retErr = errors.Join(retErr, fmt.Errorf("cannot render Markdown intelligence dossier: investigation report is unavailable"))
+		} else {
+			markdown, renderErr := intelligence.RenderMarkdownReport(result.Report)
+			if renderErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("render Markdown intelligence dossier: %w", renderErr))
+			} else if writeErr := writeFileAtomic(path, []byte(markdown)); writeErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("write Markdown intelligence dossier: %w", writeErr))
+			} else {
+				fmt.Printf("[MARKDOWN DOSSIER] %s\n", path)
+			}
 		}
-		if err := writeFileAtomic(path, []byte(markdown)); err != nil {
-			return fmt.Errorf("write Markdown intelligence dossier: %w", err)
-		}
-		fmt.Printf("[MARKDOWN DOSSIER] %s\n", path)
 	}
 	for _, stage := range result.Stages {
 		state := "completed"
@@ -227,11 +234,19 @@ func runInvestigation(target, snapshotDir string, enableActive bool, startPort, 
 		observationCount += stage.Result.Observations
 	}
 	fmt.Printf("\nNew evidence records: %d | New observations: %d\n", evidenceCount, observationCount)
-	printIntelligenceReport(result.Report)
-	printInvestigationPlan(result.Report.InvestigationPlan)
+	if strings.TrimSpace(result.Report.Target) != "" {
+		printIntelligenceReport(result.Report)
+		printInvestigationPlan(result.Report.InvestigationPlan)
+	} else {
+		fmt.Println("\n[REPORT UNAVAILABLE] The investigation did not produce a valid intelligence report.")
+	}
 	printInfrastructureGraph(result.Graph)
-	fmt.Printf("\n[HISTORY] Unified investigation snapshot saved under %s/history\n", snapshotDir)
-	return nil
+	if result.HistoryPersisted {
+		fmt.Printf("\n[HISTORY] Unified investigation snapshot saved under %s/history\n", snapshotDir)
+	} else {
+		fmt.Printf("\n[HISTORY] No completed snapshot was persisted under %s/history\n", snapshotDir)
+	}
+	return retErr
 }
 
 func runDemo() error {

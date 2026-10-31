@@ -111,6 +111,7 @@ type PassiveDNSDetails struct {
 	LastSeen   string `json:"last_seen,omitempty"`
 	ASN        string `json:"asn,omitempty"`
 	Source     string `json:"source"`
+	Truncated  bool   `json:"truncated,omitempty"`
 }
 
 type ASNOriginRecord struct {

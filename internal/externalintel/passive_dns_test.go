@@ -2,6 +2,7 @@ package externalintel
 
 import (
  "context"
+ "encoding/json"
  "fmt"
  "net/http"
  "net/http/httptest"
@@ -38,8 +39,13 @@ func TestPassiveDNSRejectsInvalidTargetAndInsecureEndpoint(t *testing.T){
 
 func TestRegisterPassiveDNSReportPersistsHistoricalGraphProvenance(t *testing.T){
  registry:=evidence.NewRegistry()
- report:=PassiveDNSReport{Target:"example.com",Source:"otx.alienvault.com",RetrievedAt:time.Date(2026,10,29,12,0,0,0,time.UTC),Records:[]PassiveDNSRecord{{Hostname:"www.example.com",Address:"8.8.8.8",RecordType:"A",FirstSeen:"2020-01-01",LastSeen:"2026-01-01"}}}
+ report:=PassiveDNSReport{Target:"example.com",Source:"otx.alienvault.com",RetrievedAt:time.Date(2026,10,29,12,0,0,0,time.UTC),Truncated:true,Records:[]PassiveDNSRecord{{Hostname:"www.example.com",Address:"8.8.8.8",RecordType:"A",FirstSeen:"2020-01-01",LastSeen:"2026-01-01"}}}
  added,err:=RegisterPassiveDNSReport(registry,report);if err!=nil{t.Fatal(err)};if added!=1{t.Fatalf("added=%d",added)}
+ stored:=registry.AllEvidence()
+ if len(stored)!=1 {t.Fatalf("expected one evidence record, got %d",len(stored))}
+ var details evidence.PassiveDNSDetails
+ if err:=json.Unmarshal([]byte(stored[0].Value),&details);err!=nil{t.Fatal(err)}
+ if !details.Truncated {t.Fatal("truncation state was not preserved in passive-DNS evidence")}
  g,err:=graph.BuildFromRegistry(registry);if err!=nil{t.Fatal(err)}
  if len(g.Nodes)!=2||len(g.Edges)!=1{t.Fatalf("unexpected graph: nodes=%d edges=%d",len(g.Nodes),len(g.Edges))}
  edge:=g.Edges[0];if edge.Type!=graph.EdgePassiveDNSResolvesTo||len(edge.EvidenceIDs)!=1||len(edge.ObservationIDs)!=1{t.Fatalf("missing passive DNS provenance: %+v",edge)}
