@@ -30,7 +30,7 @@ func main() {
 		if errors.Is(err, flag.ErrHelp) {
 			return
 		}
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %s\n", sanitizeTerminalText(err.Error()))
 		os.Exit(1)
 	}
 }
