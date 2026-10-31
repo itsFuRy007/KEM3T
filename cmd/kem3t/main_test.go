@@ -208,7 +208,6 @@ func TestCountTCPStatesNormalizesCaseAndWhitespace(t *testing.T) {
 	}
 }
 
-
 func TestSanitizeTerminalTextRemovesControlAndFormatCharacters(t *testing.T) {
 	input := "safe\x1b[31mRED\u202e\nnext\tline"
 	got := sanitizeTerminalText(input)

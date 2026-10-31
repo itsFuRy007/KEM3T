@@ -1155,7 +1155,6 @@ func runBatchDNS(targetsFile, snapshotDir string, workers int) error {
 	return nil
 }
 
-
 // sanitizeTerminalText removes control and formatting characters from
 // untrusted strings before they are written to an interactive terminal.
 func sanitizeTerminalText(value string) string {
