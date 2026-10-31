@@ -12,7 +12,8 @@ This is a repository-level security baseline for KEM3T, not a penetration-test r
 - Discovered subdomains and IP addresses do not automatically authorize active checks.
 - Adaptive DNS follow-up is bounded and restricted to the root domain's namespace.
 - HTTP collection bounds response-body inspection and redirect count, enforces same-host redirects, rejects credential-bearing and HTTPS-downgrade redirects, and redacts query values from persisted URLs and Location headers.
-- External provider requests use HTTPS endpoints, bounded response sizes, request timeouts, cancellation-aware retry/backoff, and HTTPS-preserving redirect checks even with caller-supplied HTTP clients.
+- HTTP evidence validation requires both the original and final URL hosts to match the evidence target and rejects URLs containing credentials.
+- External provider requests use HTTPS endpoints, bounded response sizes, request timeouts, cancellation-aware retry/backoff, and HTTPS-preserving redirect checks even with caller-supplied HTTP clients. OTX requests carrying an API key are restricted to the original HTTPS host.
 
 ### Evidence and interpretation boundaries
 
@@ -31,7 +32,7 @@ This is a repository-level security baseline for KEM3T, not a penetration-test r
 
 ### Secrets and provider data
 
-- The OTX API key is read from the process environment and sent only in the provider request header.
+- The OTX API key is read from the process environment and sent only in the provider request header; OTX redirects cannot forward it to another host.
 - API keys and raw HTTP response bodies are not intended to be included in reports or persisted as evidence.
 - Provider data is untrusted input; malformed or out-of-scope records must be rejected or excluded without widening target scope.
 

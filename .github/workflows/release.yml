@@ -20,6 +20,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Check all tracked Go files are formatted
+        run: |
+          unformatted=$(git ls-files '*.go' | xargs -r gofmt -l)
+          if [ -n "$unformatted" ]; then
+            printf 'Unformatted Go files:\\n%s\\n' "$unformatted"
+            exit 1
+          fi
       - name: Run controlled loopback validation lab
         run: python3 scripts/validation-lab/run.py --output-dir "$RUNNER_TEMP/kem3t-validation-lab"
       - name: Run tests
