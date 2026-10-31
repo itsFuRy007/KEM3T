@@ -382,7 +382,6 @@ func GenerateServiceHypotheses(surfaces []ServiceSurface) ([]Hypothesis, error) 
 	return results, nil
 }
 
-
 func serviceEvidenceObservedTogether(surface ServiceSurface, httpObservations []ServiceHTTPObservation, tlsObservations []ServiceTLSObservation) bool {
 	refsByEvidence := make(map[string][]ServiceObservationRef)
 	for _, ref := range surface.ObservationRefs {
