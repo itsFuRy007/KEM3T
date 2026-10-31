@@ -85,16 +85,28 @@ func (e *ReportEngine) BuildWithInvestigationFeedback(
 		prioritizationEngine = &PrioritizationEngine{}
 	}
 
+	correlationLimitations := make([]string, 0)
 	correlations, err := correlationEngine.CorrelateForTarget(registry, target)
 	if err != nil {
-		return IntelligenceReport{}, fmt.Errorf("correlate evidence for target %q: %w", target, err)
+		// A malformed historical record for another target must not make the
+		// requested target's entire report unavailable. Retry using only evidence
+		// whose entity is inside the requested target namespace.
+		scopedEvidence, scopedObservations := targetScopedCorrelationRecords(target, registry)
+		correlations, err = correlationEngine.CorrelateEvidenceForTarget(scopedEvidence, scopedObservations, target)
+		if err != nil {
+			return IntelligenceReport{}, fmt.Errorf("correlate evidence for target %q: %w", target, err)
+		}
+		correlationLimitations = append(correlationLimitations,
+			"Target correlations were restricted to in-scope evidence because unrelated historical records failed validation; relationships to external entities may therefore be absent.")
 	}
-	// Multi-hop discovery needs the second-hop relationships around a target's
-	// first-hop pivots. Keep the report's direct correlations target-scoped, but
-	// build paths from the full evidence-backed correlation set.
+	// Multi-hop discovery needs second-hop relationships around direct pivots.
+	// If unrelated historical data prevents building the global graph, preserve
+	// the direct target report and disclose that multi-hop coverage was reduced.
 	allCorrelations, err := correlationEngine.Correlate(registry)
 	if err != nil {
-		return IntelligenceReport{}, fmt.Errorf("correlate evidence for multi-hop discovery: %w", err)
+		allCorrelations = correlations
+		correlationLimitations = append(correlationLimitations,
+			"Multi-hop discovery was limited because the global historical correlation set could not be validated; only direct target correlations were used.")
 	}
 	discoveries, err := discoveryEngine.Discover(correlations, target)
 	if err != nil {
@@ -182,12 +194,38 @@ func (e *ReportEngine) BuildWithInvestigationFeedback(
 		return IntelligenceReport{}, fmt.Errorf("build researcher narrative: %w", err)
 	}
 	report.Narrative = narrative
+	for _, limitation := range correlationLimitations {
+		report.Narrative.Limitations = appendUniqueLimitation(report.Narrative.Limitations, limitation)
+	}
 	plan, err := BuildAdaptiveInvestigationPlan(report, previousPlan, feedback)
 	if err != nil {
 		return IntelligenceReport{}, fmt.Errorf("build adaptive investigation plan: %w", err)
 	}
 	report.InvestigationPlan = plan
 	return report, nil
+}
+
+
+func targetScopedCorrelationRecords(target string, registry *evidence.Registry) ([]evidence.Evidence, []evidence.Observation) {
+	allEvidence := registry.AllEvidence()
+	selected := make([]evidence.Evidence, 0, len(allEvidence))
+	selectedIDs := make(map[string]struct{})
+	for _, item := range allEvidence {
+		entity := normalizeFindingTarget(item.EntityID)
+		if entity == "" || !serviceTargetInScope(entity, target) {
+			continue
+		}
+		selected = append(selected, item)
+		selectedIDs[item.ID] = struct{}{}
+	}
+	allObservations := registry.AllObservations()
+	observations := make([]evidence.Observation, 0)
+	for _, observation := range allObservations {
+		if _, ok := selectedIDs[observation.EvidenceID]; ok {
+			observations = append(observations, observation)
+		}
+	}
+	return selected, observations
 }
 
 // normalizeFindingTarget accepts hostnames, IP addresses, host:port values,
