@@ -75,3 +75,14 @@ jobs:
 
       - name: Build all packages
         run: go build ./...
+
+      - name: Cross-compile release targets
+        shell: bash
+        run: |
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            GOOS="${target%/*}"
+            GOARCH="${target#*/}"
+            suffix=""
+            if [ "$GOOS" = "windows" ]; then suffix=".exe"; fi
+            env GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 go build -trimpath -buildvcs=false -o "$RUNNER_TEMP/kem3t-$GOOS-$GOARCH$suffix" ./cmd/kem3t
+          done
