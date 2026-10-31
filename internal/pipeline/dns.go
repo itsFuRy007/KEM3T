@@ -77,7 +77,6 @@ func runDNSWithCollectorAndPlan(ctx context.Context, target, snapshotDir string,
 			return event.Type == events.EventDNSRecordFound
 		},
 		Convert: evidence.FromDNSEvent,
-		Analyze: (&intelligence.Engine{}).Analyze,
 	}
 	unified, registry, runErr := runUnifiedStage(ctx, target, snapshotDir, stage)
 	if registry != nil {
@@ -90,7 +89,13 @@ func runDNSWithCollectorAndPlan(ctx context.Context, target, snapshotDir string,
 	}
 	if len(unified.Stages) > 0 {
 		stageResult := unified.Stages[0].Result
-		result.Findings = stageResult.Findings
+		aggregator := intelligence.NewAggregator()
+		for _, event := range stageResult.CollectedEvents {
+			if err := aggregator.Add(event); err != nil {
+				return result, fmt.Errorf("aggregate DNS event: %w", err)
+			}
+		}
+		result.Findings = aggregator.Findings()
 	}
 	result.Graph = unified.Graph
 	result.Normalized = unified.Normalized
