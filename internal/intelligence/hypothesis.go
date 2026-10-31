@@ -309,6 +309,7 @@ func validateHypothesisCorrelation(correlation Correlation) error {
 		if err != nil || certificateID <= 0 || strconv.FormatInt(certificateID, 10) != parts[1] {
 			return fmt.Errorf("CT record key must contain a canonical positive certificate ID")
 		}
+	}
 	if correlation.ConfidenceScope != expectedScope {
 		return fmt.Errorf("confidence scope %q does not match correlation type", correlation.ConfidenceScope)
 	}
