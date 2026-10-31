@@ -24,7 +24,7 @@ jobs:
         run: |
           unformatted=$(git ls-files '*.go' | xargs -r gofmt -l)
           if [ -n "$unformatted" ]; then
-            printf 'Unformatted Go files:\\n%s\\n' "$unformatted"
+            printf 'Unformatted Go files:\n%s\n' "$unformatted"
             exit 1
           fi
       - name: Run controlled loopback validation lab
