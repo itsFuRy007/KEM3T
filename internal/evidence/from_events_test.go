@@ -283,7 +283,6 @@ func TestFromTLSEventKeepsEvidenceIdentityAcrossObservations(t *testing.T) {
 	}
 }
 
-
 // TestFromDNSEventNormalizesTrailingDotAndCase keeps DNS evidence identity canonical.
 func TestFromDNSEventNormalizesTrailingDotAndCase(t *testing.T) {
 	event := events.Event{
