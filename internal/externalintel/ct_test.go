@@ -241,10 +241,10 @@ func TestRegisterCTReportKeepsEvidenceIdentityStableAcrossRetrievals(t *testing.
 		Target: "example.com", Source: "crt.sh", RetrievedAt: firstRetrieved,
 		Records: []CTRecord{{
 			CertificateID: 42,
-			DNSNames:       []string{"example.com", "www.example.com"},
-			IssuerName:     "Example CA",
-			NotBefore:      "2026-01-01",
-			NotAfter:       "2027-01-01",
+			DNSNames:      []string{"example.com", "www.example.com"},
+			IssuerName:    "Example CA",
+			NotBefore:     "2026-01-01",
+			NotAfter:      "2027-01-01",
 		}},
 	}
 	if added, err := RegisterCTReport(registry, report); err != nil || added != 2 {
