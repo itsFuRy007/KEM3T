@@ -55,6 +55,7 @@ type PlanningState struct {
 	NewEvidence  []evidence.Evidence
 	Observations []evidence.Observation
 	Findings     []intelligence.Finding
+	Report       intelligence.IntelligenceReport
 	Completed    []StageOutcome
 	Scheduled    []string
 	// Limitations lets planners report decisions even when they cannot enqueue
@@ -155,13 +156,19 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 				}
 			}
 			findings := collectFindings(result.Stages)
+			planningReport, reportErr := (&intelligence.ReportEngine{}).Build(target, findings, e.Registry)
+			if reportErr != nil {
+				retErr = fmt.Errorf("build intelligence context for adaptive planner: %w", reportErr)
+				result.Partial = true
+				break
+			}
 			scheduled := make([]string, 0, len(queue)-index-1)
 			for _, pending := range queue[index+1:] {
 				scheduled = append(scheduled, strings.TrimSpace(pending.Name()))
 			}
 			next, planErr := e.Planner.Next(ctx, PlanningState{
 				Target: target, Evidence: allEvidence, NewEvidence: newEvidence,
-				Observations: e.Registry.AllObservations(), Findings: findings,
+				Observations: e.Registry.AllObservations(), Findings: findings, Report: planningReport,
 				Completed: append([]StageOutcome(nil), result.Stages...), Scheduled: scheduled,
 				Limitations: &plannerLimitations,
 			})
