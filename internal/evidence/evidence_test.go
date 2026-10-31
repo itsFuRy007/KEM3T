@@ -1,6 +1,9 @@
 package evidence
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func validEvidence() Evidence {
 	return Evidence{
@@ -98,4 +101,36 @@ func TestEvidenceValidateAcceptsTrimmedIP(t *testing.T) {
 		t.Fatalf("Validate() rejected IP with surrounding whitespace: %v", err)
 	}
 
+}
+
+
+func makeIPRDAPEvidence(target, start, end string) Evidence {
+	details := IPRDAPNetworkDetails{Target: target, StartAddress: start, EndAddress: end}
+	value, _ := json.Marshal(details)
+	return Evidence{ID: "ip-rdap:test", EntityID: target, Type: TypeIPRDAPNetwork, Value: string(value)}
+}
+
+func TestIPRDAPEvidenceRejectsNonCanonicalAddresses(t *testing.T) {
+	tests := []struct {
+		name string
+		evidence Evidence
+		wantValid bool
+	}{
+		{"valid IPv4 range", makeIPRDAPEvidence("192.0.2.10", "192.0.2.0", "192.0.2.255"), true},
+		{"zone on target", makeIPRDAPEvidence("fe80::1%eth0", "fe80::", "fe80::ffff"), false},
+		{"mapped IPv4 target", makeIPRDAPEvidence("::ffff:192.0.2.10", "::ffff:192.0.2.0", "::ffff:192.0.2.255"), false},
+		{"zone on range start", makeIPRDAPEvidence("fe80::1", "fe80::%eth0", "fe80::ffff"), false},
+		{"mapped IPv4 range end", makeIPRDAPEvidence("192.0.2.10", "192.0.2.0", "::ffff:192.0.2.255"), false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.evidence.Validate()
+			if test.wantValid && err != nil {
+				t.Fatalf("valid evidence rejected: %v", err)
+			}
+			if !test.wantValid && err == nil {
+				t.Fatal("expected non-canonical IP RDAP address to be rejected")
+			}
+		})
+	}
 }

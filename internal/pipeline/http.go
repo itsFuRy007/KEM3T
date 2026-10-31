@@ -13,7 +13,6 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
-	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/observations"
 )
 
@@ -76,19 +75,7 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 		if result.Event != nil {
 			run.EventCount = 1
 		}
-		if err := registry.UpdateCollectionRun(run); err != nil {
-			updateErr := fmt.Errorf("finalize collection run: %w", err)
-			if retErr == nil {
-				retErr = updateErr
-			} else {
-				retErr = fmt.Errorf("%w; additionally, %v", retErr, updateErr)
-			}
-		}
-		if retErr == nil && run.Status == evidence.CollectionRunCompleted {
-			if err := history.PersistRunSnapshot(snapshotDir, run, registry, []evidence.Observation{result.Observation}); err != nil {
-				retErr = fmt.Errorf("persist history snapshot: %w", err)
-			}
-		}
+		finalizeCollectionRun(snapshotDir, registry, &run, []evidence.Observation{result.Observation}, &retErr)
 	}()
 	collector := &collectors.HTTP{Target: target, Scheme: scheme, Port: port}
 	eventCh := make(chan events.Event, 1)

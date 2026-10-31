@@ -167,3 +167,11 @@ func TestTLSCollectorRejectsInvalidPort(t *testing.T) {
 		t.Fatal("expected invalid port error")
 	}
 }
+
+
+func TestTLSCollectorRejectsNilContext(t *testing.T) {
+	collector := &TLS{Target: "localhost"}
+	if err := collector.Run(nil, make(chan events.Event, 1)); err == nil {
+		t.Fatal("Run() should reject a nil context")
+	}
+}

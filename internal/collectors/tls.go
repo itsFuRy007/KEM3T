@@ -70,6 +70,12 @@ type TLS struct {
 
 // Run connects to the configured TLS endpoint and emits its leaf certificate.
 func (c *TLS) Run(ctx context.Context, output chan<- events.Event) error {
+	if ctx == nil {
+		return fmt.Errorf("context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	target := strings.TrimSpace(c.Target)
 	if target == "" {
 		return fmt.Errorf("TLS target is required")

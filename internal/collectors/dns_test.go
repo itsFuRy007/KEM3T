@@ -105,3 +105,11 @@ func TestDNSRunRejectsEmptyTarget(t *testing.T) {
 		t.Fatal("Run() should reject an empty target")
 	}
 }
+
+
+func TestDNSRunRejectsNilContext(t *testing.T) {
+	dns := &DNS{Target: "example.test"}
+	if err := dns.Run(nil, make(chan events.Event, 1)); err == nil {
+		t.Fatal("Run() should reject a nil context")
+	}
+}

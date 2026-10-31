@@ -13,7 +13,6 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
-	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/observations"
 )
@@ -74,19 +73,7 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 		} else {
 			run.Status = evidence.CollectionRunCompleted
 		}
-		if err := registry.UpdateCollectionRun(run); err != nil {
-			updateErr := fmt.Errorf("finalize collection run: %w", err)
-			if retErr == nil {
-				retErr = updateErr
-			} else {
-				retErr = fmt.Errorf("%w; additionally, %v", retErr, updateErr)
-			}
-		}
-		if retErr == nil && run.Status == evidence.CollectionRunCompleted {
-			if err := history.PersistRunSnapshot(snapshotDir, run, registry, result.Observations); err != nil {
-				retErr = fmt.Errorf("persist history snapshot: %w", err)
-			}
-		}
+		finalizeCollectionRun(snapshotDir, registry, &run, result.Observations, &retErr)
 	}()
 
 	collector := &collectors.TCP{Target: target, StartPort: startPort, EndPort: endPort}

@@ -525,21 +525,25 @@ func validateIPRDAPNetworkEvidence(e Evidence) error {
 	if err != nil {
 		return errors.New("IP RDAP evidence entity ID must be an IP address")
 	}
+	if target.Zone() != "" || target.Is4In6() || target.String() != strings.TrimSpace(e.EntityID) {
+		return errors.New("IP RDAP evidence entity ID must be normalized and cannot include a zone or mapped IPv4 address")
+	}
 	var d IPRDAPNetworkDetails
 	if err := json.Unmarshal([]byte(e.Value), &d); err != nil {
 		return fmt.Errorf("IP RDAP evidence value must be valid JSON: %w", err)
 	}
 	reportTarget, err := netip.ParseAddr(d.Target)
-	if err != nil || reportTarget != target {
-		return errors.New("IP RDAP target must match evidence entity ID")
+	if err != nil || reportTarget.Zone() != "" || reportTarget.Is4In6() ||
+		reportTarget.String() != d.Target || reportTarget != target {
+		return errors.New("IP RDAP target must match the normalized evidence entity ID")
 	}
 	start, err := netip.ParseAddr(d.StartAddress)
-	if err != nil {
-		return errors.New("IP RDAP start address is invalid")
+	if err != nil || start.Zone() != "" || start.Is4In6() || start.String() != d.StartAddress {
+		return errors.New("IP RDAP start address must be normalized and cannot include a zone or mapped IPv4 address")
 	}
 	end, err := netip.ParseAddr(d.EndAddress)
-	if err != nil {
-		return errors.New("IP RDAP end address is invalid")
+	if err != nil || end.Zone() != "" || end.Is4In6() || end.String() != d.EndAddress {
+		return errors.New("IP RDAP end address must be normalized and cannot include a zone or mapped IPv4 address")
 	}
 	if start.Is4() != target.Is4() || end.Is4() != target.Is4() || start.Compare(end) > 0 || target.Compare(start) < 0 || target.Compare(end) > 0 {
 		return errors.New("IP RDAP range must contain target and use a consistent address family")
