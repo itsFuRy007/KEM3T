@@ -110,7 +110,7 @@ func TestRunTCPStoresEvidenceAndBuildsGraph(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load generalized history snapshots: %v", err)
 	}
-	if len(snapshots) != 1 || snapshots[0].Collector != "tcp" || len(snapshots[0].Records) != 1 {
+	if len(snapshots) != 1 || snapshots[0].Collector != "investigation" || len(snapshots[0].Records) != 1 {
 		t.Fatalf("successful TCP run did not persist an evidence-backed history snapshot: %+v", snapshots)
 	}
 }
