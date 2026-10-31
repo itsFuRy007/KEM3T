@@ -3,8 +3,8 @@ package investigation
 import (
 	"context"
 	"encoding/json"
-	"testing"
 	"strings"
+	"testing"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 )
