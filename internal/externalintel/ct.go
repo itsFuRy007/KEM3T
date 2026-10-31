@@ -135,7 +135,7 @@ func (c *CTClient) LookupDomain(ctx context.Context, target string) (CTReport, e
 		rows = append(rows, queryRows...)
 	}
 
-	recordsByID := make(map[int]CTRecord)
+	recordsByID := make(map[string]CTRecord)
 	names := make(map[string]struct{})
 	issuers := make(map[string]struct{})
 	for _, row := range rows {
@@ -174,15 +174,25 @@ func (c *CTClient) LookupDomain(ctx context.Context, target string) (CTReport, e
 			NotBefore:     strings.TrimSpace(row.NotBefore),
 			NotAfter:      strings.TrimSpace(row.NotAfter),
 		}
-		if row.ID <= 0 {
-			// Some compatible endpoints omit IDs. Preserve the row deterministically
-			// without pretending it is a verified unique certificate.
-			record.CertificateID = 0
-			recordsByID[len(recordsByID)*-1-1] = record
-		} else if prior, exists := recordsByID[row.ID]; exists {
-			recordsByID[row.ID] = mergeCTRecords(prior, record)
+		key := ""
+		if row.ID > 0 {
+			key = fmt.Sprintf("id:%d", row.ID)
 		} else {
-			recordsByID[row.ID] = record
+			// Compatible endpoints may omit certificate IDs. Deduplicate identical
+			// rows returned by the apex and wildcard queries using normalized content,
+			// while keeping ID-less records distinct from provider-identified records.
+			record.CertificateID = 0
+			fingerprint, err := json.Marshal(record)
+			if err != nil {
+				return CTReport{}, fmt.Errorf("fingerprint CT row without certificate ID: %w", err)
+			}
+			sum := sha256.Sum256(fingerprint)
+			key = "content:" + hex.EncodeToString(sum[:])
+		}
+		if prior, exists := recordsByID[key]; exists {
+			recordsByID[key] = mergeCTRecords(prior, record)
+		} else {
+			recordsByID[key] = record
 		}
 		if issuer := strings.TrimSpace(row.IssuerName); issuer != "" {
 			issuers[issuer] = struct{}{}
