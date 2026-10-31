@@ -10,6 +10,7 @@ import (
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/investigation"
+	"github.com/itsFuRy007/kem3t/internal/history"
 )
 
 type externalCollectionFunc func(context.Context, *evidence.Registry, string) error
@@ -18,6 +19,7 @@ type externalCollectionStage struct {
 	stageName string
 	timeout   time.Duration
 	collect   externalCollectionFunc
+	failure   *error
 }
 
 func (s externalCollectionStage) Name() string { return strings.TrimSpace(s.stageName) }
@@ -45,7 +47,11 @@ func (s externalCollectionStage) Run(ctx context.Context, target string, registr
 	}
 
 	if err := s.collect(lookupCtx, registry, target); err != nil {
-		return investigation.StageResult{}, fmt.Errorf("%s collection: %w", s.Name(), err)
+		wrapped := fmt.Errorf("%s collection: %w", s.Name(), err)
+		if s.failure != nil {
+			*s.failure = wrapped
+		}
+		return investigation.StageResult{}, wrapped
 	}
 	stageResult := investigation.StageResult{}
 	for _, item := range registry.AllEvidence() {
@@ -68,7 +74,7 @@ func (s externalCollectionStage) Run(ctx context.Context, target string, registr
 // persistence, graph/report construction, and history to the same engine used
 // by DNS/TCP/TLS/HTTP investigations.
 func runExternalCollection(target, snapshotDir, runPrefix string, timeout time.Duration, collect externalCollectionFunc) (retErr error) {
-	target = strings.TrimSpace(target)
+	target = history.NormalizeTarget(target)
 	snapshotDir = strings.TrimSpace(snapshotDir)
 	runPrefix = strings.ToLower(strings.TrimSpace(runPrefix))
 	if target == "" {
@@ -97,11 +103,16 @@ func runExternalCollection(target, snapshotDir, runPrefix string, timeout time.D
 		}
 	}()
 
+	var stageFailure error
+	stage := &externalCollectionStage{stageName: runPrefix, timeout: timeout, collect: collect, failure: &stageFailure}
 	result, runErr := (&investigation.Engine{
 		Registry: registry,
-		Stages: []investigation.Stage{externalCollectionStage{stageName: runPrefix, timeout: timeout, collect: collect}},
+		Stages: []investigation.Stage{stage},
 		SnapshotDir: snapshotDir,
 	}).Run(context.Background(), target)
+	if stageFailure != nil {
+		return fmt.Errorf("external investigation: %w", stageFailure)
+	}
 	if runErr != nil {
 		return fmt.Errorf("external investigation: %w", runErr)
 	}
