@@ -302,6 +302,10 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		if retryErr := e.Registry.UpdateCollectionRun(run); retryErr != nil {
 			retErr = errors.Join(retErr, fmt.Errorf("mark investigation run failed after finalization error: %w", retryErr))
 		}
+		if result.Report.Target != "" {
+			result.Report.ReferenceRunID = run.ID
+			result.Report.ReferenceRunStatus = string(run.Status)
+		}
 		if result.Report.Target != "" && retErr != nil {
 			result.Report.Narrative.Limitations = appendUniqueLimitation(
 				result.Report.Narrative.Limitations,
@@ -309,6 +313,10 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 			)
 		}
 		return result, retErr
+	}
+	if result.Report.Target != "" {
+		result.Report.ReferenceRunID = run.ID
+		result.Report.ReferenceRunStatus = string(run.Status)
 	}
 	if run.Status == evidence.CollectionRunCompleted && strings.TrimSpace(e.SnapshotDir) != "" {
 		if err := history.PersistRunSnapshot(e.SnapshotDir, run, e.Registry); err != nil {
@@ -323,6 +331,10 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 			}
 			if updateErr := e.Registry.UpdateCollectionRun(run); updateErr != nil {
 				retErr = errors.Join(retErr, fmt.Errorf("mark investigation run failed after history persistence error: %w", updateErr))
+			}
+			if result.Report.Target != "" {
+				result.Report.ReferenceRunID = run.ID
+				result.Report.ReferenceRunStatus = string(run.Status)
 			}
 		} else {
 			result.HistoryPersisted = true
