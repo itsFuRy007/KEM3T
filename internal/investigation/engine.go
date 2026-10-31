@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/events"
+	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
@@ -22,14 +22,14 @@ type Stage interface {
 }
 
 type StageResult struct {
-	Events       int                    `json:"events"`
-	Evidence     int                    `json:"evidence"`
-	Observations int                    `json:"observations"`
-	Findings            []intelligence.Finding `json:"findings,omitempty"`
-	Limitations         []string               `json:"limitations,omitempty"`
-	CollectedEvents     []events.Event         `json:"collected_events,omitempty"`
-	EvidenceRecords     []evidence.Evidence    `json:"evidence_records,omitempty"`
-	ObservationRecords  []evidence.Observation `json:"observation_records,omitempty"`
+	Events             int                    `json:"events"`
+	Evidence           int                    `json:"evidence"`
+	Observations       int                    `json:"observations"`
+	Findings           []intelligence.Finding `json:"findings,omitempty"`
+	Limitations        []string               `json:"limitations,omitempty"`
+	CollectedEvents    []events.Event         `json:"collected_events,omitempty"`
+	EvidenceRecords    []evidence.Evidence    `json:"evidence_records,omitempty"`
+	ObservationRecords []evidence.Observation `json:"observation_records,omitempty"`
 }
 
 type StageOutcome struct {
