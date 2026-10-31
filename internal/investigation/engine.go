@@ -27,7 +27,7 @@ type StageResult struct {
 	Observations int                    `json:"observations"`
 	Findings            []intelligence.Finding `json:"findings,omitempty"`
 	Limitations         []string               `json:"limitations,omitempty"`
-	CollectedEvents     []events.Event         `json:"collected_events,omitempty"
+	CollectedEvents     []events.Event         `json:"collected_events,omitempty"`
 	EvidenceRecords     []evidence.Evidence    `json:"evidence_records,omitempty"`
 	ObservationRecords  []evidence.Observation `json:"observation_records,omitempty"`
 }
