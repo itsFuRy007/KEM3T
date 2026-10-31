@@ -108,9 +108,9 @@ func TestCTSubdomainPlannerPrioritizesIntelligenceSupportedEvidence(t *testing.T
 		Report: intelligence.IntelligenceReport{
 			Target: "example.com",
 			Hypotheses: []intelligence.Hypothesis{{
-				ID: "hypothesis-1",
-				Title: "Potential shared certificate deployment",
-				Confidence: intelligence.HypothesisConfidenceHigh,
+				ID:            "hypothesis-1",
+				Title:         "Potential shared certificate deployment",
+				Confidence:    intelligence.HypothesisConfidenceHigh,
 				SupportingIDs: []string{"ct-z"},
 			}},
 		},
