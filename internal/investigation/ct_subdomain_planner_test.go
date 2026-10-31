@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"strings"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 )
@@ -47,5 +48,9 @@ func TestCTSubdomainPlannerEnforcesConfiguredCap(t *testing.T) {
 	}
 	if len(stages) != 1 {
 		t.Fatalf("expected only one remaining stage under cap, got %d", len(stages))
+	}
+	limited, ok := stages[0].(limitedStage)
+	if !ok || !strings.Contains(limited.limitation, "1 candidate name(s) were not queried") {
+		t.Fatalf("expected explicit truncation limitation, got %#v", stages[0])
 	}
 }
