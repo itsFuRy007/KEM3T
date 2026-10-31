@@ -59,9 +59,6 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 			used++
 		}
 	}
-	if used >= limit {
-		return nil, nil
-	}
 	candidates := make(map[string]struct{})
 	for _, item := range state.NewEvidence {
 		if item.Type != evidence.TypeCTDNSName {
@@ -86,12 +83,37 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 	}
 	sort.Strings(names)
 	remaining := limit - used
-	if len(names) > remaining {
+	if remaining < 0 {
+		remaining = 0
+	}
+	candidateCount := len(names)
+	if candidateCount > remaining {
 		names = names[:remaining]
 	}
 	stages := make([]Stage, 0, len(names))
 	for _, name := range names {
 		stages = append(stages, NewDNSSubdomainStage(name))
 	}
+	if omitted := candidateCount - len(names); omitted > 0 && len(stages) > 0 {
+		limitation := fmt.Sprintf(
+			"CT returned %d additional in-scope names; DNS expansion is capped at %d names per investigation, so %d names were not queried. Selected names are ordered lexicographically.",
+			candidateCount+used,
+			limit,
+			omitted,
+		)
+		last := stages[len(stages)-1]
+		stages[len(stages)-1] = limitedStage{Stage: last, limitation: limitation}
+	}
 	return stages, nil
+}
+
+type limitedStage struct {
+	Stage
+	limitation string
+}
+
+func (s limitedStage) Run(ctx context.Context, target string, registry *evidence.Registry) (StageResult, error) {
+	result, err := s.Stage.Run(ctx, target, registry)
+	result.Limitations = append(result.Limitations, s.limitation)
+	return result, err
 }
