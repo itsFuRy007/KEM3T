@@ -68,14 +68,14 @@ func (r *Registry) AddBatchUnique(ctx context.Context, records []Evidence, obser
 				return err
 			}
 			if prior, ok := seenObservations[item.ID]; ok {
-				if !reflect.DeepEqual(prior, item) {
+				if !sameObservationFact(prior, item) {
 					return ErrObservationExists
 				}
 				continue
 			}
 			seenObservations[item.ID] = item
 			if prior, ok := r.observations[item.ID]; ok {
-				if !reflect.DeepEqual(prior, item) {
+				if !sameObservationFact(prior, item) {
 					return ErrObservationExists
 				}
 				continue
@@ -91,4 +91,12 @@ func (r *Registry) AddBatchUnique(ctx context.Context, records []Evidence, obser
 		return 0, 0, err
 	}
 	return len(filteredEvidence), len(filteredObservations), nil
+}
+
+func sameObservationFact(a, b Observation) bool {
+	a.CollectionRunID = ""
+	a.Stage = ""
+	b.CollectionRunID = ""
+	b.Stage = ""
+	return reflect.DeepEqual(a, b)
 }
