@@ -43,8 +43,9 @@ func (e *ReportEngine) Build(target string, findings []Finding, registry *eviden
 	return e.BuildWithVerification(target, findings, registry, nil)
 }
 
-// BuildWithVerification assembles one coherent report. Every higher-order
-// discovery is derived from the same target-scoped correlation set.
+// BuildWithVerification assembles one coherent report. Direct correlations
+// remain target-scoped; multi-hop paths use evidence-backed relationships
+// around the target's direct pivots and disclose when global validation fails.
 func (e *ReportEngine) BuildWithVerification(
 	target string,
 	findings []Finding,

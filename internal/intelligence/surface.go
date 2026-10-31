@@ -272,6 +272,14 @@ func BuildServiceSurfaces(target string, records []evidence.Evidence, observatio
 			"A shared endpoint key does not prove the same process, backend, tenant, or infrastructure owner.",
 			"An observed HTTP response or TLS certificate does not by itself establish a vulnerability or secure configuration.",
 		}
+		switch surface.TemporalScope {
+		case "HISTORICAL_ONLY":
+			surface.Limitations = append(surface.Limitations, "No service observation for this endpoint was recorded in the reference collection run; this surface is historical context, not a current-run confirmation.")
+		case "REFERENCE_AND_HISTORICAL":
+			surface.Limitations = append(surface.Limitations, "This surface combines reference-run and historical observations; compare each observation's run ID and timestamp before treating the layers as simultaneous.")
+		case "LEGACY_TIME_ONLY":
+			surface.Limitations = append(surface.Limitations, "Legacy observations lack explicit collection-run IDs; temporal grouping relies on timestamps and may be ambiguous.")
+		}
 		if len(surface.TCPStates) > 1 {
 			surface.Limitations = append(surface.Limitations, "Multiple TCP states were observed across records; compare timestamps before treating them as a state change or contradiction.")
 		}

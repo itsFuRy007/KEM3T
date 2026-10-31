@@ -233,3 +233,27 @@ func TestBuildServiceSurfacesLabelsReferenceAndHistoricalEvidence(t *testing.T) 
 		}
 	}
 }
+
+
+func TestGenerateServiceHypothesesDoesNotJoinDifferentCollectionRuns(t *testing.T) {
+	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	records := []evidence.Evidence{
+		{ID: "https-old-run-http", EntityID: "lab.example", Type: evidence.TypeHTTPService, Value: `{"target":"lab.example","scheme":"https","port":443,"url":"https://lab.example/","final_url":"https://lab.example/","status_code":200,"tls_verified":false}`},
+		tlsEvidenceForTest(t, "tls-other-run", "lab.example", strings.Repeat("c", 64)),
+	}
+	observations := []evidence.Observation{
+		{ID: "http-current-observation", EvidenceID: records[0].ID, Source: "http", CollectionRunID: "run-current", Stage: "http", ObservedAt: now, EventIDs: []string{"http-event"}},
+		{ID: "tls-historical-observation", EvidenceID: records[1].ID, Source: "tls", CollectionRunID: "run-old", Stage: "tls", ObservedAt: now.Add(-time.Hour), EventIDs: []string{"tls-event"}},
+	}
+	surfaces, err := BuildServiceSurfaces("lab.example", records, observations, "run-current")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hypotheses, err := GenerateServiceHypotheses(surfaces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hypotheses) != 0 {
+		t.Fatalf("hypothesis incorrectly joined evidence from different collection runs: %+v", hypotheses)
+	}
+}
