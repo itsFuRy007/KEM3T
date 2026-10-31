@@ -258,7 +258,7 @@ func TestPrintIntelligenceReportShowsAllResearchSections(t *testing.T) {
 			ID: "discovery-1", Type: intelligence.DiscoveryConvergentInfrastructure,
 			Entities:       []string{"example.com", "www.example.com"},
 			SignalTypes:    []intelligence.CorrelationType{intelligence.CorrelationSharedIPAddress, intelligence.CorrelationSharedTLSCertificateFingerprint},
-			CorrelationIDs:  []string{"corr-1", "corr-2"}, SharedValues: []string{"192.0.2.10", "fingerprint"},
+			CorrelationIDs: []string{"corr-1", "corr-2"}, SharedValues: []string{"192.0.2.10", "fingerprint"},
 			SignalDiversity: 2, Confidence: "MODERATE", Statement: "Signals converge across two dimensions.",
 			WhyItMatters: "This is a higher-value lead.", AlternativeExplanations: "Shared hosting may explain it.",
 			Verification: []string{"Inspect original evidence."},
@@ -266,7 +266,7 @@ func TestPrintIntelligenceReportShowsAllResearchSections(t *testing.T) {
 		DiscoveryPaths: []intelligence.DiscoveryPath{{
 			ID: "path-1", Type: intelligence.DiscoveryConvergentInfrastructure,
 			Entities:        []string{"example.com", "192.0.2.10", "other.example"},
-			CorrelationIDs: []string{"corr-1", "corr-2"},
+			CorrelationIDs:  []string{"corr-1", "corr-2"},
 			SignalTypes:     []intelligence.CorrelationType{intelligence.CorrelationSharedIPAddress, intelligence.CorrelationSharedTLSCertificateFingerprint},
 			SignalDiversity: 2, Confidence: "LOW", Statement: "A two-hop path was observed.",
 			WhyItMatters: "The pivot may be useful.", AlternativeExplanations: "A shared provider may explain it.",
