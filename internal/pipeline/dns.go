@@ -101,7 +101,11 @@ func runDNSWithCollectorAndPlan(
 	if err != nil {
 		return DNSResult{}, fmt.Errorf("open evidence registry: %w", err)
 	}
-	defer registry.Close()
+	defer func() {
+		if err := registry.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close evidence registry: %w", err))
+		}
+	}()
 
 	run := evidence.CollectionRun{
 		ID:        fmt.Sprintf("dns-%d", time.Now().UnixNano()),

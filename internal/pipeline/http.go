@@ -52,8 +52,8 @@ func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir s
 	}
 	result.EvidenceRegistry = registry
 	defer func() {
-		if err := registry.Close(); err != nil && retErr == nil {
-			retErr = fmt.Errorf("close evidence registry: %w", err)
+		if err := registry.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close evidence registry: %w", err))
 		}
 	}()
 	run := evidence.CollectionRun{

@@ -55,8 +55,8 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 	}
 	result.EvidenceRegistry = registry
 	defer func() {
-		if err := registry.Close(); err != nil && retErr == nil {
-			retErr = fmt.Errorf("close evidence registry: %w", err)
+		if err := registry.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close evidence registry: %w", err))
 		}
 	}()
 

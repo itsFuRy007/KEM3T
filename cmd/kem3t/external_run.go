@@ -58,12 +58,7 @@ func runExternalCollection(
 	}
 	defer func() {
 		if err := registry.Close(); err != nil {
-			closeErr := fmt.Errorf("close evidence registry: %w", err)
-			if retErr == nil {
-				retErr = closeErr
-			} else {
-				retErr = fmt.Errorf("%w; additionally, %v", retErr, closeErr)
-			}
+			retErr = errors.Join(retErr, fmt.Errorf("close evidence registry: %w", err))
 		}
 	}()
 
