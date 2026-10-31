@@ -109,7 +109,7 @@ func runExternalCollection(target, snapshotDir, runPrefix string, timeout time.D
 		Registry:    registry,
 		Stages:      []investigation.Stage{stage},
 		SnapshotDir: snapshotDir,
-	}).Run(context.Background(), target)
+	}).Run(commandContext, target)
 	if stageFailure != nil {
 		return fmt.Errorf("external investigation: %w", stageFailure)
 	}
