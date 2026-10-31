@@ -201,6 +201,20 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		retErr = errors.Join(retErr, fmt.Errorf("build intelligence report: %w", err))
 	} else {
 		result.Report = report
+		for _, outcome := range result.Stages {
+			for _, limitation := range outcome.Result.Limitations {
+				result.Report.Narrative.Limitations = appendUniqueLimitation(
+					result.Report.Narrative.Limitations,
+					outcome.Name+": "+limitation,
+				)
+			}
+			if outcome.Error != "" {
+				result.Report.Narrative.Limitations = appendUniqueLimitation(
+					result.Report.Narrative.Limitations,
+					outcome.Name+" failed: "+outcome.Error,
+				)
+			}
+		}
 	}
 
 	run.FinishedAt = now().UTC()
@@ -247,6 +261,12 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		if retryErr := e.Registry.UpdateCollectionRun(run); retryErr != nil {
 			retErr = errors.Join(retErr, fmt.Errorf("mark investigation run failed after finalization error: %w", retryErr))
 		}
+		if result.Report.Target != "" && retErr != nil {
+			result.Report.Narrative.Limitations = appendUniqueLimitation(
+				result.Report.Narrative.Limitations,
+				"Investigation finalization: "+retErr.Error(),
+			)
+		}
 		return result, retErr
 	}
 	if run.Status == evidence.CollectionRunCompleted && strings.TrimSpace(e.SnapshotDir) != "" {
@@ -267,7 +287,26 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 			result.HistoryPersisted = true
 		}
 	}
+	if result.Report.Target != "" && retErr != nil {
+		result.Report.Narrative.Limitations = appendUniqueLimitation(
+			result.Report.Narrative.Limitations,
+			"Investigation incomplete: "+retErr.Error(),
+		)
+	}
 	return result, retErr
+}
+
+func appendUniqueLimitation(existing []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return existing
+	}
+	for _, current := range existing {
+		if current == value {
+			return existing
+		}
+	}
+	return append(existing, value)
 }
 
 func collectFindings(stages []StageOutcome) []intelligence.Finding {
