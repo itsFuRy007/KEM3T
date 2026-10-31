@@ -1080,7 +1080,7 @@ func runCT(target, snapshotDir string) error {
 			if err != nil {
 				return err
 			}
-			added, err := externalintel.RegisterCTReport(registry, report)
+			added, err := externalintel.RegisterCTReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 			if err != nil {
 				return err
 			}
@@ -1116,7 +1116,7 @@ func runRDAP(target, snapshotDir string) error {
 			if err != nil {
 				return err
 			}
-			added, err := externalintel.RegisterRDAPReport(registry, report)
+			added, err := externalintel.RegisterRDAPReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 			if err != nil {
 				return err
 			}
@@ -1156,7 +1156,7 @@ func runASN(target, snapshotDir string) error {
 			if err != nil {
 				return err
 			}
-			added, err := externalintel.RegisterASNReport(registry, report)
+			added, err := externalintel.RegisterASNReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 			if err != nil {
 				return err
 			}
@@ -1188,7 +1188,7 @@ func runPassiveDNS(target, snapshotDir string) error {
 			if err != nil {
 				return err
 			}
-			added, err := externalintel.RegisterPassiveDNSReport(registry, report)
+			added, err := externalintel.RegisterPassiveDNSReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 			if err != nil {
 				return err
 			}
@@ -1222,7 +1222,7 @@ func runThreatIntel(target, snapshotDir string) error {
 			if err != nil {
 				return err
 			}
-			added, err := externalintel.RegisterThreatIntelReport(registry, report)
+			added, err := externalintel.RegisterThreatIntelReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 			if err != nil {
 				return err
 			}
@@ -1258,7 +1258,7 @@ func runIPRDAP(target, snapshotDir string) error {
 			if err != nil {
 				return err
 			}
-			added, err := externalintel.RegisterIPRDAPReport(registry, report)
+			added, err := externalintel.RegisterIPRDAPReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 			if err != nil {
 				return err
 			}
