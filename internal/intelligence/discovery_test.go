@@ -104,7 +104,7 @@ func TestDiscoveryValidationRejectsUnsupportedConfidence(t *testing.T) {
 		SignalDiversity: 2, Confidence: "MODERATE",
 		Statement: "Cross-dimension lead.", WhyItMatters: "Needs investigation.",
 		AlternativeExplanations: "Shared providers may explain the overlap.",
-		Verification: []string{"Compare independent evidence."},
+		Verification:            []string{"Compare independent evidence."},
 	}
 	if err := discovery.Validate(); err == nil {
 		t.Fatal("expected uncalibrated confidence to be rejected")
