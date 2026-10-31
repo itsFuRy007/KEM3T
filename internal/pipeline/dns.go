@@ -4,10 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/itsFuRy007/kem3t/internal/changes"
 	"github.com/itsFuRy007/kem3t/internal/collectors"
@@ -15,6 +12,7 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
+	"github.com/itsFuRy007/kem3t/internal/investigation"
 	"github.com/itsFuRy007/kem3t/internal/observations"
 	"github.com/itsFuRy007/kem3t/internal/snapshots"
 )
@@ -36,260 +34,124 @@ type DNSResult struct {
 	Normalized       observations.Collection
 }
 
-func RunDNS(
-	ctx context.Context,
-	target string,
-	snapshotDir string,
-) (DNSResult, error) {
+func RunDNS(ctx context.Context, target, snapshotDir string) (DNSResult, error) {
 	return RunDNSWithPlanFeedback(ctx, target, snapshotDir, nil, nil)
 }
 
 // RunDNSWithPlanFeedback runs DNS collection and adapts the resulting plan using
 // investigator feedback from the previous plan revision.
-func RunDNSWithPlanFeedback(
-	ctx context.Context,
-	target string,
-	snapshotDir string,
-	previousPlan *intelligence.InvestigationPlan,
-	feedback []intelligence.InvestigationFeedback,
-) (DNSResult, error) {
+func RunDNSWithPlanFeedback(ctx context.Context, target, snapshotDir string, previousPlan *intelligence.InvestigationPlan, feedback []intelligence.InvestigationFeedback) (DNSResult, error) {
 	return runDNSWithCollectorAndPlan(ctx, target, snapshotDir, &collectors.DNS{Target: target}, previousPlan, feedback)
 }
 
-func runDNSWithCollector(ctx context.Context, target string, snapshotDir string, collector eventCollector) (DNSResult, error) {
+func runDNSWithCollector(ctx context.Context, target, snapshotDir string, collector eventCollector) (DNSResult, error) {
 	return runDNSWithCollectorAndPlan(ctx, target, snapshotDir, collector, nil, nil)
 }
 
-func runDNSWithCollectorAndPlan(
-	ctx context.Context,
-	target string,
-	snapshotDir string,
-	collector eventCollector,
-	previousPlan *intelligence.InvestigationPlan,
-	feedback []intelligence.InvestigationFeedback,
-) (result DNSResult, retErr error) {
+// runDNSWithCollectorAndPlan keeps DNS-specific baseline/change and feedback
+// behavior, while delegating collection, evidence, provenance, run lifecycle,
+// graph construction, and normalization to the shared investigation engine.
+func runDNSWithCollectorAndPlan(ctx context.Context, target, snapshotDir string, collector eventCollector, previousPlan *intelligence.InvestigationPlan, feedback []intelligence.InvestigationFeedback) (result DNSResult, retErr error) {
 	if ctx == nil {
 		return DNSResult{}, fmt.Errorf("context is required")
 	}
 	if err := ctx.Err(); err != nil {
 		return DNSResult{}, err
 	}
-
 	target = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(target)), ".")
 	if target == "" {
 		return DNSResult{}, fmt.Errorf("target is required")
 	}
-	if strings.TrimSpace(snapshotDir) == "" {
-		return DNSResult{}, fmt.Errorf("snapshot directory is required")
-	}
 	if collector == nil {
 		return DNSResult{}, fmt.Errorf("collector is required")
 	}
-
 	snapshotStore, err := snapshots.NewStore(snapshotDir)
 	if err != nil {
 		return DNSResult{}, err
 	}
 
-	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
-		return DNSResult{}, fmt.Errorf("create snapshot directory: %w", err)
+	stage := &investigation.CollectorStage{
+		StageName: "dns",
+		Collector: collector,
+		Accept: func(event events.Event) bool {
+			return event.Type == events.EventDNSRecordFound
+		},
+		Convert: evidence.FromDNSEvent,
+		Analyze: (&intelligence.Engine{}).Analyze,
 	}
-
-	registry, err := evidence.OpenRegistry(
-		filepath.Join(snapshotDir, "evidence.db"),
-	)
-	if err != nil {
-		return DNSResult{}, fmt.Errorf("open evidence registry: %w", err)
-	}
-	defer func() {
-		if err := registry.Close(); err != nil {
-			retErr = errors.Join(retErr, fmt.Errorf("close evidence registry: %w", err))
-		}
-	}()
-
-	run := evidence.CollectionRun{
-		ID:        fmt.Sprintf("dns-%d", time.Now().UnixNano()),
-		Target:    target,
-		StartedAt: time.Now().UTC(),
-		Status:    evidence.CollectionRunRunning,
-	}
-	if err := registry.AddCollectionRun(run); err != nil {
-		return DNSResult{}, fmt.Errorf("start collection run: %w", err)
-	}
-
-	eventCount := 0
-	normalizedEvents := make([]events.Event, 0)
-	observedAddresses := make(map[string]struct{})
-	runObservations := make([]evidence.Observation, 0)
-
-	defer func() {
-		run.FinishedAt = time.Now().UTC()
-		run.EventCount = eventCount
-		run.AddressCount = len(observedAddresses)
-
-		if retErr != nil {
-			run.Status = evidence.CollectionRunFailed
-			run.ErrorMessage = retErr.Error()
-		} else {
-			run.Status = evidence.CollectionRunCompleted
-		}
-
-		finalizeCollectionRun(snapshotDir, registry, &run, runObservations, &retErr)
-	}()
-
-	aggregator := intelligence.NewAggregator()
-	eventCh := make(chan events.Event)
-	collectorDone := make(chan error, 1)
-	collectorCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	go func() {
-		collectorDone <- collector.Run(collectorCtx, eventCh)
-		close(eventCh)
-	}()
-
-	var aggregationErr error
-
-	for event := range eventCh {
-		eventCount++
-		normalizedEvents = append(normalizedEvents, event)
-
-		if event.Type == events.EventDNSRecordFound {
-			if item, _, err := evidence.FromDNSEvent(event); err == nil {
-				observedAddresses[item.Value] = struct{}{}
+	unified, registry, runErr := runUnifiedStage(ctx, target, snapshotDir, stage)
+	if registry != nil {
+		result.EvidenceRegistry = registry
+		defer func() {
+			if closeErr := registry.Close(); closeErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("close shared evidence registry: %w", closeErr))
 			}
-		}
-
-		if err := aggregator.Add(event); err != nil {
-			aggregationErr = fmt.Errorf("aggregate event: %w", err)
-			cancel()
-			break
-		}
-
-		if event.Type != events.EventDNSRecordFound {
-			continue
-		}
-
-		item, observation, err := evidence.FromDNSEvent(event)
-		if err != nil {
-			continue
-		}
-		observation.CollectionRunID = run.ID
-		observation.Stage = "dns"
-
-		_, addedObservations, err := registry.AddBatchUnique(ctx, []evidence.Evidence{item}, []evidence.Observation{observation})
-		if err != nil {
-			aggregationErr = fmt.Errorf("register DNS evidence and observation atomically: %w", err)
-			cancel()
-			break
-		}
-		if addedObservations > 0 {
-			runObservations = append(runObservations, observation)
-		}
+		}()
+	}
+	if len(unified.Stages) > 0 {
+		stageResult := unified.Stages[0].Result
+		result.Findings = stageResult.Findings
+	}
+	result.Graph = unified.Graph
+	result.Normalized = unified.Normalized
+	if runErr != nil {
+		return result, runErr
+	}
+	if registry == nil {
+		return result, fmt.Errorf("shared evidence registry is unavailable")
 	}
 
-	collectorErr := <-collectorDone
-
-	if aggregationErr != nil {
-		return DNSResult{}, aggregationErr
-	}
-	if err := ctx.Err(); err != nil {
-		return DNSResult{}, err
-	}
-	if collectorErr != nil {
-		return DNSResult{}, fmt.Errorf("DNS collector: %w", collectorErr)
-	}
-
-	findings := aggregator.Findings()
-
-	dnsGraph, err := graph.BuildFromRegistryForTarget(registry, target)
+	report, err := (&intelligence.ReportEngine{}).BuildWithInvestigationFeedback(target, result.Findings, registry, nil, previousPlan, feedback)
 	if err != nil {
-		return DNSResult{}, fmt.Errorf("build DNS graph: %w", err)
+		return result, fmt.Errorf("build DNS intelligence report: %w", err)
 	}
+	result.Report = report
 
-	reportEngine := &intelligence.ReportEngine{}
-	report, err := reportEngine.BuildWithInvestigationFeedback(target, findings, registry, nil, previousPlan, feedback)
-	if err != nil {
-		return DNSResult{}, fmt.Errorf("build intelligence report: %w", err)
-	}
-
-	var addresses []string
-	for _, finding := range findings {
-		for _, item := range finding.Evidence {
-			if item.Data == nil {
-				continue
-			}
-			if value := strings.TrimSpace(item.Data["value"]); value != "" {
-				addresses = append(addresses, value)
+	addresses := make([]string, 0)
+	for _, outcome := range unified.Stages {
+		for _, item := range outcome.Result.EvidenceRecords {
+			if item.Type == evidence.TypeDNSAddress {
+				addresses = append(addresses, item.Value)
 			}
 		}
 	}
-
 	currentSnapshot, err := snapshots.New(target, addresses)
 	if err != nil {
-		return DNSResult{}, fmt.Errorf("create current snapshot: %w", err)
+		return result, fmt.Errorf("create current DNS snapshot: %w", err)
 	}
-
-	normalized := observations.NormalizeEvents(normalizedEvents)
-	observations.AttachEvidence(&normalized, registry.AllObservations())
-	if len(normalized.Rejected) > 0 {
-		return DNSResult{}, fmt.Errorf("normalize DNS events: %s", normalized.Rejected[0].Reason)
-	}
-
-	result = DNSResult{
-		Normalized:       normalized,
-		Findings:         findings,
-		Report:           report,
-		CurrentSnapshot:  currentSnapshot,
-		EvidenceRegistry: registry,
-		Graph:            dnsGraph,
-	}
+	result.CurrentSnapshot = currentSnapshot
 
 	previousSnapshot, err := snapshotStore.Load(target)
 	if err != nil {
 		if !errors.Is(err, snapshots.ErrNotFound) {
-			return DNSResult{}, fmt.Errorf("load previous snapshot: %w", err)
+			return result, fmt.Errorf("load previous DNS snapshot: %w", err)
 		}
-
 		if err := snapshotStore.Save(currentSnapshot); err != nil {
-			return DNSResult{}, fmt.Errorf("save baseline snapshot: %w", err)
+			return result, fmt.Errorf("save DNS baseline snapshot: %w", err)
 		}
-
 		result.BaselineCreated = true
 		return result, nil
 	}
-
 	result.PreviousSnapshot = &previousSnapshot
 
 	detector := changes.NewDetector()
 	detectedChanges, err := detector.Compare(
-		changes.Snapshot{
-			Target:    previousSnapshot.Target,
-			Addresses: previousSnapshot.Addresses,
-		},
-		changes.Snapshot{
-			Target:    currentSnapshot.Target,
-			Addresses: currentSnapshot.Addresses,
-		},
+		changes.Snapshot{Target: previousSnapshot.Target, Addresses: previousSnapshot.Addresses},
+		changes.Snapshot{Target: currentSnapshot.Target, Addresses: currentSnapshot.Addresses},
 	)
 	if err != nil {
-		return DNSResult{}, fmt.Errorf("compare snapshots: %w", err)
+		return result, fmt.Errorf("compare DNS snapshots: %w", err)
 	}
 	result.Changes = detectedChanges
 
-	history, err := intelligence.CompareDNSHistory(
-		target,
-		previousSnapshot.Addresses,
-		currentSnapshot.Addresses,
-	)
+	history, err := intelligence.CompareDNSHistory(target, previousSnapshot.Addresses, currentSnapshot.Addresses)
 	if err != nil {
-		return DNSResult{}, fmt.Errorf("compare DNS history: %w", err)
+		return result, fmt.Errorf("compare DNS history: %w", err)
 	}
 	result.History = &history
 
 	if err := snapshotStore.Save(currentSnapshot); err != nil {
-		return DNSResult{}, fmt.Errorf("save current snapshot: %w", err)
+		return result, fmt.Errorf("save current DNS snapshot: %w", err)
 	}
-
 	return result, nil
 }
