@@ -235,7 +235,11 @@ func TestRegisterCTReportDoesNotPersistPartialResultsOnValidationFailure(t *test
 }
 
 func TestRegisterCTReportKeepsEvidenceIdentityStableAcrossRetrievals(t *testing.T) {
-	registry := evidence.NewRegistry()
+	dbPath := filepath.Join(t.TempDir(), "evidence.db")
+	registry, err := evidence.OpenRegistry(dbPath)
+	if err != nil {
+		t.Fatalf("open SQLite evidence registry: %v", err)
+	}
 	firstRetrieved := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
 	report := CTReport{
 		Target: "example.com", Source: "crt.sh", RetrievedAt: firstRetrieved,
@@ -266,5 +270,19 @@ func TestRegisterCTReportKeepsEvidenceIdentityStableAcrossRetrievals(t *testing.
 	}
 	if got := len(registry.AllObservations()); got != 4 {
 		t.Fatalf("observation count = %d, want 4 retrieval observations", got)
+	}
+	if err := registry.Close(); err != nil {
+		t.Fatalf("close SQLite evidence registry: %v", err)
+	}
+	reopened, err := evidence.OpenRegistry(dbPath)
+	if err != nil {
+		t.Fatalf("reopen SQLite evidence registry: %v", err)
+	}
+	defer reopened.Close()
+	if got := len(reopened.AllEvidence()); got != 2 {
+		t.Fatalf("persisted evidence count = %d, want 2 stable facts", got)
+	}
+	if got := len(reopened.AllObservations()); got != 4 {
+		t.Fatalf("persisted observation count = %d, want 4 retrieval observations", got)
 	}
 }
