@@ -143,7 +143,8 @@ func (c *ASNClient) LookupIP(ctx context.Context, rawIP string) (ASNReport, erro
 	if dns.Status != 0 {
 		return ASNReport{}, fmt.Errorf("origin ASN DNS returned status %d", dns.Status)
 	}
-	mappings := map[uint32]ASNRecord{}
+	mappings := make(map[string]ASNRecord)
+	asnSet := make(map[uint32]struct{})
 	for _, answer := range dns.Answer {
 		if answer.Type != 16 {
 			continue
@@ -174,7 +175,21 @@ func (c *ASNClient) LookupIP(ctx context.Context, rawIP string) (ASNReport, erro
 		if len(fields) > 4 {
 			record.Allocated = strings.TrimSpace(fields[4])
 		}
-		mappings[record.ASN] = record
+		key := fmt.Sprintf("%d|%s", record.ASN, record.Prefix)
+		if prior, exists := mappings[key]; exists {
+			if prior.Country == "" {
+				prior.Country = record.Country
+			}
+			if prior.Registry == "" {
+				prior.Registry = record.Registry
+			}
+			if prior.Allocated == "" {
+				prior.Allocated = record.Allocated
+			}
+			record = prior
+		}
+		mappings[key] = record
+		asnSet[record.ASN] = struct{}{}
 	}
 	if len(mappings) == 0 {
 		return ASNReport{}, fmt.Errorf("no valid origin ASN mapping returned for %s", ip.String())
@@ -195,14 +210,15 @@ func (c *ASNClient) LookupIP(ctx context.Context, rawIP string) (ASNReport, erro
 	if err := json.Unmarshal(bootstrapBody, &bootstrap); err != nil {
 		return ASNReport{}, fmt.Errorf("decode ASN RDAP bootstrap: %w", err)
 	}
-	asns := make([]uint32, 0, len(mappings))
-	for asn := range mappings {
+	asns := make([]uint32, 0, len(asnSet))
+	for asn := range asnSet {
 		asns = append(asns, asn)
 	}
 	sortUint32(asns)
-	records := make([]ASNRecord, 0, len(asns))
+
+	rdapByASN := make(map[uint32]asnRDAPResponse, len(asns))
+	rdapSourceByASN := make(map[uint32]string, len(asns))
 	for _, asn := range asns {
-		record := mappings[asn]
 		serviceURL, err := selectASNService(bootstrap, asn)
 		if err != nil {
 			return ASNReport{}, err
@@ -223,17 +239,36 @@ func (c *ASNClient) LookupIP(ctx context.Context, rawIP string) (ASNReport, erro
 		if raw.StartAutnum != 0 && (asn < raw.StartAutnum || asn > raw.EndAutnum) {
 			return ASNReport{}, fmt.Errorf("ASN RDAP response range does not contain AS%d", asn)
 		}
+		rdapByASN[asn] = raw
+		rdapSourceByASN[asn] = endpoint.Host
+	}
+
+	mappingKeys := make([]string, 0, len(mappings))
+	for key := range mappings {
+		mappingKeys = append(mappingKeys, key)
+	}
+	sort.Slice(mappingKeys, func(i, j int) bool {
+		a, b := mappings[mappingKeys[i]], mappings[mappingKeys[j]]
+		if a.ASN != b.ASN {
+			return a.ASN < b.ASN
+		}
+		return a.Prefix < b.Prefix
+	})
+	records := make([]ASNRecord, 0, len(mappingKeys))
+	for _, key := range mappingKeys {
+		record := mappings[key]
+		raw := rdapByASN[record.ASN]
 		record.Handle = strings.TrimSpace(raw.Handle)
 		record.NetworkName = strings.TrimSpace(raw.Name)
 		if record.NetworkName == "" {
 			for _, entity := range raw.Entities {
-				registrar := false
+				registrant := false
 				for _, role := range entity.Roles {
 					if strings.EqualFold(role, "registrant") || strings.EqualFold(role, "administrative") {
-						registrar = true
+						registrant = true
 					}
 				}
-				if registrar {
+				if registrant {
 					record.NetworkName = rdapRegistrarLabel(entity.VCard)
 					if record.NetworkName != "" {
 						break
@@ -241,7 +276,7 @@ func (c *ASNClient) LookupIP(ctx context.Context, rawIP string) (ASNReport, erro
 				}
 			}
 		}
-		record.RDAPSource = endpoint.Host
+		record.RDAPSource = rdapSourceByASN[record.ASN]
 		records = append(records, record)
 	}
 	now := time.Now().UTC()
