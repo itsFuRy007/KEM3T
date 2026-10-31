@@ -39,7 +39,7 @@ func TestRunExternalCollectionPersistsCompletedRunAndSnapshot(t *testing.T) {
 				},
 			}
 
-			added, err := externalintel.RegisterCTReport(registry, report)
+			added, err := externalintel.RegisterCTReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 			if err != nil {
 				return err
 			}
@@ -90,7 +90,7 @@ func TestRunExternalCollectionPersistsCompletedRunAndSnapshot(t *testing.T) {
 	if snapshots[0].RunID != runs[0].ID {
 		t.Fatalf("snapshot run ID %q does not match collection run %q", snapshots[0].RunID, runs[0].ID)
 	}
-	if snapshots[0].Collector != "ct" {
+	if snapshots[0].Collector != "investigation" {
 		t.Fatalf("expected ct collector, got %q", snapshots[0].Collector)
 	}
 	if len(snapshots[0].Records) != 1 {
@@ -304,7 +304,7 @@ func TestRunExternalCollectionMarksRunFailedWhenHistoryPersistenceFails(t *testi
 		func(context.Context, *evidence.Registry, string) error {
 			return os.WriteFile(filepath.Join(snapshotDir, "history"), []byte("not a directory"), 0600)
 		})
-	if err == nil || !strings.Contains(err.Error(), "persist external collection history snapshot") {
+	if err == nil || !strings.Contains(err.Error(), "persist unified investigation history") {
 		t.Fatalf("expected history persistence error, got %v", err)
 	}
 	registry, openErr := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
