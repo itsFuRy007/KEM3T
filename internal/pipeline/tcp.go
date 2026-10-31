@@ -78,9 +78,11 @@ func RunTCP(ctx context.Context, target string, startPort, endPort int, snapshot
 
 	collector := &collectors.TCP{Target: target, StartPort: startPort, EndPort: endPort}
 	engine := &intelligence.Engine{}
+	collectorCtx, cancelCollector := context.WithCancel(ctx)
+	defer cancelCollector()
 	eventCh := make(chan events.Event)
 	errCh := make(chan error, 1)
-	go func() { errCh <- collector.Run(ctx, eventCh); close(eventCh) }()
+	go func() { errCh <- collector.Run(collectorCtx, eventCh); close(eventCh) }()
 
 	for event := range eventCh {
 		if event.Type != events.EventPortDiscovered && event.Type != events.EventTCPPortStateObserved {
