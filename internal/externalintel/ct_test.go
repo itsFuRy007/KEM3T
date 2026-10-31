@@ -216,3 +216,20 @@ func TestRegisterCTReportRejectsOutOfScopeName(t *testing.T) {
 		t.Fatal("expected out-of-scope CT name to be rejected")
 	}
 }
+
+func TestRegisterCTReportDoesNotPersistPartialResultsOnValidationFailure(t *testing.T) {
+	registry := evidence.NewRegistry()
+	report := CTReport{
+		Target: "example.com", Source: "crt.sh", RetrievedAt: time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC),
+		Records: []CTRecord{
+			{CertificateID: 100, DNSNames: []string{"www.example.com"}},
+			{CertificateID: 101, DNSNames: []string{"attacker.test"}},
+		},
+	}
+	if _, err := RegisterCTReport(registry, report); err == nil {
+		t.Fatal("expected out-of-scope CT name to be rejected")
+	}
+	if len(registry.AllEvidence()) != 0 || len(registry.AllObservations()) != 0 {
+		t.Fatalf("invalid CT report left partial registry state: evidence=%d observations=%d", len(registry.AllEvidence()), len(registry.AllObservations()))
+	}
+}

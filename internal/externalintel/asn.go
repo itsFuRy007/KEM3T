@@ -378,19 +378,14 @@ func RegisterASNReport(registry *evidence.Registry, report ASNReport, provenance
 	sum := sha256.Sum256(value)
 	key := hex.EncodeToString(sum[:])
 	item := evidence.Evidence{ID: "asn-origin:" + key, EntityID: ip.String(), Type: evidence.TypeASNOrigin, Value: string(value)}
-	if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
-		return false, fmt.Errorf("register ASN evidence: %w", err)
-	}
 	eventID := "asn-origin:" + key + ":" + fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
 	observation := evidence.Observation{ID: "observation:" + eventID, EvidenceID: item.ID, Source: "Team Cymru origin DNS; IANA RDAP", ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID}}
 	applyRegistrationProvenance(&observation, provenance)
-	if err := registry.AddObservation(observation); err != nil {
-		if errors.Is(err, evidence.ErrObservationExists) {
-			return false, nil
-		}
-		return false, fmt.Errorf("register ASN observation: %w", err)
+	added, err := registerEvidenceObservation(registry, item, observation)
+	if err != nil {
+		return false, fmt.Errorf("register ASN evidence batch: %w", err)
 	}
-	return true, nil
+	return added, nil
 }
 
 func sortASNRecords(records []ASNRecord) {

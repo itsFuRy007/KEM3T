@@ -286,12 +286,13 @@ func RegisterCTReport(registry *evidence.Registry, report CTReport, provenance .
 		return 0, fmt.Errorf("CT report retrieval timestamp is required")
 	}
 
-	added := 0
+	pendingEvidence := make([]evidence.Evidence, 0)
+	pendingObservations := make([]evidence.Observation, 0)
 	for _, record := range report.Records {
 		for _, rawName := range record.DNSNames {
 			name := normalizeDomain(rawName)
 			if !evidence.IsValidDomain(name) || !inDomainScope(name, target) {
-				return added, fmt.Errorf("CT report contains out-of-scope name %q", rawName)
+				return 0, fmt.Errorf("CT report contains out-of-scope name %q", rawName)
 			}
 			details := evidence.CTDNSNameDetails{
 				Target: target, DNSName: name, CertificateID: record.CertificateID,
@@ -309,23 +310,19 @@ func RegisterCTReport(registry *evidence.Registry, report CTReport, provenance .
 				ID: "ct-dns-name:" + factKey, EntityID: target,
 				Type: evidence.TypeCTDNSName, Value: string(value),
 			}
-			if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
-				return added, fmt.Errorf("register CT evidence: %w", err)
-			}
 			eventID := "ct:" + factKey + ":" + fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
 			observation := evidence.Observation{
 				ID: "observation:" + eventID, EvidenceID: item.ID, Source: source,
 				ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID},
 			}
 			applyRegistrationProvenance(&observation, provenance)
-			if err := registry.AddObservation(observation); err != nil {
-				if errors.Is(err, evidence.ErrObservationExists) {
-					continue
-				}
-				return added, fmt.Errorf("register CT observation: %w", err)
-			}
-			added++
+			pendingEvidence = append(pendingEvidence, item)
+			pendingObservations = append(pendingObservations, observation)
 		}
+	}
+	added, err := registerEvidenceObservations(registry, pendingEvidence, pendingObservations)
+	if err != nil {
+		return 0, fmt.Errorf("register CT evidence batch: %w", err)
 	}
 	return added, nil
 }

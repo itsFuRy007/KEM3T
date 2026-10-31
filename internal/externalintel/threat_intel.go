@@ -226,17 +226,12 @@ func RegisterThreatIntelReport(registry *evidence.Registry, report ThreatIntelRe
 	sum := sha256.Sum256(value)
 	key := hex.EncodeToString(sum[:])
 	item := evidence.Evidence{ID: "threat-intel:" + key, EntityID: target, Type: evidence.TypeThreatIntel, Value: string(value)}
-	if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
-		return false, fmt.Errorf("register threat-intelligence evidence: %w", err)
-	}
 	eventID := "threat-intel:" + key + ":" + fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
 	observation := evidence.Observation{ID: "observation:" + eventID, EvidenceID: item.ID, Source: report.Source, ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID}}
 	applyRegistrationProvenance(&observation, provenance)
-	if err := registry.AddObservation(observation); err != nil {
-		if errors.Is(err, evidence.ErrObservationExists) {
-			return false, nil
-		}
-		return false, fmt.Errorf("register threat-intelligence observation: %w", err)
+	added, err := registerEvidenceObservation(registry, item, observation)
+	if err != nil {
+		return false, fmt.Errorf("register threat-intelligence evidence batch: %w", err)
 	}
-	return true, nil
+	return added, nil
 }

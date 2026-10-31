@@ -204,13 +204,14 @@ func RegisterPassiveDNSReport(registry *evidence.Registry, report PassiveDNSRepo
 	if report.RetrievedAt.IsZero() {
 		return 0, fmt.Errorf("passive-DNS retrieval timestamp is required")
 	}
-	added := 0
+	pendingEvidence := make([]evidence.Evidence, 0, len(report.Records))
+	pendingObservations := make([]evidence.Observation, 0, len(report.Records))
 	for _, record := range report.Records {
 		hostname := normalizeDomain(record.Hostname)
 		ip := net.ParseIP(strings.TrimSpace(record.Address))
 		typ := strings.ToUpper(strings.TrimSpace(record.RecordType))
 		if !evidence.IsValidDomain(hostname) || !inDomainScope(hostname, target) {
-			return added, fmt.Errorf("passive-DNS hostname %q is invalid or outside target scope", record.Hostname)
+			return 0, fmt.Errorf("passive-DNS hostname %q is invalid or outside target scope", record.Hostname)
 		}
 		if ip == nil {
 			return added, fmt.Errorf("passive-DNS address %q is invalid", record.Address)
@@ -226,19 +227,15 @@ func RegisterPassiveDNSReport(registry *evidence.Registry, report PassiveDNSRepo
 		sum := sha256.Sum256(value)
 		key := hex.EncodeToString(sum[:])
 		item := evidence.Evidence{ID: "passive-dns:" + key, EntityID: target, Type: evidence.TypePassiveDNS, Value: string(value)}
-		if err := registry.AddEvidence(item); err != nil && !errors.Is(err, evidence.ErrEvidenceExists) {
-			return added, fmt.Errorf("register passive-DNS evidence: %w", err)
-		}
 		eventID := "passive-dns:" + key + ":" + fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
 		observation := evidence.Observation{ID: "observation:" + eventID, EvidenceID: item.ID, Source: source, ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID}}
 		applyRegistrationProvenance(&observation, provenance)
-		if err := registry.AddObservation(observation); err != nil {
-			if errors.Is(err, evidence.ErrObservationExists) {
-				continue
-			}
-			return added, fmt.Errorf("register passive-DNS observation: %w", err)
-		}
-		added++
+		pendingEvidence = append(pendingEvidence, item)
+		pendingObservations = append(pendingObservations, observation)
+	}
+	added, err := registerEvidenceObservations(registry, pendingEvidence, pendingObservations)
+	if err != nil {
+		return 0, fmt.Errorf("register passive-DNS evidence batch: %w", err)
 	}
 	return added, nil
 }
