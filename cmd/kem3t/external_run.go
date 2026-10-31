@@ -10,8 +10,8 @@ import (
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/history"
-	"github.com/itsFuRy007/kem3t/internal/investigation"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
+	"github.com/itsFuRy007/kem3t/internal/investigation"
 )
 
 type externalCollectionFunc func(context.Context, *evidence.Registry, string) error
