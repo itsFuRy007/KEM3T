@@ -111,8 +111,8 @@ func makeIPRDAPEvidence(target, start, end string) Evidence {
 
 func TestIPRDAPEvidenceRejectsNonCanonicalAddresses(t *testing.T) {
 	tests := []struct {
-		name string
-		evidence Evidence
+		name      string
+		evidence  Evidence
 		wantValid bool
 	}{
 		{"valid IPv4 range", makeIPRDAPEvidence("192.0.2.10", "192.0.2.0", "192.0.2.255"), true},
