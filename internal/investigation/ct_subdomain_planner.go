@@ -96,7 +96,7 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 	}
 	if omitted := candidateCount - len(names); omitted > 0 && len(stages) > 0 {
 		limitation := fmt.Sprintf(
-			"CT returned %d additional in-scope names; DNS expansion is capped at %d names per investigation, so %d names were not queried. Selected names are ordered lexicographically.",
+			"CT returned %d additional in-scope names; DNS expansion is capped at %d names per investigation, so %d candidate name(s) were not queried. Selected names are ordered lexicographically.",
 			candidateCount+used,
 			limit,
 			omitted,
