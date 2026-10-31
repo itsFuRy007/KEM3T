@@ -166,12 +166,19 @@ func TestRegisterCTReportBuildsEvidenceBackedGraph(t *testing.T) {
 			IssuerName: "Example CA", NotBefore: "2026-01-01", NotAfter: "2027-01-01",
 		}},
 	}
-	added, err := RegisterCTReport(registry, report)
+	added, err := RegisterCTReport(registry, report, evidence.ObservationProvenance{
+		CollectionRunID: "investigation-ct-test", Stage: "certificate-transparency",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if added != 3 {
 		t.Fatalf("registered observations = %d, want 3", added)
+	}
+	for _, observation := range registry.AllObservations() {
+		if observation.CollectionRunID != "investigation-ct-test" || observation.Stage != "certificate-transparency" {
+			t.Fatalf("external-intelligence provenance was not attached: %+v", observation)
+		}
 	}
 
 	g, err := graph.BuildFromRegistry(registry)

@@ -35,7 +35,8 @@ func TestCollectorStageRegistersNormalizedEvidenceInSharedRegistry(t *testing.T)
 		Accept:    func(e events.Event) bool { return e.Type == events.EventDNSRecordFound },
 		Convert:   evidence.FromDNSEvent,
 	}
-	result, err := stage.Run(context.Background(), "example.com", registry)
+	stageCtx := evidence.WithObservationProvenance(context.Background(), "investigation-test-run", "dns-test")
+	result, err := stage.Run(stageCtx, "example.com", registry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,6 +45,10 @@ func TestCollectorStageRegistersNormalizedEvidenceInSharedRegistry(t *testing.T)
 	}
 	if len(registry.AllEvidence()) != 1 || len(registry.AllObservations()) != 1 {
 		t.Fatal("collector output was not registered")
+	}
+	observation := registry.AllObservations()[0]
+	if observation.CollectionRunID != "investigation-test-run" || observation.Stage != "dns-test" {
+		t.Fatalf("stage provenance was not attached to observation: %+v", observation)
 	}
 }
 
