@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
-	"github.com/itsFuRy007/kem3t/internal/investigation"
 	"github.com/itsFuRy007/kem3t/internal/history"
+	"github.com/itsFuRy007/kem3t/internal/investigation"
 )
 
 type externalCollectionFunc func(context.Context, *evidence.Registry, string) error
@@ -106,8 +106,8 @@ func runExternalCollection(target, snapshotDir, runPrefix string, timeout time.D
 	var stageFailure error
 	stage := &externalCollectionStage{stageName: runPrefix, timeout: timeout, collect: collect, failure: &stageFailure}
 	result, runErr := (&investigation.Engine{
-		Registry: registry,
-		Stages: []investigation.Stage{stage},
+		Registry:    registry,
+		Stages:      []investigation.Stage{stage},
 		SnapshotDir: snapshotDir,
 	}).Run(context.Background(), target)
 	if stageFailure != nil {
