@@ -194,7 +194,34 @@ func TestHTTPRejectsRedirectCredentials(t *testing.T) {
 func TestValidateHTTPRedirectRejectsHTTPSDowngrade(t *testing.T) {
 	previous := &http.Request{URL: &url.URL{Scheme: "https", Host: "example.com"}}
 	redirect := &http.Request{URL: &url.URL{Scheme: "http", Host: "example.com"}}
-	if err := validateHTTPRedirect(redirect, "example.com", []*http.Request{previous}); err == nil || !strings.Contains(err.Error(), "downgrade") {
+	if err := validateHTTPRedirect(redirect, "example.com", map[string]struct{}{"443": {}}, []*http.Request{previous}); err == nil || !strings.Contains(err.Error(), "downgrade") {
 		t.Fatalf("expected HTTPS downgrade to be rejected, got %v", err)
+	}
+}
+
+func TestHTTPRejectsSameHostRedirectToUnapprovedPort(t *testing.T) {
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer other.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/outside-scope", http.StatusFound)
+	}))
+	defer server.Close()
+
+	out := make(chan events.Event, 1)
+	err := (&HTTP{Target: server.URL, Scheme: "http", Timeout: time.Second}).Run(context.Background(), out)
+	if err == nil || !strings.Contains(err.Error(), "port") {
+		t.Fatalf("expected same-host cross-port redirect to be rejected, got %v", err)
+	}
+}
+
+func TestValidateHTTPRedirectRejectsCrossPort(t *testing.T) {
+	previous := &http.Request{URL: &url.URL{Scheme: "https", Host: "example.com:443"}}
+	redirect := &http.Request{URL: &url.URL{Scheme: "https", Host: "example.com:8443"}}
+	err := validateHTTPRedirect(redirect, "example.com", map[string]struct{}{"443": {}}, []*http.Request{previous})
+	if err == nil || !strings.Contains(err.Error(), "port") {
+		t.Fatalf("expected cross-port redirect to be rejected, got %v", err)
 	}
 }
