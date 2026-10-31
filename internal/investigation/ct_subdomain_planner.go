@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/intelligence"
 )
 
 // CTSubdomainDNSPlanner schedules bounded DNS resolution for names newly
@@ -38,6 +39,26 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 	if !evidence.IsValidDomain(root) {
 		return nil, nil
 	}
+	if reportTarget := normalizeEntity(state.Report.Target); reportTarget != "" && reportTarget != root {
+		return nil, fmt.Errorf("planner intelligence report target %q does not match investigation target %q", reportTarget, root)
+	}
+	priorityByEvidenceID := make(map[string]int)
+	for _, hypothesis := range state.Report.Hypotheses {
+		priority := 0
+		switch hypothesis.Confidence {
+		case intelligence.HypothesisConfidenceHigh:
+			priority = 3
+		case intelligence.HypothesisConfidenceModerate:
+			priority = 2
+		case intelligence.HypothesisConfidenceLow:
+			priority = 1
+		}
+		for _, evidenceID := range hypothesis.SupportingIDs {
+			if priority > priorityByEvidenceID[evidenceID] {
+				priorityByEvidenceID[evidenceID] = priority
+			}
+		}
+	}
 	limit := 8
 	if p != nil && p.MaxSubdomains > 0 {
 		limit = p.MaxSubdomains
@@ -57,7 +78,7 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 		}
 	}
 	used := len(known)
-	candidates := make(map[string]struct{})
+	candidatePriority := make(map[string]int)
 	for _, item := range state.NewEvidence {
 		if item.Type != evidence.TypeCTDNSName {
 			continue
@@ -73,13 +94,20 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 		if _, exists := known[name]; exists {
 			continue
 		}
-		candidates[name] = struct{}{}
+		if priority := priorityByEvidenceID[item.ID]; priority > candidatePriority[name] {
+			candidatePriority[name] = priority
+		}
 	}
-	names := make([]string, 0, len(candidates))
-	for name := range candidates {
+	names := make([]string, 0, len(candidatePriority))
+	for name := range candidatePriority {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	sort.Slice(names, func(i, j int) bool {
+		if candidatePriority[names[i]] != candidatePriority[names[j]] {
+			return candidatePriority[names[i]] > candidatePriority[names[j]]
+		}
+		return names[i] < names[j]
+	})
 	remaining := limit - used
 	if remaining < 0 {
 		remaining = 0
@@ -94,7 +122,7 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 	}
 	if omitted := candidateCount - len(names); omitted > 0 && state.Limitations != nil {
 		*state.Limitations = append(*state.Limitations, fmt.Sprintf(
-			"CT expansion discovered %d new in-scope candidate name(s), but the per-investigation DNS cap is %d and %d candidate name(s) were not queried. Selected names are ordered lexicographically.",
+			"CT expansion discovered %d new in-scope candidate name(s), but the per-investigation DNS cap is %d and %d candidate name(s) were not queried. Names supported by stronger intelligence hypotheses are prioritized first; remaining ties are ordered lexicographically.",
 			candidateCount,
 			limit,
 			omitted,
