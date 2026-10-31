@@ -119,3 +119,29 @@ func TestNormalizeEventsMergesTCPHTTPAndTLS(t *testing.T) {
 		t.Fatalf("unexpected latest observation time: %s", service.ObservedAt)
 	}
 }
+
+func TestBuildServicesUsesLatestObservationIndicators(t *testing.T) {
+	older := Observation{
+		EventID: "http-old", Kind: KindHTTPService, Target: "example.com",
+		Protocol: "https", Port: 443, Value: "200", Source: "http",
+		ObservedAt: time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC),
+		Attributes: map[string]string{"server": "old-server", "content_type": "text/html"},
+	}
+	newer := Observation{
+		EventID: "http-new", Kind: KindHTTPService, Target: "example.com",
+		Protocol: "https", Port: 443, Value: "503", Source: "http",
+		ObservedAt: older.ObservedAt.Add(time.Minute),
+		Attributes: map[string]string{"server": "new-server", "content_type": "application/json"},
+	}
+	services := BuildServices([]Observation{newer, older})
+	if len(services) != 1 {
+		t.Fatalf("services = %d, want one merged service", len(services))
+	}
+	service := services[0]
+	if service.Indicators["http_status_code"] != "503" || service.Indicators["server"] != "new-server" || service.Indicators["content_type"] != "application/json" {
+		t.Fatalf("older observation overwrote newer service indicators: %+v", service.Indicators)
+	}
+	if !service.ObservedAt.Equal(newer.ObservedAt) {
+		t.Fatalf("service timestamp = %s, want newest observation %s", service.ObservedAt, newer.ObservedAt)
+	}
+}
