@@ -1061,6 +1061,9 @@ func printInfrastructureGraph(g graph.Graph) {
 			nodeValues[edge.Source],
 			nodeValues[edge.Target],
 		)
+		if edge.State != "" {
+			safePrintf("  TCP state: %s\n", edge.State)
+		}
 		if len(edge.EvidenceIDs) > 0 {
 			safePrintf("  Evidence refs: %s\n", strings.Join(edge.EvidenceIDs, ", "))
 		}

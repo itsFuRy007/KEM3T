@@ -83,11 +83,13 @@ func TestBuildResearchNarrativeConsolidatesServiceIdentificationActions(t *testi
 		Target: "example.com",
 		Findings: []Finding{{
 			Title:     "Open TCP port observed",
+			Fact:      "TCP port 8443 was observed open.",
 			Evidence:  []events.Event{{ID: "event:open", Type: events.EventPortDiscovered}},
 			NextSteps: []string{"Identify the service and version using authorized collection."},
 		}},
 		ServiceSurfaces: []ServiceSurface{{
-			ID:        "surface:example.com:8443",
+			ID:      "surface:example.com:8443",
+			Summary: "An open TCP endpoint was observed without application protocol identification.",
 			NextSteps: []string{"Identify the application protocol on this open TCP port using authorized, bounded service identification."},
 		}},
 		IntelligenceGaps: []IntelligenceGap{{
