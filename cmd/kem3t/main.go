@@ -30,7 +30,7 @@ import (
 var commandContext = context.Background()
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(commandContext, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	commandContext = ctx
 	if err := run(); err != nil {
@@ -352,7 +352,7 @@ func countTCPStates(eventsIn []events.Event) (map[string]int, error) {
 
 func runTLS(target string, port int, snapshotDir string) error {
 	result, err := pipeline.RunTLS(
-		context.Background(),
+		commandContext,
 		target,
 		port,
 		snapshotDir,
@@ -478,7 +478,7 @@ func runDNSWithPlanState(target, snapshotDir, exportJSON, planStatePath string) 
 		}
 	}
 	result, err := pipeline.RunDNSWithPlanFeedback(
-		context.Background(),
+		commandContext,
 		target,
 		snapshotDir,
 		state.PreviousPlan,
