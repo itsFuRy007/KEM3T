@@ -133,3 +133,37 @@ func TestIPRDAPEvidenceRejectsNonCanonicalAddresses(t *testing.T) {
 		})
 	}
 }
+
+
+func makeHTTPServiceEvidence(target, rawURL, finalURL string) Evidence {
+	details := HTTPServiceDetails{
+		Target: target, Scheme: "https", Port: 443,
+		URL: rawURL, FinalURL: finalURL, StatusCode: 200,
+	}
+	value, _ := json.Marshal(details)
+	return Evidence{ID: "http:test", EntityID: target, Type: TypeHTTPService, Value: string(value)}
+}
+
+func TestHTTPServiceEvidenceEnforcesTargetScope(t *testing.T) {
+	tests := []struct {
+		name string
+		item Evidence
+		wantValid bool
+	}{
+		{"same target", makeHTTPServiceEvidence("example.com", "https://example.com:443/", "https://example.com:443/"), true},
+		{"URL host mismatch", makeHTTPServiceEvidence("example.com", "https://attacker.test/", "https://example.com/"), false},
+		{"final URL host mismatch", makeHTTPServiceEvidence("example.com", "https://example.com/", "https://attacker.test/"), false},
+		{"URL credentials", makeHTTPServiceEvidence("example.com", "https://user:secret@example.com/", "https://example.com/"), false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.item.Validate()
+			if test.wantValid && err != nil {
+				t.Fatalf("valid evidence rejected: %v", err)
+			}
+			if !test.wantValid && err == nil {
+				t.Fatal("expected out-of-scope HTTP evidence to be rejected")
+			}
+		})
+	}
+}

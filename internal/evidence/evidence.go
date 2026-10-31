@@ -337,8 +337,16 @@ func validateTCPPortObservationEvidence(e Evidence) error {
 	return nil
 }
 
+func normalizeEvidenceHost(raw string) string {
+	host := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(raw)), ".")
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.String()
+	}
+	return host
+}
+
 func validateHTTPServiceEvidence(e Evidence) error {
-	target := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(e.EntityID)), ".")
+	target := normalizeEvidenceHost(e.EntityID)
 	if !IsValidDomain(target) && net.ParseIP(target) == nil {
 		return errors.New("HTTP evidence entity ID must be a valid domain or IP address")
 	}
@@ -362,6 +370,12 @@ func validateHTTPServiceEvidence(e Evidence) error {
 		u, err := url.Parse(strings.TrimSpace(raw))
 		if err != nil || u == nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") {
 			return fmt.Errorf("HTTP service %s must be an absolute HTTP(S) URL", label)
+		}
+		if u.User != nil {
+			return fmt.Errorf("HTTP service %s cannot contain URL credentials", label)
+		}
+		if normalizeEvidenceHost(u.Hostname()) != target {
+			return fmt.Errorf("HTTP service %s host must match evidence target", label)
 		}
 	}
 	if d.RedirectCount < 0 {
