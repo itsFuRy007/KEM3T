@@ -282,3 +282,29 @@ func TestFromTLSEventKeepsEvidenceIdentityAcrossObservations(t *testing.T) {
 		t.Fatal("different event IDs should produce different observation IDs")
 	}
 }
+
+  
+// TestFromDNSEventNormalizesTrailingDotAndCase keeps DNS evidence identity canonical.
+func TestFromDNSEventNormalizesTrailingDotAndCase(t *testing.T) {
+	event := events.Event{
+		ID:        "dns-absolute-name",
+		Type:      events.EventDNSRecordFound,
+		Timestamp: time.Date(2026, 10, 31, 1, 0, 0, 0, time.UTC),
+		Target:    "API.Example.com.",
+		Source:    "dns-collector",
+		Data: map[string]string{
+			"record_type": "IP_ADDRESS",
+			"value":       "192.0.2.10",
+		},
+	}
+	got, _, err := FromDNSEvent(event)
+	if err != nil {
+		t.Fatalf("FromDNSEvent() error = %v", err)
+	}
+	if got.EntityID != "api.example.com" {
+		t.Fatalf("EntityID = %q, want api.example.com", got.EntityID)
+	}
+	if got.ID != "dns-address:api.example.com:192.0.2.10" {
+		t.Fatalf("Evidence ID = %q, want canonical identity", got.ID)
+	}
+}
