@@ -48,7 +48,7 @@ func run() error {
 	planFeedbackNote := flags.String("plan-feedback-note", "", "Required explanation for INCONCLUSIVE, BLOCKED, or NOT_APPLICABLE feedback")
 	target := flags.String("target", "", "Target hostname or IP address")
 	targetsFile := flags.String("targets-file", "", "File with one hostname/IP per line (batch-dns mode)")
-	workers := flags.Int("workers", 4, "Maximum concurrent targets for batch-dns mode")
+	workers := flags.Int("workers", 4, "Maximum concurrent targets for batch-dns mode (hard cap 64)")
 	port := flags.Int("port", 443, "TCP port for TLS mode")
 	httpScheme := flags.String("http-scheme", "auto", "HTTP scheme: auto, http, or https")
 	httpPort := flags.Int("http-port", 0, "HTTP port override (0 uses scheme defaults)")

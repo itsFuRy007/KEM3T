@@ -167,6 +167,8 @@ Run bounded DNS investigations from a target file (one hostname/IP per line; bla
 go run ./cmd/kem3t -mode batch-dns -targets-file targets.txt -workers 4
 ~~~
 
+The worker pool enforces a hard maximum of 64 concurrent targets, even when a larger value is supplied.
+
 Batch DNS evidence and snapshots are isolated per canonical target under `.kem3t/snapshots/batch-dns/`. Output follows target-file order. A machine-readable `report.json` summarizes successful/failed targets and surfaces IP addresses observed for multiple target scopes, with per-target collection times and evidence-store paths. Shared IPs are investigation leads—not proof of common ownership or control. Per-target failures are reported without suppressing successful results; the command exits non-zero if any target failed. Use only targets you own or are authorized to assess.
 
 ### External intelligence examples

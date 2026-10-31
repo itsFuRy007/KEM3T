@@ -125,3 +125,13 @@ func BenchmarkRunBoundedWorkerPool(b *testing.B) {
 		}
 	}
 }
+
+func TestRunRejectsWorkerCountAboveMaximum(t *testing.T) {
+	inputs := make([]int, MaxWorkers+1)
+	_, err := Run(context.Background(), inputs, MaxWorkers+1, func(_ context.Context, value int) (int, error) {
+		return value, nil
+	})
+	if err == nil {
+		t.Fatalf("expected worker count above %d to be rejected", MaxWorkers)
+	}
+}

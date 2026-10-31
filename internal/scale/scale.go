@@ -8,6 +8,8 @@ import (
 	"sync"
 )
 
+const MaxWorkers = 64
+
 type Result[T any, R any] struct {
 	Index int
 	Input T
@@ -36,6 +38,9 @@ func Run[T any, R any](ctx context.Context, inputs []T, workers int, fn func(con
 	}
 	if workers > len(inputs) {
 		workers = len(inputs)
+	}
+	if workers > MaxWorkers {
+		return nil, fmt.Errorf("worker count %d exceeds maximum %d", workers, MaxWorkers)
 	}
 
 	type job struct {
