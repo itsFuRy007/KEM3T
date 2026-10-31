@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -86,7 +87,7 @@ func runExternalCollection(target, snapshotDir, runPrefix string, timeout time.D
 		return fmt.Errorf("external collection function is required")
 	}
 
-	registry, err := evidence.OpenRegistry(snapshotDir + "/evidence.db")
+	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
 	if err != nil {
 		return fmt.Errorf("open shared evidence registry: %w", err)
 	}
