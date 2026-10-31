@@ -101,16 +101,9 @@ func (c *ThreatIntelClient) Lookup(ctx context.Context, rawTarget string) (Threa
 	endpoint := base + "/indicators/" + url.PathEscape(indicatorType) + "/" + url.PathEscape(target) + "/general"
 	client := c.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: timeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if req.URL.Scheme != "https" {
-				return fmt.Errorf("OTX redirects must use HTTPS")
-			}
-			if len(via) >= 3 {
-				return fmt.Errorf("too many OTX redirects")
-			}
-			return nil
-		}}
+		client = &http.Client{Timeout: timeout}
 	}
+	client = sameHostHTTPSClient(client, parsed)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return ThreatIntelReport{}, err

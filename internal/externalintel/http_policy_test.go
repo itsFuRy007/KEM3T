@@ -2,9 +2,11 @@ package externalintel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -128,5 +130,41 @@ func TestDoExternalRequestRejectsHTTPSDowngradeWithCustomClient(t *testing.T) {
 func TestRetryDelayCapsOversizedNumericRetryAfter(t *testing.T) {
 	if got := retryDelay(0, "999999999999999999999999999999999999"); got != externalMaxRetryDelay {
 		t.Fatalf("got %v, want capped delay %v", got, externalMaxRetryDelay)
+	}
+}
+
+
+func TestAuthenticatedProviderRedirectCannotLeakAPIKeyAcrossHosts(t *testing.T) {
+	var received atomic.Int32
+	destination := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-OTX-API-KEY") != "" {
+			received.Add(1)
+		}
+		fmt.Fprint(w, "unexpected destination request")
+	}))
+	defer destination.Close()
+
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, destination.URL, http.StatusFound)
+	}))
+	defer origin.Close()
+
+	endpoint, err := url.Parse(origin.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, origin.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-OTX-API-KEY", "test-secret")
+
+	client := sameHostHTTPSClient(origin.Client(), endpoint)
+	_, err = doExternalRequest(context.Background(), client, req)
+	if !errors.Is(err, errExternalRedirectPolicy) {
+		t.Fatalf("expected cross-host redirect rejection, got %v", err)
+	}
+	if got := received.Load(); got != 0 {
+		t.Fatalf("destination received API key %d times", got)
 	}
 }

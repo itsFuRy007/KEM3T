@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,28 @@ const (
 )
 
 var errExternalRedirectPolicy = errors.New("external redirect rejected by policy")
+
+// sameHostHTTPSClient prevents credential-bearing provider requests from
+// forwarding custom authentication headers to a different HTTPS origin.
+func sameHostHTTPSClient(client *http.Client, endpoint *url.URL) *http.Client {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	safeClient := *client
+	previousCheckRedirect := safeClient.CheckRedirect
+	safeClient.CheckRedirect = func(redirect *http.Request, via []*http.Request) error {
+		if endpoint == nil || endpoint.Scheme != "https" ||
+			redirect.URL == nil || redirect.URL.Scheme != "https" ||
+			!strings.EqualFold(redirect.URL.Host, endpoint.Host) {
+			return fmt.Errorf("%w: authenticated provider redirects must remain on the original HTTPS host", errExternalRedirectPolicy)
+		}
+		if previousCheckRedirect != nil {
+			return previousCheckRedirect(redirect, via)
+		}
+		return nil
+	}
+	return &safeClient
+}
 
 var providerGate = struct {
 	sync.Mutex
