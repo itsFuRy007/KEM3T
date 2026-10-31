@@ -375,6 +375,8 @@ func runTLS(target string, port int, snapshotDir string) error {
 		safePrintf("SHA-256: %s\n", result.Event.Data["sha256_fingerprint"])
 	}
 
+	printIntelligenceReport(result.Report)
+	printInvestigationPlan(result.Report.InvestigationPlan)
 	printInfrastructureGraph(result.Graph)
 	return nil
 }
@@ -401,6 +403,8 @@ func runHTTP(target, scheme string, port int, snapshotDir string) error {
 		}
 		safePrintf("Body truncated: %s\n", result.Event.Data["body_truncated"])
 	}
+	printIntelligenceReport(result.Report)
+	printInvestigationPlan(result.Report.InvestigationPlan)
 	printInfrastructureGraph(result.Graph)
 	return nil
 }
