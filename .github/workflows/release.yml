@@ -15,143 +15,31 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
-
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-
       - name: Run controlled loopback validation lab
         run: python3 scripts/validation-lab/run.py --output-dir "$RUNNER_TEMP/kem3t-validation-lab"
-
       - name: Run tests
         run: go test -count=1 ./...
-
       - name: Run race detector
         run: go test -race -p 1 -count=1 ./...
-
       - name: Run fuzz smoke test
         run: go test -run="^$" -fuzz=FuzzCoreInputValidation -fuzztime=3s ./internal/integration
-
       - name: Run performance benchmarks
-        run: go test -run '^    name: Build ${{ matrix.goos }}-${{ matrix.goarch }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-            asset: kem3t-linux-amd64.tar.gz
-          - goos: linux
-            goarch: arm64
-            asset: kem3t-linux-arm64.tar.gz
-          - goos: darwin
-            goarch: amd64
-            asset: kem3t-darwin-amd64.tar.gz
-          - goos: darwin
-            goarch: arm64
-            asset: kem3t-darwin-arm64.tar.gz
-          - goos: windows
-            goarch: amd64
-            asset: kem3t-windows-amd64.zip
-          - goos: windows
-            goarch: arm64
-            asset: kem3t-windows-arm64.zip
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v7
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Build CLI
-        shell: bash
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: "0"
-        run: |
-          mkdir -p dist
-          binary=kem3t
-          if [ "$GOOS" = "windows" ]; then binary=kem3t.exe; fi
-          go build -trimpath -buildvcs=false -ldflags="-s -w" -o "dist/$binary" ./cmd/kem3t
-          cp README.md LICENSE dist/
-
-      - name: Package and checksum
-        shell: bash
-        env:
-          ASSET: ${{ matrix.asset }}
-          GOOS: ${{ matrix.goos }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          package_dir="KEM3T-$TAG-$GOOS-${{ matrix.goarch }}"
-          mkdir -p "dist/$package_dir"
-          cp dist/kem3t* dist/README.md dist/LICENSE "dist/$package_dir/"
-          if [[ "$ASSET" == *.zip ]]; then
-            (cd dist && zip -qr "../$ASSET" "$package_dir")
-          else
-            tar -czf "$ASSET" -C dist "$package_dir"
-          fi
-          sha256sum "$ASSET" > "$ASSET.sha256"
-
-      - name: Upload release assets
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.goos }}-${{ matrix.goarch }}
-          path: |
-            ${{ matrix.asset }}
-            ${{ matrix.asset }}.sha256
-          if-no-files-found: error
-
-  publish:
-    name: Publish GitHub release
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download all release assets
-        uses: actions/download-artifact@v4
-        with:
-          path: release-assets
-          merge-multiple: true
-
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          draft: false
-          prerelease: true
-          body: |
-            KEM3T v0.1.0 is an early public preview of an evidence-first network intelligence and infrastructure research tool.
-
-            **Validation status:** automated unit/integration, race, fuzz-smoke, vulnerability, build, and controlled localhost TCP/HTTP/TLS checks passed on the tagged source. Real-world coverage and intelligence-quality benchmarking remain ongoing.
-
-            **Responsible use:** assess only infrastructure you own or have explicit authorization to test. Correlations and hypotheses are investigative leads, not proof of ownership, compromise, or malicious activity.
-
-            Verify downloaded archives with the accompanying SHA-256 files.
-          files: release-assets/*
- -bench 'Benchmark(BuildDNS|MarshalDNS|SQLite)' -benchtime=1x -benchmem ./internal/batch ./internal/evidence
-
+        run: go test -run '^$' -bench 'Benchmark(BuildDNS|MarshalDNS|SQLite)' -benchtime=1x -benchmem ./internal/batch ./internal/evidence
       - name: Verify module graph and checksums
         run: |
           go mod tidy -diff
           go mod verify
-
       - name: Scan known Go vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
-
       - name: Run go vet
         run: go vet ./...
-
       - name: Build all packages
         run: go build ./...
-
       - name: Verify reproducible CLI build
         run: |
           go build -trimpath -buildvcs=false -o "$RUNNER_TEMP/kem3t-first" ./cmd/kem3t
@@ -186,14 +74,12 @@ jobs:
             asset: kem3t-windows-arm64.zip
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@v7
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-
       - name: Build CLI
         shell: bash
         env:
@@ -206,7 +92,6 @@ jobs:
           if [ "$GOOS" = "windows" ]; then binary=kem3t.exe; fi
           go build -trimpath -buildvcs=false -ldflags="-s -w" -o "dist/$binary" ./cmd/kem3t
           cp README.md LICENSE dist/
-
       - name: Package and checksum
         shell: bash
         env:
@@ -223,7 +108,6 @@ jobs:
             tar -czf "$ASSET" -C dist "$package_dir"
           fi
           sha256sum "$ASSET" > "$ASSET.sha256"
-
       - name: Upload release assets
         uses: actions/upload-artifact@v4
         with:
@@ -237,13 +121,14 @@ jobs:
     name: Publish GitHub release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download all release assets
         uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
-
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
