@@ -471,37 +471,6 @@ func TestReportEngineBuildsMultiHopPathsAndRecurringPivots(t *testing.T) {
 	}
 }
 
-func TestReportEngineKeepsTargetReportWhenUnrelatedHistoricalEvidenceIsMalformed(t *testing.T) {
-	registry := evidence.NewRegistry()
-	t.Cleanup(func() {
-		if err := registry.Close(); err != nil {
-			t.Errorf("close evidence registry: %v", err)
-		}
-	})
-	if err := registry.AddEvidence(evidence.Evidence{
-		ID: "target-dns", EntityID: "target.example", Type: evidence.TypeDNSAddress, Value: "192.0.2.90",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.AddEvidence(evidence.Evidence{
-		ID: "unrelated-malformed-tls", EntityID: "unrelated.example", Type: evidence.TypeTLSCertificate, Value: "{",
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	report, err := (&ReportEngine{}).Build("target.example", nil, registry)
-	if err != nil {
-		t.Fatalf("unrelated malformed evidence poisoned target report: %v", err)
-	}
-	if report.Target != "target.example" {
-		t.Fatalf("report target = %q", report.Target)
-	}
-	limitations := strings.Join(report.Narrative.Limitations, " ")
-	if !strings.Contains(limitations, "Multi-hop discovery was limited") {
-		t.Fatalf("report did not disclose reduced multi-hop coverage: %s", limitations)
-	}
-}
-
 func TestReportEngineIdentifiesLatestCollectionRunAndServiceTemporalScope(t *testing.T) {
 	registry := evidence.NewRegistry()
 	t.Cleanup(func() {

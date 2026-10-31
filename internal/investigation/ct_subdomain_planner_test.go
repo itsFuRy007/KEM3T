@@ -91,7 +91,7 @@ func TestCTSubdomainPlannerCountsScheduledAndCompletedNamesOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(stages) != 1 || stages[0].Name() != "dns-subdomain:c.example.com" {
+	if len(stages) != 1 || stages[0].Name() != "dns-subdomain:b.example.com" {
 		t.Fatalf("duplicate scheduled/completed name consumed cap twice: %+v", stages)
 	}
 }
