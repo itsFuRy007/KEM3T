@@ -568,7 +568,7 @@ func TestRunDNSAdaptsPlanFromInvestigatorFeedback(t *testing.T) {
 	}
 }
 
-  
+
 // TestRunDNSNormalizesTrailingDotTarget prevents duplicate DNS identities and snapshots.
 func TestRunDNSNormalizesTrailingDotTarget(t *testing.T) {
 	dir := t.TempDir()
