@@ -60,11 +60,10 @@ func TestDiscoveryEngineDoesNotTreatSameDimensionAsConvergence(t *testing.T) {
 	}
 }
 
-
 func TestDiscoveryEngineDoesNotCountSameUnderlyingDimensionTwice(t *testing.T) {
 	engine := &DiscoveryEngine{}
 	tests := []struct {
-		name string
+		name         string
 		correlations []Correlation
 	}{
 		{
@@ -102,7 +101,7 @@ func TestDiscoveryValidationRejectsUnsupportedConfidence(t *testing.T) {
 		Entities:                []string{"example.com", "other.example"},
 		SignalTypes:             []CorrelationType{CorrelationSharedIPAddress, CorrelationSharedTLSCertificateFingerprint},
 		CorrelationIDs:          []string{"ip", "tls"},
-		SharedValues:             []string{"192.0.2.10", strings.Repeat("a", 64)},
+		SharedValues:            []string{"192.0.2.10", strings.Repeat("a", 64)},
 		SignalDiversity:         2,
 		Confidence:              "MODERATE",
 		Statement:               "Cross-dimension lead.",
