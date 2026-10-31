@@ -599,6 +599,14 @@ func printInvestigationPlan(plan intelligence.InvestigationPlan) {
 	}
 }
 
+func correlationTypeStrings(values []intelligence.CorrelationType) []string {
+	result := make([]string, len(values))
+	for i, value := range values {
+		result[i] = string(value)
+	}
+	return result
+}
+
 func printIntelligenceReport(report intelligence.IntelligenceReport) {
 	fmt.Println("\n[INTELLIGENCE REPORT]")
 	safePrintf("Target: %s\n", report.Target)
