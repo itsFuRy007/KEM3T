@@ -144,6 +144,10 @@ func TestEngineIntegratesExistingDNSCollectorEndToEnd(t *testing.T) {
 	if len(result.Stages) != 1 || result.Stages[0].Result.Evidence != 1 {
 		t.Fatalf("unexpected stage outcome: %+v", result.Stages)
 	}
+	stageResult := result.Stages[0].Result
+	if len(stageResult.CollectedEvents) != 1 || len(stageResult.EvidenceRecords) != 1 || len(stageResult.ObservationRecords) != 1 {
+		t.Fatalf("stage did not expose its canonical outputs: %+v", stageResult)
+	}
 }
 
 type plannerFunc func(context.Context, PlanningState) ([]Stage, error)
