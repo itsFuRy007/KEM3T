@@ -209,7 +209,7 @@ func (e *ReportEngine) BuildWithInvestigationFeedback(
 	}
 	report.Narrative = narrative
 	for _, limitation := range correlationLimitations {
-		report.Narrative.Limitations = appendUniqueLimitation(report.Narrative.Limitations, limitation)
+		report.Narrative.Limitations = appendUniqueReportLimitation(report.Narrative.Limitations, limitation)
 	}
 	plan, err := BuildAdaptiveInvestigationPlan(report, previousPlan, feedback)
 	if err != nil {
@@ -219,6 +219,16 @@ func (e *ReportEngine) BuildWithInvestigationFeedback(
 	return report, nil
 }
 
+
+
+func appendUniqueReportLimitation(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
 
 func targetScopedCorrelationRecords(target string, registry *evidence.Registry) ([]evidence.Evidence, []evidence.Observation) {
 	allEvidence := registry.AllEvidence()
