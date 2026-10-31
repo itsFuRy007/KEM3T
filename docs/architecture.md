@@ -45,6 +45,8 @@ A hypothesis is an interpretation to test, not a statement of fact. Its supporti
 - A stage failure does not erase successful results from other stages.
 - A partial run is persisted as failed/partial rather than presented as a complete success.
 - CLI adapters return a non-zero error for partial investigations so automation can distinguish them from complete runs.
+- CLI `SIGINT`/`SIGTERM` signals cancel the shared run context; collectors stop through context cancellation and the engine records the run as failed/partial.
+- The final intelligence report is updated with the finalized collection run ID and status, rather than retaining the transient `running` state used while planning.
 - History snapshots are persisted only after successful run finalization.
 - Active collection remains bounded to the explicitly supplied target and authorized scope.
 
