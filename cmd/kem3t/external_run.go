@@ -4,34 +4,72 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
-	"github.com/itsFuRy007/kem3t/internal/history"
+	"github.com/itsFuRy007/kem3t/internal/investigation"
 )
 
-type externalCollectionFunc func(
-	context.Context,
-	*evidence.Registry,
-	string,
-) error
+type externalCollectionFunc func(context.Context, *evidence.Registry, string) error
 
-// runExternalCollection gives standalone external-intelligence modes the same
-// persisted run lifecycle and history guarantees as the collection pipelines.
-func runExternalCollection(
-	target string,
-	snapshotDir string,
-	runPrefix string,
-	timeout time.Duration,
-	collect externalCollectionFunc,
-) (retErr error) {
-	target = history.NormalizeTarget(target)
+type externalCollectionStage struct {
+	stageName string
+	timeout   time.Duration
+	collect   externalCollectionFunc
+}
+
+func (s externalCollectionStage) Name() string { return strings.TrimSpace(s.stageName) }
+
+func (s externalCollectionStage) Run(ctx context.Context, target string, registry *evidence.Registry) (investigation.StageResult, error) {
+	if ctx == nil {
+		return investigation.StageResult{}, fmt.Errorf("context is required")
+	}
+	if registry == nil {
+		return investigation.StageResult{}, fmt.Errorf("shared evidence registry is required")
+	}
+	if s.collect == nil {
+		return investigation.StageResult{}, fmt.Errorf("external collection function is required")
+	}
+	lookupCtx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+
+	beforeEvidence := make(map[string]struct{})
+	for _, item := range registry.AllEvidence() {
+		beforeEvidence[item.ID] = struct{}{}
+	}
+	beforeObservations := make(map[string]struct{})
+	for _, item := range registry.AllObservations() {
+		beforeObservations[item.ID] = struct{}{}
+	}
+
+	if err := s.collect(lookupCtx, registry, target); err != nil {
+		return investigation.StageResult{}, fmt.Errorf("%s collection: %w", s.Name(), err)
+	}
+	stageResult := investigation.StageResult{}
+	for _, item := range registry.AllEvidence() {
+		if _, existed := beforeEvidence[item.ID]; !existed {
+			stageResult.EvidenceRecords = append(stageResult.EvidenceRecords, item)
+		}
+	}
+	for _, item := range registry.AllObservations() {
+		if _, existed := beforeObservations[item.ID]; !existed {
+			stageResult.ObservationRecords = append(stageResult.ObservationRecords, item)
+		}
+	}
+	stageResult.Events = len(stageResult.ObservationRecords)
+	stageResult.Evidence = len(stageResult.EvidenceRecords)
+	stageResult.Observations = len(stageResult.ObservationRecords)
+	return stageResult, nil
+}
+
+// runExternalCollection delegates external-source lifecycle, provenance,
+// persistence, graph/report construction, and history to the same engine used
+// by DNS/TCP/TLS/HTTP investigations.
+func runExternalCollection(target, snapshotDir, runPrefix string, timeout time.Duration, collect externalCollectionFunc) (retErr error) {
+	target = strings.TrimSpace(target)
 	snapshotDir = strings.TrimSpace(snapshotDir)
 	runPrefix = strings.ToLower(strings.TrimSpace(runPrefix))
-
 	if target == "" {
 		return fmt.Errorf("target is required")
 	}
@@ -39,7 +77,7 @@ func runExternalCollection(
 		return fmt.Errorf("snapshot directory is required")
 	}
 	if runPrefix == "" {
-		return fmt.Errorf("collection run prefix is required")
+		return fmt.Errorf("collection stage name is required")
 	}
 	if timeout <= 0 {
 		return fmt.Errorf("collection timeout must be positive")
@@ -48,107 +86,31 @@ func runExternalCollection(
 		return fmt.Errorf("external collection function is required")
 	}
 
-	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
-		return fmt.Errorf("create snapshot directory: %w", err)
-	}
-
-	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
+	registry, err := evidence.OpenRegistry(snapshotDir + "/evidence.db")
 	if err != nil {
-		return fmt.Errorf("open evidence registry: %w", err)
+		return fmt.Errorf("open shared evidence registry: %w", err)
 	}
 	defer func() {
-		if err := registry.Close(); err != nil {
-			retErr = errors.Join(retErr, fmt.Errorf("close evidence registry: %w", err))
+		if closeErr := registry.Close(); closeErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close shared evidence registry: %w", closeErr))
 		}
 	}()
 
-	startedAt := time.Now().UTC()
-	run := evidence.CollectionRun{
-		ID:        fmt.Sprintf("%s-%d", runPrefix, startedAt.UnixNano()),
-		Target:    target,
-		StartedAt: startedAt,
-		Status:    evidence.CollectionRunRunning,
+	result, runErr := (&investigation.Engine{
+		Registry: registry,
+		Stages: []investigation.Stage{externalCollectionStage{stageName: runPrefix, timeout: timeout, collect: collect}},
+		SnapshotDir: snapshotDir,
+	}).Run(context.Background(), target)
+	if runErr != nil {
+		return fmt.Errorf("external investigation: %w", runErr)
 	}
-	if err := registry.AddCollectionRun(run); err != nil {
-		return fmt.Errorf("start external collection run: %w", err)
+	if result.Partial {
+		for _, stage := range result.Stages {
+			if stage.Error != "" {
+				return fmt.Errorf("external investigation stage %q failed: %s", stage.Name, stage.Error)
+			}
+		}
+		return fmt.Errorf("external investigation completed partially")
 	}
-
-	previousEvidenceIDs := make(map[string]struct{})
-	for _, item := range registry.AllEvidence() {
-		previousEvidenceIDs[item.ID] = struct{}{}
-	}
-
-	previousObservationIDs := make(map[string]struct{})
-	for _, observation := range registry.AllObservations() {
-		previousObservationIDs[observation.ID] = struct{}{}
-	}
-
-	defer func() {
-		run.FinishedAt = time.Now().UTC()
-
-		if retErr != nil {
-			run.Status = evidence.CollectionRunFailed
-			run.ErrorMessage = retErr.Error()
-		} else {
-			run.Status = evidence.CollectionRunCompleted
-		}
-
-		runObservations := make([]evidence.Observation, 0)
-		for _, observation := range registry.AllObservations() {
-			if _, existed := previousObservationIDs[observation.ID]; !existed {
-				runObservations = append(runObservations, observation)
-			}
-		}
-		run.EventCount = len(runObservations)
-		for _, item := range registry.AllEvidence() {
-			if _, existed := previousEvidenceIDs[item.ID]; existed {
-				continue
-			}
-			if item.Type == evidence.TypeDNSAddress {
-				run.AddressCount++
-			}
-		}
-
-		if err := registry.UpdateCollectionRun(run); err != nil {
-			updateErr := fmt.Errorf("finalize external collection run: %w", err)
-			retErr = errors.Join(retErr, updateErr)
-			run.Status = evidence.CollectionRunFailed
-			if run.ErrorMessage == "" {
-				run.ErrorMessage = updateErr.Error()
-			} else {
-				run.ErrorMessage += "; " + updateErr.Error()
-			}
-			if retryErr := registry.UpdateCollectionRun(run); retryErr != nil {
-				retErr = errors.Join(retErr, fmt.Errorf("mark external collection run failed after finalization error: %w", retryErr))
-			}
-			return
-		}
-
-		if retErr != nil || run.Status != evidence.CollectionRunCompleted {
-			return
-		}
-
-		if err := history.PersistRunSnapshot(snapshotDir, run, registry, runObservations); err != nil {
-			persistErr := fmt.Errorf("persist external collection history snapshot: %w", err)
-			retErr = errors.Join(retErr, persistErr)
-			run.Status = evidence.CollectionRunFailed
-			if run.ErrorMessage == "" {
-				run.ErrorMessage = persistErr.Error()
-			} else {
-				run.ErrorMessage += "; " + persistErr.Error()
-			}
-			if updateErr := registry.UpdateCollectionRun(run); updateErr != nil {
-				retErr = errors.Join(retErr, fmt.Errorf("mark external collection run failed after history persistence error: %w", updateErr))
-			}
-		}
-	}()
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	retErr = collect(ctx, registry, target)
-	if retErr != nil {
-		retErr = fmt.Errorf("%s collection: %w", runPrefix, retErr)
-	}
-	return retErr
+	return nil
 }
