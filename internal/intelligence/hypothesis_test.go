@@ -344,7 +344,6 @@ func TestHypothesisValidateRejectsUntraceableOrNonActionableDetails(t *testing.T
 	}
 }
 
-
 func TestHypothesisEngineGeneratesAllCorrelationTypes(t *testing.T) {
 	fingerprint := strings.Repeat("a", 64)
 	cases := []struct {
@@ -354,24 +353,24 @@ func TestHypothesisEngineGeneratesAllCorrelationTypes(t *testing.T) {
 		wantText    string
 	}{
 		{
-			name: "shared current IP",
+			name:        "shared current IP",
 			correlation: Correlation{ID: "shared-ip:192.0.2.10", Type: CorrelationSharedIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "192.0.2.10", ConfidenceScope: "OBSERVED_SHARED_ADDRESS", EvidenceIDs: []string{"ev-a", "ev-b"}},
-			wantTitle: "Potential shared infrastructure", wantText: "192.0.2.10",
+			wantTitle:   "Potential shared infrastructure", wantText: "192.0.2.10",
 		},
 		{
-			name: "shared TLS fingerprint",
+			name:        "shared TLS fingerprint",
 			correlation: Correlation{ID: "shared-tls-cert:" + fingerprint, Type: CorrelationSharedTLSCertificateFingerprint, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: fingerprint, ConfidenceScope: "OBSERVED_SHARED_CERTIFICATE_FINGERPRINT", EvidenceIDs: []string{"tls-a", "tls-b"}},
-			wantTitle: "Potential shared TLS certificate deployment", wantText: fingerprint,
+			wantTitle:   "Potential shared TLS certificate deployment", wantText: fingerprint,
 		},
 		{
-			name: "shared CT record",
+			name:        "shared CT record",
 			correlation: Correlation{ID: "shared-ct-cert:crt.sh#77", Type: CorrelationSharedCTCertificateRecord, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "crt.sh#77", ConfidenceScope: "OBSERVED_SHARED_CT_CERTIFICATE_RECORD", EvidenceIDs: []string{"ct-a", "ct-b"}},
-			wantTitle: "Potential shared Certificate Transparency record", wantText: "crt.sh#77",
+			wantTitle:   "Potential shared Certificate Transparency record", wantText: "crt.sh#77",
 		},
 		{
-			name: "historical IP",
+			name:        "historical IP",
 			correlation: Correlation{ID: "shared-historical-ip:203.0.113.7", Type: CorrelationSharedHistoricalIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "203.0.113.7", ConfidenceScope: "OBSERVED_HISTORICAL_SHARED_ADDRESS", EvidenceIDs: []string{"pdns-a", "pdns-b"}},
-			wantTitle: "Potential historical infrastructure overlap", wantText: "203.0.113.7",
+			wantTitle:   "Potential historical infrastructure overlap", wantText: "203.0.113.7",
 		},
 	}
 	for _, tc := range cases {
@@ -398,19 +397,19 @@ func TestHypothesisEngineGeneratesAllCorrelationTypes(t *testing.T) {
 
 func TestHypothesisEngineRejectsMalformedNewCorrelationTypes(t *testing.T) {
 	cases := []struct {
-		name string
+		name        string
 		correlation Correlation
 	}{
 		{
-			name: "CT key missing source",
+			name:        "CT key missing source",
 			correlation: Correlation{ID: "ct", Type: CorrelationSharedCTCertificateRecord, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "#77", ConfidenceScope: "OBSERVED_SHARED_CT_CERTIFICATE_RECORD", EvidenceIDs: []string{"ct-a"}},
 		},
 		{
-			name: "CT key noncanonical ID",
+			name:        "CT key noncanonical ID",
 			correlation: Correlation{ID: "ct", Type: CorrelationSharedCTCertificateRecord, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "crt.sh#077", ConfidenceScope: "OBSERVED_SHARED_CT_CERTIFICATE_RECORD", EvidenceIDs: []string{"ct-a"}},
 		},
 		{
-			name: "historical address not canonical",
+			name:        "historical address not canonical",
 			correlation: Correlation{ID: "historical", Type: CorrelationSharedHistoricalIPAddress, Entities: []string{"a.example.com", "b.example.com"}, SharedValue: "203.000.113.7", ConfidenceScope: "OBSERVED_HISTORICAL_SHARED_ADDRESS", EvidenceIDs: []string{"pdns-a"}},
 		},
 	}

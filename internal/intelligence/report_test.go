@@ -1,6 +1,7 @@
 package intelligence
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -510,5 +511,93 @@ func TestReportEngineIdentifiesLatestCollectionRunAndServiceTemporalScope(t *tes
 	}
 	if len(report.ServiceSurfaces) != 1 || report.ServiceSurfaces[0].TemporalScope != "REFERENCE_RUN_ONLY" {
 		t.Fatalf("service temporal scope is incorrect: %+v", report.ServiceSurfaces)
+	}
+}
+
+
+// TestReportEngineBuildsHypothesesForEveryCorrelationType verifies that the
+// report pipeline can carry all correlation types through hypothesis generation.
+func TestReportEngineBuildsHypothesesForEveryCorrelationType(t *testing.T) {
+	registry := evidence.NewRegistry()
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close evidence registry: %v", err)
+		}
+	})
+
+	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	fingerprint := strings.Repeat("b", 64)
+	makeCT := func(id, target string) evidence.Evidence {
+		details := evidence.CTDNSNameDetails{
+			Target: target, DNSName: target, CertificateID: 77,
+			Source: "crt.sh", RetrievedAt: now,
+		}
+		value, err := json.Marshal(details)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return evidence.Evidence{ID: id, EntityID: target, Type: evidence.TypeCTDNSName, Value: string(value)}
+	}
+	makePDNS := func(id, target string) evidence.Evidence {
+		details := evidence.PassiveDNSDetails{
+			Target: target, Hostname: target, Address: "203.0.113.7",
+			RecordType: "A", FirstSeen: "2024-01-01", LastSeen: "2025-01-01",
+			Source: "pdns-provider",
+		}
+		value, err := json.Marshal(details)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return evidence.Evidence{ID: id, EntityID: target, Type: evidence.TypePassiveDNS, Value: string(value)}
+	}
+
+	records := []evidence.Evidence{
+		{ID: "dns-a", EntityID: "a.example.com", Type: evidence.TypeDNSAddress, Value: "192.0.2.50"},
+		{ID: "dns-b", EntityID: "b.example.net", Type: evidence.TypeDNSAddress, Value: "192.0.2.50"},
+		tlsEvidenceForTest(t, "tls-a", "a.example.com", fingerprint),
+		tlsEvidenceForTest(t, "tls-b", "b.example.net", fingerprint),
+		makeCT("ct-a", "a.example.com"),
+		makeCT("ct-b", "b.example.net"),
+		makePDNS("pdns-a", "a.example.com"),
+		makePDNS("pdns-b", "b.example.net"),
+	}
+	for _, record := range records {
+		if err := registry.AddEvidence(record); err != nil {
+			t.Fatalf("AddEvidence(%q): %v", record.ID, err)
+		}
+	}
+
+	report, err := (&ReportEngine{}).Build("a.example.com", nil, registry)
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if len(report.Correlations) != 4 {
+		t.Fatalf("expected all four correlation types, got %#v", report.Correlations)
+	}
+	if len(report.Hypotheses) != 4 {
+		t.Fatalf("expected one hypothesis per correlation, got %d", len(report.Hypotheses))
+	}
+
+	seen := make(map[CorrelationType]bool, len(report.Correlations))
+	for _, correlation := range report.Correlations {
+		seen[correlation.Type] = true
+	}
+	for _, correlationType := range []CorrelationType{
+		CorrelationSharedIPAddress,
+		CorrelationSharedTLSCertificateFingerprint,
+		CorrelationSharedCTCertificateRecord,
+		CorrelationSharedHistoricalIPAddress,
+	} {
+		if !seen[correlationType] {
+			t.Errorf("report is missing correlation type %q", correlationType)
+		}
+	}
+	for _, hypothesis := range report.Hypotheses {
+		if err := hypothesis.Validate(); err != nil {
+			t.Errorf("invalid hypothesis %q: %v", hypothesis.ID, err)
+		}
+		if hypothesis.Confidence != HypothesisConfidenceLow {
+			t.Errorf("hypothesis %q confidence = %q, want LOW", hypothesis.ID, hypothesis.Confidence)
+		}
 	}
 }
