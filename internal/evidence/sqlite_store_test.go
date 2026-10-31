@@ -259,3 +259,19 @@ func TestSQLiteSaveBatchRollsBackOnDuplicateEvidence(t *testing.T) {
 		t.Fatalf("duplicate evidence batch was not rolled back: evidence=%+v observations=%+v", records, observations)
 	}
 }
+
+func TestOpenSQLiteStoreCreatesMissingParentDirectories(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "snapshots", "evidence.db")
+	store, err := OpenSQLiteStore(path)
+	if err != nil {
+		t.Fatalf("open store with missing parent directories: %v", err)
+	}
+	defer store.Close()
+
+	if _, err := store.db.Exec("SELECT 1"); err != nil {
+		t.Fatalf("query newly created database: %v", err)
+	}
+	if _, err := filepath.Abs(path); err != nil {
+		t.Fatalf("resolve database path: %v", err)
+	}
+}
