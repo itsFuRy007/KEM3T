@@ -192,7 +192,7 @@ func(c *RDAPClient)LookupIP(ctx context.Context,rawTarget string)(IPRDAPReport,e
  service.Path=strings.TrimRight(service.Path,"/")+"/ip/"+url.PathEscape(target)
  response,err:=rdapGET(ctx,client,service.String());if err!=nil{return IPRDAPReport{},fmt.Errorf("query IP RDAP: %w",err)}
  var raw rdapIPResponse;if err:=json.Unmarshal(response,&raw);err!=nil{return IPRDAPReport{},fmt.Errorf("decode IP RDAP response: %w",err)}
- start,end,err:=validateIPRDAPRange(target,raw.StartAddress,raw.EndAddress);if err!=nil{return IPRDAPReport{},err}
+ _,start,end,err:=validateIPRDAPRange(target,raw.StartAddress,raw.EndAddress);if err!=nil{return IPRDAPReport{},err}
  now:=time.Now().UTC();if c.Now!=nil{now=c.Now().UTC()}
  return IPRDAPReport{Target:target,Source:service.Host,RetrievedAt:now,Handle:strings.TrimSpace(raw.Handle),Name:strings.TrimSpace(raw.Name),StartAddress:start.String(),EndAddress:end.String(),Country:strings.TrimSpace(raw.Country),NetworkType:strings.TrimSpace(raw.Type),Status:uniqueSorted(raw.Status),Limitations:[]string{
   "IP RDAP describes a registry allocation/assignment range; it does not prove which customer currently operates a host.",
@@ -201,12 +201,12 @@ func(c *RDAPClient)LookupIP(ctx context.Context,rawTarget string)(IPRDAPReport,e
  }},nil
 }
 
-func validateIPRDAPRange(target,startAddress,endAddress string)(netip.Addr,netip.Addr,error){
- targetAddr,err:=netip.ParseAddr(strings.TrimSpace(target));if err!=nil{return netip.Addr{},netip.Addr{},fmt.Errorf("RDAP target IP is invalid: %w",err)}
- start,err:=netip.ParseAddr(strings.TrimSpace(startAddress));if err!=nil{return netip.Addr{},netip.Addr{},fmt.Errorf("RDAP start address is invalid: %w",err)}
- end,err:=netip.ParseAddr(strings.TrimSpace(endAddress));if err!=nil{return netip.Addr{},netip.Addr{},fmt.Errorf("RDAP end address is invalid: %w",err)}
- if start.Is4()!=targetAddr.Is4()||end.Is4()!=targetAddr.Is4()||start.Compare(end)>0||targetAddr.Compare(start)<0||targetAddr.Compare(end)>0{return netip.Addr{},netip.Addr{},fmt.Errorf("RDAP network range does not contain requested IP")}
- return start,end,nil
+func validateIPRDAPRange(target,startAddress,endAddress string)(netip.Addr,netip.Addr,netip.Addr,error){
+ targetAddr,err:=netip.ParseAddr(strings.TrimSpace(target));if err!=nil{return netip.Addr{},netip.Addr{},netip.Addr{},fmt.Errorf("RDAP target IP is invalid: %w",err)}
+ start,err:=netip.ParseAddr(strings.TrimSpace(startAddress));if err!=nil{return netip.Addr{},netip.Addr{},netip.Addr{},fmt.Errorf("RDAP start address is invalid: %w",err)}
+ end,err:=netip.ParseAddr(strings.TrimSpace(endAddress));if err!=nil{return netip.Addr{},netip.Addr{},netip.Addr{},fmt.Errorf("RDAP end address is invalid: %w",err)}
+ if start.Is4()!=targetAddr.Is4()||end.Is4()!=targetAddr.Is4()||start.Compare(end)>0||targetAddr.Compare(start)<0||targetAddr.Compare(end)>0{return netip.Addr{},netip.Addr{},netip.Addr{},fmt.Errorf("RDAP network range does not contain requested IP")}
+ return targetAddr,start,end,nil
 }
 
 func selectIPRDAPService(bootstrap rdapBootstrap,ip net.IP)(string,error){
