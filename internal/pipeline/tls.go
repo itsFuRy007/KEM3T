@@ -9,6 +9,7 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
+	"github.com/itsFuRy007/kem3t/internal/intelligence"
 	"github.com/itsFuRy007/kem3t/internal/investigation"
 	"github.com/itsFuRy007/kem3t/internal/observations"
 )
@@ -17,6 +18,7 @@ type TLSResult struct {
 	Event            *events.Event
 	Evidence         evidence.Evidence
 	Observation      evidence.Observation
+	Report           intelligence.IntelligenceReport
 	EvidenceRegistry *evidence.Registry
 	Graph            graph.Graph
 	Normalized       observations.Collection
@@ -53,6 +55,7 @@ func RunTLS(ctx context.Context, target string, port int, snapshotDir string) (r
 		}
 	}
 	result.Graph = unified.Graph
+	result.Report = unified.Report
 	result.Normalized = unified.Normalized
 	if err != nil {
 		return result, err
