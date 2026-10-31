@@ -11,6 +11,28 @@ import (
 func sampleMarkdownReport() IntelligenceReport {
 	return IntelligenceReport{
 		Target: "example.com",
+		ServiceSurfaces: []ServiceSurface{{
+			ID: "service-surface:example.com:443", Target: "example.com", Port: 443,
+			TCPStates: []string{"open"}, Protocols: []string{"tcp", "https"},
+			HTTP: []ServiceHTTPObservation{{
+				EvidenceID: "evidence:http", Scheme: "https", StatusCode: 200, Title: "Example",
+				Server: "test-server", FinalURL: "https://example.com/", TLSVersion: "TLS 1.3", TLSVerified: true,
+			}},
+			TLS: []ServiceTLSObservation{{
+				EvidenceID: "evidence:tls", Fingerprint: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				Subject: "CN=example.com", Issuer: "CN=Example CA", TLSVersion: "TLS 1.3",
+				Verified: true, NotAfter: testTimestamp().Add(365 * 24 * time.Hour),
+			}},
+			EvidenceIDs: []string{"evidence:http", "evidence:tls"},
+			ObservationIDs: []string{"observation:http", "observation:tls"},
+			ObservationRefs: []ServiceObservationRef{{
+				EvidenceID: "evidence:http", ObservationID: "observation:http",
+				Source: "http-collector", ObservedAt: testTimestamp(),
+			}},
+			Summary: "HTTPS service observed on example.com:443.",
+			Limitations: []string{"The Server header is not proof of the underlying software."},
+			NextSteps: []string{"Review the certificate and endpoint behavior."},
+		}},
 		Narrative: ResearchNarrative{
 			Summary: "Two independent-looking signals deserve review.\nDo not treat this as proof.",
 			Signals: []NarrativeSignal{
@@ -96,11 +118,13 @@ func TestRenderMarkdownReportIncludesResearcherSectionsAndTraceability(t *testin
 	}
 	for _, want := range []string{
 		"# KEM3T Intelligence Dossier", "## Executive summary", "## Key signals",
+		"## Service surfaces", "Observation provenance", "TLS 1.3",
 		"## Direct correlations", "## Convergent discoveries", "## Multi-hop discovery paths",
-		"## Recurring infrastructure pivots", "## Hypotheses", "## Verification assessments",
-		"## Unresolved intelligence gaps", "## Prioritized findings", "## Researcher next steps",
-		"## Adaptive investigation plan", "## Interpretation limits", "`evidence:1`",
-		"`verification:yes`", "qualitative, not a probability",
+		"Signal types", "## Recurring infrastructure pivots", "## Hypotheses", "## Verification assessments",
+		"Supporting facts", "Contradicting facts", "## Unresolved intelligence gaps",
+		"## Prioritized findings", "## Researcher next steps", "## Adaptive investigation plan",
+		"## Interpretation limits", "`evidence:1`", "`verification:yes`",
+		"qualitative, not a probability",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("Markdown report missing %q", want)
