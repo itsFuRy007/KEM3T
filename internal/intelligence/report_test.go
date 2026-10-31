@@ -514,7 +514,6 @@ func TestReportEngineIdentifiesLatestCollectionRunAndServiceTemporalScope(t *tes
 	}
 }
 
-
 // TestReportEngineBuildsHypothesesForEveryCorrelationType verifies that the
 // report pipeline can carry all correlation types through hypothesis generation.
 func TestReportEngineBuildsHypothesesForEveryCorrelationType(t *testing.T) {
