@@ -167,6 +167,12 @@ func TestEnginePlansNextStageFromNewEvidence(t *testing.T) {
 	}}
 	planner := plannerFunc(func(_ context.Context, state PlanningState) ([]Stage, error) {
 		plannerCalls++
+		if state.Report.Target != "example.com" {
+			t.Fatalf("planner did not receive the target-scoped intelligence report: %+v", state.Report)
+		}
+		if state.Report.InvestigationPlan.Target != "example.com" {
+			t.Fatalf("planner did not receive the generated investigation plan: %+v", state.Report.InvestigationPlan)
+		}
 		if plannerCalls == 1 && len(state.Evidence) == 1 {
 			return []Stage{next}, nil
 		}
