@@ -122,14 +122,8 @@ func RunTLS(
 		observation.CollectionRunID = run.ID
 		observation.Stage = "tls"
 
-		if err := registry.AddEvidence(item); err != nil &&
-			!errors.Is(err, evidence.ErrEvidenceExists) {
-			return TLSResult{}, fmt.Errorf("register TLS evidence: %w", err)
-		}
-
-		if err := registry.AddObservation(observation); err != nil &&
-			!errors.Is(err, evidence.ErrObservationExists) {
-			return TLSResult{}, fmt.Errorf("register TLS observation: %w", err)
+		if _, _, err := registry.AddBatchUnique(ctx, []evidence.Evidence{item}, []evidence.Observation{observation}); err != nil {
+			return TLSResult{}, fmt.Errorf("register TLS evidence and observation atomically: %w", err)
 		}
 
 		result.Event = &event
