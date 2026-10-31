@@ -1,1 +1,9 @@
 .kem3t/
+
+# Local build and generated data
+/kem3t
+/kem3t.exe
+/dist/
+/reports/
+/snapshots/
+*.db

@@ -84,7 +84,11 @@ go run ./cmd/kem3t -mode investigate -target example.com
 go run ./cmd/kem3t -mode investigate -target example.com -export-markdown ./reports/example.com.md
 ~~~
 
-The Markdown dossier organizes the executive summary, signals, correlations, discoveries, multi-hop paths, recurring pivots, hypotheses, conflicting verification evidence, intelligence gaps, and next steps. It preserves report/evidence references and writes the file atomically with owner-only permissions.\n\nActive TCP/TLS/HTTP checks are deliberately disabled by default. Enable them only when you are authorized to assess the supplied target; the TCP range applies only to that target and is never expanded to DNS-discovered addresses:
+The Markdown dossier organizes the executive summary, signals, correlations, discoveries, multi-hop paths, recurring pivots, hypotheses, conflicting verification evidence, intelligence gaps, and next steps. It preserves report/evidence references and writes the file atomically with owner-only permissions.
+
+Unified investigations retain successful stage results when another source fails. Generalized history snapshots are written only after successful run finalization and snapshot persistence; partial or failed runs remain marked accordingly in the evidence database and are not reported as saved snapshots.
+
+Active TCP/TLS/HTTP checks are deliberately disabled by default. Enable them only when you are authorized to assess the supplied target; the TCP range applies only to that target and is never expanded to DNS-discovered addresses:
 
 ~~~bash
 go run ./cmd/kem3t -mode investigate -target example.com -enable-active -start-port 1 -end-port 1024 -port 443 -http-scheme auto
