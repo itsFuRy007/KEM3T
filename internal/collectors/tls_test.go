@@ -149,6 +149,9 @@ func TestTLSCollectorEmitsCertificateEvent(t *testing.T) {
 		if event.Data["verified"] != "false" {
 			t.Fatalf("self-signed test certificate should not be marked verified: %q", event.Data["verified"])
 		}
+		if !strings.Contains(strings.ToLower(event.Data["verification_error"]), "unknown authority") {
+			t.Fatalf("expected the self-signed certificate verification reason, got %q", event.Data["verification_error"])
+		}
 	case <-time.After(4 * time.Second):
 		t.Fatal("timed out waiting for TLS event")
 	}

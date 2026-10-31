@@ -185,6 +185,7 @@ func FromTLSEvent(event events.Event) (Evidence, Observation, error) {
 		PublicKeyAlgorithm: strings.TrimSpace(event.Data["public_key_algorithm"]),
 		TLSVersion:         strings.TrimSpace(event.Data["tls_version"]),
 		Verified:           verified,
+		VerificationError:  strings.TrimSpace(event.Data["verification_error"]),
 	}
 
 	value, err := json.Marshal(details)

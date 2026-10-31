@@ -44,6 +44,38 @@ func TestBuildAdaptiveInvestigationPlanPrioritizesEvidenceGaps(t *testing.T) {
 	}
 }
 
+func TestBuildAdaptiveInvestigationPlanMergesEquivalentActionsAndReferences(t *testing.T) {
+	report := IntelligenceReport{
+		Target: "example.com",
+		IntelligenceGaps: []IntelligenceGap{{
+			ID: "gap:service-identification",
+			WhyItMatters: "The protocol is not identified.",
+			SuggestedAction: "Identify the application protocol on this open TCP port using an authorized, bounded probe; preserve the response and collection timestamp.",
+			Priority: "MEDIUM",
+			References: []string{"evidence:tcp-open"},
+		}},
+		Narrative: ResearchNarrative{NextSteps: []NarrativeNextStep{{
+			ID: "next-step:service-identification",
+			Action: "Identify the service and version using authorized collection.",
+			Reason: "An open TCP port requires protocol identification.",
+			References: []string{"finding:open-port", "service-surface:surface-1"},
+		}}},
+	}
+	plan, err := BuildAdaptiveInvestigationPlan(report, nil, nil)
+	if err != nil {
+		t.Fatalf("BuildAdaptiveInvestigationPlan() error = %v", err)
+	}
+	if len(plan.Items) != 1 {
+		t.Fatalf("got %d tasks, want one consolidated task: %#v", len(plan.Items), plan.Items)
+	}
+	item := plan.Items[0]
+	for _, ref := range []string{"gap:gap:service-identification", "evidence:tcp-open", "finding:open-port", "service-surface:surface-1"} {
+		if !containsString(item.References, ref) {
+			t.Errorf("task is missing reference %q: %v", ref, item.References)
+		}
+	}
+}
+
 func TestBuildAdaptiveInvestigationPlanAppliesFeedbackAndRetainsHistory(t *testing.T) {
 	initial := IntelligenceReport{
 		Target: "example.com",

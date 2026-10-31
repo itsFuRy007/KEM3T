@@ -84,7 +84,7 @@ func (n ResearchNarrative) Validate() error {
 
 type narrativeStepGroup struct {
 	action  string
-	kind    string
+	kinds   map[string]struct{}
 	reasons map[string]struct{}
 	refs    map[string]struct{}
 }
@@ -115,12 +115,18 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 			if action == "" {
 				continue
 			}
-			key := kind + "\x00" + action
+			key := narrativeActionKey(action)
 			group := steps[key]
 			if group == nil {
-				group = &narrativeStepGroup{action: action, kind: kind, reasons: make(map[string]struct{}), refs: make(map[string]struct{})}
+				group = &narrativeStepGroup{
+					action: canonicalNarrativeAction(action),
+					kinds: make(map[string]struct{}),
+					reasons: make(map[string]struct{}),
+					refs: make(map[string]struct{}),
+				}
 				steps[key] = group
 			}
+			group.kinds[kind] = struct{}{}
 			if strings.TrimSpace(reason) != "" {
 				group.reasons[strings.TrimSpace(reason)] = struct{}{}
 			}
@@ -288,7 +294,12 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 			reasons = append(reasons, reason)
 		}
 		sort.Strings(reasons)
-		reason := "Derived from " + group.kind + " results."
+		kinds := make([]string, 0, len(group.kinds))
+		for kind := range group.kinds {
+			kinds = append(kinds, kind)
+		}
+		sort.Strings(kinds)
+		reason := "Derived from " + strings.Join(kinds, ", ") + " results."
 		if len(reasons) > 0 {
 			reason += " " + strings.Join(reasons, " ")
 		}
@@ -308,6 +319,24 @@ func BuildResearchNarrative(report IntelligenceReport) (ResearchNarrative, error
 		return ResearchNarrative{}, fmt.Errorf("validate research narrative: %w", err)
 	}
 	return n, nil
+}
+
+func narrativeActionKey(action string) string {
+	normalized := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(action)), " "))
+	if strings.Contains(normalized, "identify") &&
+		((strings.Contains(normalized, "service") && strings.Contains(normalized, "version")) ||
+			strings.Contains(normalized, "application protocol") ||
+			(strings.Contains(normalized, "tcp port") && strings.Contains(normalized, "protocol"))) {
+		return "service-identification"
+	}
+	return normalized
+}
+
+func canonicalNarrativeAction(action string) string {
+	if narrativeActionKey(action) == "service-identification" {
+		return "Identify the application protocol and service version on this open TCP port using an authorized, bounded probe; preserve the response and collection timestamp."
+	}
+	return strings.TrimSpace(action)
 }
 
 func appendPrefixed(dst []string, prefix string, values []string) []string {

@@ -3,6 +3,8 @@ package intelligence
 import (
 	"strings"
 	"testing"
+
+	"github.com/itsFuRy007/kem3t/internal/events"
 )
 
 func TestBuildResearchNarrativeTraceability(t *testing.T) {
@@ -73,6 +75,47 @@ func TestBuildResearchNarrativeTraceability(t *testing.T) {
 	}
 	if err := narrative.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestBuildResearchNarrativeConsolidatesServiceIdentificationActions(t *testing.T) {
+	report := IntelligenceReport{
+		Target: "example.com",
+		Findings: []Finding{{
+			Title: "Open TCP port observed",
+			Evidence: []events.Event{{ID: "event:open", Type: events.EventPortDiscovered}},
+			NextSteps: []string{"Identify the service and version using authorized collection."},
+		}},
+		ServiceSurfaces: []ServiceSurface{{
+			ID: "surface:example.com:8443",
+			NextSteps: []string{"Identify the application protocol on this open TCP port using authorized, bounded service identification."},
+		}},
+		IntelligenceGaps: []IntelligenceGap{{
+			ID: "gap:service-identification:example.com:8443",
+			Unknown: "The application protocol is unknown.",
+			WhyItMatters: "Protocol identity is needed for a meaningful assessment.",
+			SuggestedAction: "Identify the application protocol on this open TCP port using an authorized, bounded probe; preserve the response and collection timestamp.",
+		}},
+	}
+	narrative, err := BuildResearchNarrative(report)
+	if err != nil {
+		t.Fatalf("BuildResearchNarrative() error = %v", err)
+	}
+	if len(narrative.NextSteps) != 1 {
+		t.Fatalf("got %d next steps, want one consolidated action: %#v", len(narrative.NextSteps), narrative.NextSteps)
+	}
+	step := narrative.NextSteps[0]
+	if !strings.Contains(step.Action, "application protocol and service version") {
+		t.Fatalf("unexpected canonical action: %q", step.Action)
+	}
+	for _, ref := range []string{
+		"finding:Open TCP port observed",
+		"service-surface:surface:example.com:8443",
+		"intelligence-gap:gap:service-identification:example.com:8443",
+	} {
+		if !containsString(step.References, ref) {
+			t.Errorf("consolidated step is missing %q: %v", ref, step.References)
+		}
 	}
 }
 

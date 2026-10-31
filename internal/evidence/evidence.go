@@ -46,6 +46,7 @@ type TLSCertificateDetails struct {
 	PublicKeyAlgorithm string    `json:"public_key_algorithm"`
 	TLSVersion         string    `json:"tls_version"`
 	Verified           bool      `json:"verified"`
+	VerificationError  string    `json:"verification_error,omitempty"`
 }
 
 // CTDNSNameDetails records a domain name observed in a CT certificate entry.

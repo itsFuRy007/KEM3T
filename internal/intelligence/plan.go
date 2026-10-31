@@ -77,13 +77,24 @@ func BuildAdaptiveInvestigationPlan(
 
 	candidates := make(map[string]InvestigationTask)
 	add := func(sourceID, sourceKind, action, rationale, label string, priority int, refs []string) {
-		action = strings.TrimSpace(action)
-		if action == "" || strings.TrimSpace(sourceID) == "" {
+		action = canonicalNarrativeAction(action)
+		actionKey := narrativeActionKey(action)
+		if action == "" || actionKey == "" || strings.TrimSpace(sourceID) == "" {
 			return
 		}
 		refs = stableUnique(append(append([]string(nil), refs...), sourceKind+":"+sourceID))
+		if current, exists := candidates[actionKey]; exists {
+			current.References = stableUnique(append(current.References, refs...))
+			current.Rationale = mergeTaskRationale(current.Rationale, rationale)
+			if priority > current.Priority {
+				current.Priority = priority
+				current.PriorityLabel = label
+			}
+			candidates[actionKey] = current
+			return
+		}
 		id := taskID(sourceKind, sourceID, action)
-		candidates[id] = InvestigationTask{
+		candidates[actionKey] = InvestigationTask{
 			ID: id, SourceID: sourceID, SourceKind: sourceKind, Action: action,
 			Rationale: strings.TrimSpace(rationale), Priority: priority,
 			PriorityLabel: label, Status: TaskRecommended, References: refs,
@@ -91,9 +102,7 @@ func BuildAdaptiveInvestigationPlan(
 		}
 	}
 
-	gapByAction := make(map[string]IntelligenceGap)
 	for _, gap := range report.IntelligenceGaps {
-		gapByAction[gap.SuggestedAction] = gap
 		priority, label := gapPriority(gap.Priority)
 		add(gap.ID, "gap", gap.SuggestedAction, gap.WhyItMatters, label, priority, gap.References)
 	}
@@ -103,10 +112,6 @@ func BuildAdaptiveInvestigationPlan(
 		findingPriority[finding.Finding.Title] = finding.Priority
 	}
 	for _, step := range report.Narrative.NextSteps {
-		if gap, exists := gapByAction[step.Action]; exists {
-			_ = gap
-			continue
-		}
 		sourceKind, sourceID := "narrative", step.ID
 		if len(step.References) > 0 {
 			if kind, id, ok := strings.Cut(step.References[0], ":"); ok && kind != "" && id != "" {
@@ -123,8 +128,10 @@ func BuildAdaptiveInvestigationPlan(
 	}
 
 	items := make(map[string]InvestigationTask, len(candidates))
-	for id, item := range candidates {
-		items[id] = item
+	candidateByAction := make(map[string]string, len(candidates))
+	for actionKey, item := range candidates {
+		items[item.ID] = item
+		candidateByAction[actionKey] = item.ID
 	}
 	if previous != nil {
 		for _, old := range previous.Items {
@@ -136,6 +143,18 @@ func BuildAdaptiveInvestigationPlan(
 				current.OutcomeNote = old.OutcomeNote
 				current.EvidenceIDs = append([]string(nil), old.EvidenceIDs...)
 				items[old.ID] = current
+				continue
+			}
+			// Merge older duplicate actions into the current consolidated task.
+			if currentID, exists := candidateByAction[narrativeActionKey(old.Action)]; exists {
+				current := items[currentID]
+				if current.Status == TaskRecommended && old.Status != TaskStale {
+					current.Status = old.Status
+					current.OutcomeNote = old.OutcomeNote
+				}
+				current.References = stableUnique(append(current.References, old.References...))
+				current.EvidenceIDs = stableUnique(append(current.EvidenceIDs, old.EvidenceIDs...))
+				items[currentID] = current
 				continue
 			}
 			// Preserve completed work as audit history. Other obsolete tasks remain
@@ -269,6 +288,17 @@ func validateFeedback(feedback InvestigationFeedback) error {
 		}
 	}
 	return nil
+}
+
+func mergeTaskRationale(existing, incoming string) string {
+	values := stableUnique([]string{strings.TrimSpace(existing), strings.TrimSpace(incoming)})
+	filtered := values[:0]
+	for _, value := range values {
+		if value != "" {
+			filtered = append(filtered, value)
+		}
+	}
+	return strings.Join(filtered, " ")
 }
 
 func gapPriority(priority string) (int, string) {

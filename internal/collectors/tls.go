@@ -31,6 +31,7 @@ type TLSCertificate struct {
 	PublicKeyAlgorithm string    `json:"public_key_algorithm"`
 	TLSVersion         string    `json:"tls_version"`
 	Verified           bool      `json:"verified"`
+	VerificationError  string    `json:"verification_error,omitempty"`
 }
 
 // ParseTLSCertificate extracts useful metadata from an X.509 certificate.
@@ -145,7 +146,11 @@ func (c *TLS) Run(ctx context.Context, output chan<- events.Event) error {
 	result.Target = host
 	result.Port = port
 	result.TLSVersion = tlsVersionName(state.Version)
-	result.Verified = verifyTLSCertificate(state, host)
+	verificationErr := verifyTLSCertificate(state, host)
+	result.Verified = verificationErr == nil
+	if verificationErr != nil {
+		result.VerificationError = verificationErr.Error()
+	}
 	dnsNamesJSON, err := json.Marshal(result.DNSNames)
 	if err != nil {
 		return fmt.Errorf("encode certificate DNS names: %w", err)
@@ -174,6 +179,7 @@ func (c *TLS) Run(ctx context.Context, output chan<- events.Event) error {
 			"public_key_algorithm": result.PublicKeyAlgorithm,
 			"tls_version":          result.TLSVersion,
 			"verified":             strconv.FormatBool(result.Verified),
+			"verification_error":   result.VerificationError,
 		},
 	}
 	if err := event.Validate(); err != nil {
@@ -189,9 +195,9 @@ func (c *TLS) Run(ctx context.Context, output chan<- events.Event) error {
 
 // verifyTLSCertificate checks the peer certificate against the system
 // trust store and verifies that it is valid for the requested server name.
-func verifyTLSCertificate(state tls.ConnectionState, host string) bool {
+func verifyTLSCertificate(state tls.ConnectionState, host string) error {
 	if len(state.PeerCertificates) == 0 {
-		return false
+		return fmt.Errorf("peer did not present a certificate")
 	}
 
 	intermediates := x509.NewCertPool()
@@ -204,7 +210,7 @@ func verifyTLSCertificate(state tls.ConnectionState, host string) bool {
 		Intermediates: intermediates,
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	})
-	return err == nil
+	return err
 }
 
 func tlsVersionName(version uint16) string {

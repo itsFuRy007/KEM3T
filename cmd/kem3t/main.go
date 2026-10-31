@@ -374,7 +374,11 @@ func runHTTP(target, scheme string, port int, snapshotDir string) error {
 		safePrintf("Server: %s\n", result.Event.Data["server"])
 		safePrintf("Content-Type: %s\n", result.Event.Data["content_type"])
 		safePrintf("Redirects: %s\n", result.Event.Data["redirect_count"])
-		safePrintf("TLS verified: %s\n", result.Event.Data["tls_verified"])
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(result.Event.Data["url"])), "https://") {
+			safePrintf("TLS verified: %s\n", result.Event.Data["tls_verified"])
+		} else {
+			fmt.Println("TLS verification: not applicable (plain HTTP)")
+		}
 		safePrintf("Body truncated: %s\n", result.Event.Data["body_truncated"])
 	}
 	printInfrastructureGraph(result.Graph)
