@@ -48,7 +48,7 @@ func (d Discovery) Validate() error {
 	if d.SignalDiversity < 2 {
 		return fmt.Errorf("discovery signal diversity must be at least two")
 	}
-	if strings.TrimSpace(d.Confidence) == "" || strings.TrimSpace(d.Statement) == "" || strings.TrimSpace(d.WhyItMatters) == "" {
+	if d.Confidence != "LOW" || strings.TrimSpace(d.Statement) == "" || strings.TrimSpace(d.WhyItMatters) == "" {
 		return fmt.Errorf("discovery explanation fields are required")
 	}
 	if strings.TrimSpace(d.AlternativeExplanations) == "" || len(d.Verification) == 0 {
@@ -142,7 +142,7 @@ func (e *DiscoveryEngine) Discover(correlations []Correlation, target string) ([
 			CorrelationIDs:          correlationIDs,
 			SharedValues:            sharedValues,
 			SignalDiversity:         len(dimensions),
-			Confidence:              "MODERATE",
+			Confidence:              "LOW",
 			Statement:               fmt.Sprintf("%s and %s are connected by infrastructure signals across %d distinct dimensions: %s.", entities[0], entities[1], len(dimensions), strings.Join(sortedStrings(dimensions), ", ")),
 			WhyItMatters:            "No single correlation had to be decisive: KEM3T surfaced this relationship because the same pair reappears across different evidence dimensions. This is a higher-value investigation lead than an isolated shared-IP or shared-certificate observation.",
 			AlternativeExplanations: "Managed hosting, CDN or reverse-proxy infrastructure, wildcard or centrally managed certificates, certificate transparency reuse, mirrored provider data, or unrelated tenants can create convergent signals without common ownership.",
@@ -192,13 +192,13 @@ func pairKey(a, b string) string {
 func correlationDimension(t CorrelationType) string {
 	switch t {
 	case CorrelationSharedIPAddress:
-		return "current-address"
+		return "network-address"
 	case CorrelationSharedHistoricalIPAddress:
-		return "historical-address"
+		return "network-address"
 	case CorrelationSharedTLSCertificateFingerprint:
-		return "tls-certificate"
+		return "certificate"
 	case CorrelationSharedCTCertificateRecord:
-		return "certificate-transparency"
+		return "certificate"
 	default:
 		return string(t)
 	}
