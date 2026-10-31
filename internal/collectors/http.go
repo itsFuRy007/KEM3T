@@ -157,21 +157,8 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 		Transport: transport,
 		Timeout:   timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
-				return fmt.Errorf("redirect to unsupported scheme")
-			}
-			if req.URL.User != nil {
-				return fmt.Errorf("redirect URLs containing credentials are not allowed")
-			}
-			if len(via) > 0 && strings.EqualFold(via[len(via)-1].URL.Scheme, "https") &&
-				!strings.EqualFold(req.URL.Scheme, "https") {
-				return fmt.Errorf("HTTPS redirect downgrade rejected")
-			}
-			if !strings.EqualFold(req.URL.Hostname(), requestURL.Hostname()) {
-				return fmt.Errorf("cross-host redirect rejected to preserve target scope")
-			}
-			if len(via) > maxHTTPRedirects {
-				return http.ErrUseLastResponse
+			if err := validateHTTPRedirect(req, requestURL.Hostname(), via); err != nil {
+				return err
 			}
 			redirectCount++
 			return nil
@@ -234,6 +221,30 @@ func (c *HTTP) observe(parent context.Context, supplied *url.URL, host, scheme s
 		Type: events.EventHTTPObserved, Timestamp: now, Target: host,
 		Source: "http-collector", Data: data,
 	}, nil
+}
+
+func validateHTTPRedirect(req *http.Request, targetHost string, via []*http.Request) error {
+	if req == nil || req.URL == nil {
+		return fmt.Errorf("redirect request URL is required")
+	}
+	if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
+		return fmt.Errorf("redirect to unsupported scheme")
+	}
+	if req.URL.User != nil {
+		return fmt.Errorf("redirect URLs containing credentials are not allowed")
+	}
+	if len(via) > 0 && via[len(via)-1].URL != nil &&
+		strings.EqualFold(via[len(via)-1].URL.Scheme, "https") &&
+		!strings.EqualFold(req.URL.Scheme, "https") {
+		return fmt.Errorf("HTTPS redirect downgrade rejected")
+	}
+	if !strings.EqualFold(req.URL.Hostname(), targetHost) {
+		return fmt.Errorf("cross-host redirect rejected to preserve target scope")
+	}
+	if len(via) > maxHTTPRedirects {
+		return http.ErrUseLastResponse
+	}
+	return nil
 }
 
 func redactHTTPURL(raw *url.URL) string {

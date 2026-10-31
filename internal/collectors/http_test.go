@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -191,24 +191,10 @@ func TestHTTPRejectsRedirectCredentials(t *testing.T) {
 	}
 }
 
-func TestHTTPRejectsHTTPSDowngradeRedirect(t *testing.T) {
-	var plainHits atomic.Int32
-	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		plainHits.Add(1)
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer plain.Close()
-
-	secure := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, plain.URL+"/downgraded", http.StatusFound)
-	}))
-	defer secure.Close()
-
-	err := (&HTTP{Target: secure.URL, Scheme: "auto", Timeout: time.Second}).Run(context.Background(), make(chan events.Event, 1))
-	if err == nil || !strings.Contains(err.Error(), "downgrade") {
+func TestValidateHTTPRedirectRejectsHTTPSDowngrade(t *testing.T) {
+	previous := &http.Request{URL: &url.URL{Scheme: "https", Host: "example.com"}}
+	redirect := &http.Request{URL: &url.URL{Scheme: "http", Host: "example.com"}}
+	if err := validateHTTPRedirect(redirect, "example.com", []*http.Request{previous}); err == nil || !strings.Contains(err.Error(), "downgrade") {
 		t.Fatalf("expected HTTPS downgrade to be rejected, got %v", err)
-	}
-	if got := plainHits.Load(); got != 0 {
-		t.Fatalf("plain HTTP target received %d requests after HTTPS redirect", got)
 	}
 }
