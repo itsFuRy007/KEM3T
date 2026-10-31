@@ -38,7 +38,7 @@ The intelligence layer is not just a formatter for collector output. It correlat
 
 After each stage, the engine builds a current intelligence report and passes it to the adaptive planner together with evidence, observations, findings, completed stages, and scheduled stages. The planner can therefore reason from correlations, discoveries, hypotheses, gaps, and proposed investigation-plan items—not just raw collector output. It may add bounded follow-up stages; it must not silently broaden the authorized target scope.
 
-A hypothesis is an interpretation to test, not a statement of fact. Its supporting evidence, alternative explanations, limitations, and verification steps must remain visible to the researcher.
+A hypothesis is an interpretation to test, not a statement of fact. Its supporting evidence, alternative explanations, limitations, and verification steps must remain visible to the researcher. The bounded CT subdomain follow-up planner uses qualitative hypothesis confidence to prioritize which newly discovered in-scope names to resolve first; candidates without hypothesis support remain eligible and are ordered deterministically. The configured expansion cap and root-domain boundary still apply.
 
 ## Failure semantics
 
