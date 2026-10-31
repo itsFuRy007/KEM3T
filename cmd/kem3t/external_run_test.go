@@ -316,7 +316,7 @@ func TestRunExternalCollectionMarksRunFailedWhenHistoryPersistenceFails(t *testi
 	if loadErr != nil || len(runs) != 1 {
 		t.Fatalf("expected one finalized collection run, got %+v, %v", runs, loadErr)
 	}
-	if runs[0].Status != evidence.CollectionRunFailed || !strings.Contains(runs[0].ErrorMessage, "persist external collection history snapshot") {
+	if runs[0].Status != evidence.CollectionRunFailed || !strings.Contains(runs[0].ErrorMessage, "persist unified investigation history") {
 		t.Fatalf("history persistence failure was not reflected in run status: %+v", runs[0])
 	}
 }
