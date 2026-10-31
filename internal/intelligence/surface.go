@@ -345,6 +345,9 @@ func GenerateServiceHypotheses(surfaces []ServiceSurface) ([]Hypothesis, error) 
 		if len(https) == 0 || len(surface.TLS) == 0 {
 			continue
 		}
+		if !serviceEvidenceObservedTogether(surface, https, surface.TLS) {
+			continue
+		}
 
 		supportingIDs := append([]string(nil), surface.EvidenceIDs...)
 		supportingFacts := []string{
@@ -377,6 +380,37 @@ func GenerateServiceHypotheses(surfaces []ServiceSurface) ([]Hypothesis, error) 
 	}
 	sort.Slice(results, func(i, j int) bool { return results[i].ID < results[j].ID })
 	return results, nil
+}
+
+
+func serviceEvidenceObservedTogether(surface ServiceSurface, httpObservations []ServiceHTTPObservation, tlsObservations []ServiceTLSObservation) bool {
+	refsByEvidence := make(map[string][]ServiceObservationRef)
+	for _, ref := range surface.ObservationRefs {
+		refsByEvidence[ref.EvidenceID] = append(refsByEvidence[ref.EvidenceID], ref)
+	}
+	const legacyMaxSkew = 5 * time.Minute
+	for _, httpObservation := range httpObservations {
+		for _, tlsObservation := range tlsObservations {
+			for _, httpRef := range refsByEvidence[httpObservation.EvidenceID] {
+				for _, tlsRef := range refsByEvidence[tlsObservation.EvidenceID] {
+					if httpRef.CollectionRunID != "" && httpRef.CollectionRunID == tlsRef.CollectionRunID {
+						return true
+					}
+					if httpRef.CollectionRunID != "" || tlsRef.CollectionRunID != "" {
+						continue
+					}
+					skew := httpRef.ObservedAt.Sub(tlsRef.ObservedAt)
+					if skew < 0 {
+						skew = -skew
+					}
+					if skew <= legacyMaxSkew {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 func serviceTargetInScope(entity, target string) bool {
