@@ -97,12 +97,16 @@ func TestDiscoveryEngineDoesNotCountSameUnderlyingDimensionTwice(t *testing.T) {
 
 func TestDiscoveryValidationRejectsUnsupportedConfidence(t *testing.T) {
 	discovery := Discovery{
-		ID: "discovery:test", Type: DiscoveryConvergentInfrastructure,
-		Entities: []string{"example.com", "other.example"},
-		SignalTypes: []CorrelationType{CorrelationSharedIPAddress, CorrelationSharedTLSCertificateFingerprint},
-		CorrelationIDs: []string{"ip", "tls"}, SharedValues: []string{"192.0.2.10", strings.Repeat("a", 64)},
-		SignalDiversity: 2, Confidence: "MODERATE",
-		Statement: "Cross-dimension lead.", WhyItMatters: "Needs investigation.",
+		ID:                      "discovery:test",
+		Type:                    DiscoveryConvergentInfrastructure,
+		Entities:                []string{"example.com", "other.example"},
+		SignalTypes:             []CorrelationType{CorrelationSharedIPAddress, CorrelationSharedTLSCertificateFingerprint},
+		CorrelationIDs:          []string{"ip", "tls"},
+		SharedValues:             []string{"192.0.2.10", strings.Repeat("a", 64)},
+		SignalDiversity:         2,
+		Confidence:              "MODERATE",
+		Statement:               "Cross-dimension lead.",
+		WhyItMatters:            "Needs investigation.",
 		AlternativeExplanations: "Shared providers may explain the overlap.",
 		Verification:            []string{"Compare independent evidence."},
 	}
