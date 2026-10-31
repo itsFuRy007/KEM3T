@@ -158,9 +158,9 @@ func TestHTTPRedactsQueryValuesFromEvidence(t *testing.T) {
 	}
 	event := <-out
 	for key, value := range map[string]string{
-		"url":        event.Data["url"],
-		"final_url":  event.Data["final_url"],
-		"location":   event.Data["location"],
+		"url":       event.Data["url"],
+		"final_url": event.Data["final_url"],
+		"location":  event.Data["location"],
 	} {
 		for _, secret := range []string{"initial-secret", "redirect-secret", "header-secret"} {
 			if strings.Contains(value, secret) {
