@@ -302,7 +302,7 @@ func RegisterCTReport(registry *evidence.Registry, report CTReport, provenance .
 			}
 			value, err := json.Marshal(details)
 			if err != nil {
-				return added, fmt.Errorf("encode CT evidence: %w", err)
+				return 0, fmt.Errorf("encode CT evidence: %w", err)
 			}
 			sum := sha256.Sum256(value)
 			factKey := hex.EncodeToString(sum[:])
