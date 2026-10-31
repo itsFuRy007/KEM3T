@@ -262,14 +262,15 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 			}
 		}
 	}
-	for _, item := range e.Registry.AllEvidence() {
-		if _, existed := evidenceBefore[item.ID]; existed {
-			continue
-		}
-		if item.Type == evidence.TypeDNSAddress {
-			run.AddressCount++
+	addressSet := make(map[string]struct{})
+	for _, outcome := range result.Stages {
+		for _, item := range outcome.Result.EvidenceRecords {
+			if item.Type == evidence.TypeDNSAddress {
+				addressSet[item.Value] = struct{}{}
+			}
 		}
 	}
+	run.AddressCount = len(addressSet)
 	if retErr != nil && run.ErrorMessage == "" {
 		run.ErrorMessage = retErr.Error()
 	}
