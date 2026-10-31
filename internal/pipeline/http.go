@@ -4,15 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/itsFuRy007/kem3t/internal/collectors"
-	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/graph"
+	"github.com/itsFuRy007/kem3t/internal/investigation"
 	"github.com/itsFuRy007/kem3t/internal/observations"
 )
 
@@ -25,101 +22,40 @@ type HTTPResult struct {
 	Normalized       observations.Collection
 }
 
-// RunHTTP performs one bounded HTTP(S) observation and persists its evidence
-// and provenance in the same registry used by the other collection pipelines.
+// RunHTTP is a compatibility adapter over the shared investigation engine.
 func RunHTTP(ctx context.Context, target, scheme string, port int, snapshotDir string) (result HTTPResult, retErr error) {
-	if ctx == nil {
-		return HTTPResult{}, fmt.Errorf("context is required")
-	}
-	if err := ctx.Err(); err != nil {
-		return HTTPResult{}, err
-	}
-	if strings.TrimSpace(target) == "" {
-		return HTTPResult{}, fmt.Errorf("target is required")
-	}
 	if port < 0 || port > 65535 {
 		return HTTPResult{}, fmt.Errorf("HTTP port must be between 0 and 65535")
 	}
-	if strings.TrimSpace(snapshotDir) == "" {
-		return HTTPResult{}, fmt.Errorf("snapshot directory is required")
+	unified, registry, err := runUnifiedStage(ctx, target, snapshotDir, investigation.NewHTTPStage(target, scheme, port))
+	if registry != nil {
+		result.EvidenceRegistry = registry
+		defer func() {
+			if closeErr := registry.Close(); closeErr != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("close shared evidence registry: %w", closeErr))
+			}
+		}()
 	}
-	if err := os.MkdirAll(snapshotDir, 0750); err != nil {
-		return HTTPResult{}, fmt.Errorf("create snapshot directory: %w", err)
+	if len(unified.Stages) > 0 {
+		stage := unified.Stages[0].Result
+		if len(stage.CollectedEvents) > 0 {
+			event := stage.CollectedEvents[0]
+			result.Event = &event
+		}
+		if len(stage.EvidenceRecords) > 0 {
+			result.Evidence = stage.EvidenceRecords[0]
+		}
+		if len(stage.ObservationRecords) > 0 {
+			result.Observation = stage.ObservationRecords[0]
+		}
 	}
-	registry, err := evidence.OpenRegistry(filepath.Join(snapshotDir, "evidence.db"))
+	result.Graph = unified.Graph
+	result.Normalized = unified.Normalized
 	if err != nil {
-		return HTTPResult{}, fmt.Errorf("open evidence registry: %w", err)
+		return result, err
 	}
-	result.EvidenceRegistry = registry
-	defer func() {
-		if err := registry.Close(); err != nil {
-			retErr = errors.Join(retErr, fmt.Errorf("close evidence registry: %w", err))
-		}
-	}()
-	run := evidence.CollectionRun{
-		ID:     fmt.Sprintf("http-%d", time.Now().UTC().UnixNano()),
-		Target: strings.TrimSpace(target), StartedAt: time.Now().UTC(),
-		Status: evidence.CollectionRunRunning,
+	if result.Event == nil || strings.TrimSpace(result.Evidence.ID) == "" || strings.TrimSpace(result.Observation.ID) == "" {
+		return result, fmt.Errorf("unified HTTP stage returned no response evidence")
 	}
-	if err := registry.AddCollectionRun(run); err != nil {
-		return HTTPResult{}, fmt.Errorf("start collection run: %w", err)
-	}
-	defer func() {
-		run.FinishedAt = time.Now().UTC()
-		if retErr != nil {
-			run.Status = evidence.CollectionRunFailed
-			run.ErrorMessage = retErr.Error()
-		} else {
-			run.Status = evidence.CollectionRunCompleted
-		}
-		if result.Event != nil {
-			run.EventCount = 1
-		}
-		finalizeCollectionRun(snapshotDir, registry, &run, []evidence.Observation{result.Observation}, &retErr)
-	}()
-	collector := &collectors.HTTP{Target: target, Scheme: scheme, Port: port}
-	eventCh := make(chan events.Event, 1)
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- collector.Run(ctx, eventCh)
-		close(eventCh)
-	}()
-	for event := range eventCh {
-		if event.Type != events.EventHTTPObserved {
-			continue
-		}
-		item, observation, err := evidence.FromHTTPEvent(event)
-		if err != nil {
-			return HTTPResult{}, fmt.Errorf("convert HTTP event to evidence: %w", err)
-		}
-		observation.CollectionRunID = run.ID
-		observation.Stage = "http"
-		if _, _, err := registry.AddBatchUnique(ctx, []evidence.Evidence{item}, []evidence.Observation{observation}); err != nil {
-			return HTTPResult{}, fmt.Errorf("register HTTP evidence and observation atomically: %w", err)
-		}
-		result.Event = &event
-		result.Evidence = item
-		result.Observation = observation
-	}
-	if err := <-errCh; err != nil {
-		return HTTPResult{}, err
-	}
-	if result.Event == nil {
-		return HTTPResult{}, fmt.Errorf("HTTP collector returned no response event")
-	}
-	result.Normalized = observations.NormalizeEvents([]events.Event{*result.Event})
-	observations.AttachEvidence(&result.Normalized, []evidence.Observation{result.Observation})
-	if len(result.Normalized.Rejected) > 0 {
-		return HTTPResult{}, fmt.Errorf("normalize HTTP event: %s", result.Normalized.Rejected[0].Reason)
-	}
-	builtGraph, err := graph.BuildFromRegistry(registry)
-	if err != nil {
-		return HTTPResult{}, fmt.Errorf("build infrastructure graph: %w", err)
-	}
-	builtGraph, err = graph.AttachServices(builtGraph, result.Normalized.Services)
-	if err != nil {
-		return HTTPResult{}, fmt.Errorf("attach normalized services to graph: %w", err)
-	}
-	result.Graph = builtGraph
 	return result, nil
 }
