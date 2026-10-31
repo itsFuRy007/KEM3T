@@ -34,8 +34,8 @@ func runUnifiedStage(ctx context.Context, target, snapshotDir string, stage inve
 		return investigation.Result{}, nil, fmt.Errorf("open shared evidence registry: %w", err)
 	}
 	result, runErr := (&investigation.Engine{
-		Registry: registry,
-		Stages: []investigation.Stage{stage},
+		Registry:    registry,
+		Stages:      []investigation.Stage{stage},
 		SnapshotDir: snapshotDir,
 	}).Run(ctx, target)
 	if runErr != nil && strings.TrimSpace(result.RunID) == "" {
