@@ -75,7 +75,7 @@ func runDNSWithCollectorAndPlan(
 		return DNSResult{}, err
 	}
 
-	target = strings.ToLower(strings.TrimSpace(target))
+	target = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(target)), ".")
 	if target == "" {
 		return DNSResult{}, fmt.Errorf("target is required")
 	}
