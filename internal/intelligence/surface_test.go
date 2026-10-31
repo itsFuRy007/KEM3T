@@ -234,7 +234,6 @@ func TestBuildServiceSurfacesLabelsReferenceAndHistoricalEvidence(t *testing.T) 
 	}
 }
 
-
 func TestGenerateServiceHypothesesDoesNotJoinDifferentCollectionRuns(t *testing.T) {
 	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
 	records := []evidence.Evidence{
