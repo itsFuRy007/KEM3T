@@ -94,7 +94,8 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 		if _, exists := known[name]; exists {
 			continue
 		}
-		if priority := priorityByEvidenceID[item.ID]; priority > candidatePriority[name] {
+		priority := priorityByEvidenceID[item.ID]
+		if current, exists := candidatePriority[name]; !exists || priority > current {
 			candidatePriority[name] = priority
 		}
 	}
