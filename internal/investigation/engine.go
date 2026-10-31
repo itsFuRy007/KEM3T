@@ -34,13 +34,13 @@ type StageOutcome struct {
 }
 
 type Result struct {
-	Target  string                          `json:"target"`
-	RunID   string                          `json:"run_id"`
-	Stages  []StageOutcome                  `json:"stages"`
-	Graph   graph.Graph                     `json:"graph"`
-	Report  intelligence.IntelligenceReport `json:"report"`
-	Partial          bool `json:"partial"`
-	HistoryPersisted bool `json:"history_persisted"`
+	Target           string                          `json:"target"`
+	RunID            string                          `json:"run_id"`
+	Stages           []StageOutcome                  `json:"stages"`
+	Graph            graph.Graph                     `json:"graph"`
+	Report           intelligence.IntelligenceReport `json:"report"`
+	Partial          bool                            `json:"partial"`
+	HistoryPersisted bool                            `json:"history_persisted"`
 }
 
 type PlanningState struct {
