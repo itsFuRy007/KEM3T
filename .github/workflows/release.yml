@@ -109,7 +109,7 @@ jobs:
           fi
           sha256sum "$ASSET" > "$ASSET.sha256"
       - name: Upload release assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
@@ -125,12 +125,12 @@ jobs:
       contents: write
     steps:
       - name: Download all release assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
           merge-multiple: true
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           draft: false

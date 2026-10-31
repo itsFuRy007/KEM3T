@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -249,5 +250,38 @@ func TestRegisterIPRDAPReportRejectsZoneIdentifiers(t *testing.T) {
 	}
 	if len(registry.AllEvidence()) != 0 {
 		t.Fatal("zone-scoped IP report was persisted")
+	}
+}
+
+func TestRDAPRejectsHTTPSDowngradeRedirectWithCustomClient(t *testing.T) {
+	var plainHits atomic.Int32
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		plainHits.Add(1)
+		fmt.Fprint(w, `{"ldhName":"example.com","nameservers":[]}`)
+	}))
+	defer plain.Close()
+
+	var secure *httptest.Server
+	secure = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bootstrap":
+			fmt.Fprintf(w, `{"services":[[["com"],[%q]]]}`, secure.URL+"/rdap")
+		case "/rdap/domain/example.com":
+			http.Redirect(w, r, plain.URL+"/rdap", http.StatusFound)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer secure.Close()
+
+	client := &RDAPClient{
+		HTTPClient:   secure.Client(),
+		BootstrapURL: secure.URL + "/bootstrap",
+	}
+	if _, err := client.LookupDomain(context.Background(), "example.com"); err == nil {
+		t.Fatal("expected HTTPS downgrade redirect to be rejected")
+	}
+	if plainHits.Load() != 0 {
+		t.Fatal("RDAP client followed an HTTPS-to-HTTP redirect")
 	}
 }

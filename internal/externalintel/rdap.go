@@ -214,7 +214,24 @@ func rdapGET(ctx context.Context, client *http.Client, endpoint string) ([]byte,
 	}
 	req.Header.Set("Accept", "application/rdap+json, application/json")
 	req.Header.Set("User-Agent", "KEM3T-External-Intelligence/1.0 (research)")
-	resp, err := doExternalRequest(ctx, client, req)
+
+	// Enforce HTTPS redirects even when a caller injects a custom HTTP client.
+	// Clone the client so this policy does not mutate caller-owned configuration.
+	safeClient := *client
+	previousCheckRedirect := safeClient.CheckRedirect
+	safeClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if req.URL.Scheme != "https" {
+			return fmt.Errorf("RDAP redirects must use HTTPS")
+		}
+		if len(via) >= 4 {
+			return fmt.Errorf("too many RDAP redirects")
+		}
+		if previousCheckRedirect != nil {
+			return previousCheckRedirect(req, via)
+		}
+		return nil
+	}
+	resp, err := doExternalRequest(ctx, &safeClient, req)
 	if err != nil {
 		return nil, err
 	}
@@ -532,7 +549,8 @@ func RegisterIPRDAPReport(registry *evidence.Registry, report IPRDAPReport) (boo
 		return false, err
 	}
 	ip := net.ParseIP(targetAddr.String())
-	if strings.TrimSpace(report.Source) == "" || report.RetrievedAt.IsZero() {
+	source := strings.TrimSpace(report.Source)
+	if source == "" || report.RetrievedAt.IsZero() {
 		return false, fmt.Errorf("IP RDAP source and retrieval timestamp are required")
 	}
 	details := evidence.IPRDAPNetworkDetails{Target: ip.String(), Handle: strings.TrimSpace(report.Handle), Name: strings.TrimSpace(report.Name), StartAddress: start.String(), EndAddress: end.String(), Country: strings.TrimSpace(report.Country), NetworkType: strings.TrimSpace(report.NetworkType), Status: uniqueSorted(report.Status)}
@@ -547,7 +565,7 @@ func RegisterIPRDAPReport(registry *evidence.Registry, report IPRDAPReport) (boo
 		return false, fmt.Errorf("register IP RDAP evidence: %w", err)
 	}
 	eventID := "ip-rdap-network:" + key + ":" + fmt.Sprint(report.RetrievedAt.UTC().UnixNano())
-	observation := evidence.Observation{ID: "observation:" + eventID, EvidenceID: item.ID, Source: report.Source, ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID}}
+	observation := evidence.Observation{ID: "observation:" + eventID, EvidenceID: item.ID, Source: source, ObservedAt: report.RetrievedAt.UTC(), EventIDs: []string{eventID}}
 	if err := registry.AddObservation(observation); err != nil {
 		if errors.Is(err, evidence.ErrObservationExists) {
 			return false, nil
