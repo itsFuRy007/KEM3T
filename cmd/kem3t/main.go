@@ -199,6 +199,16 @@ func runInvestigation(target, snapshotDir string, enableActive bool, startPort, 
 		}
 		retErr = errors.Join(retErr, fmt.Errorf("investigation: %w", runErr))
 	}
+	if runErr == nil && result.Partial {
+		for _, outcome := range result.Stages {
+			if outcome.Error != "" {
+				retErr = errors.Join(retErr, fmt.Errorf("investigation partially failed at %s: %s", outcome.Name, outcome.Error))
+			}
+		}
+		if retErr == nil {
+			retErr = errors.New("investigation completed partially")
+		}
+	}
 
 	fmt.Println("[UNIFIED INVESTIGATION]")
 	safePrintf("Target: %s\nRun ID: %s\nPartial: %t\n", result.Target, result.RunID, result.Partial)
