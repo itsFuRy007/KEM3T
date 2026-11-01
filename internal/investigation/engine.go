@@ -52,8 +52,9 @@ type Result struct {
 type PlanningState struct {
 	Target       string
 	Evidence     []evidence.Evidence
-	NewEvidence  []evidence.Evidence
-	Observations []evidence.Observation
+	NewEvidence      []evidence.Evidence
+	NewObservations  []evidence.Observation
+	Observations     []evidence.Observation
 	Findings     []intelligence.Finding
 	Report       intelligence.IntelligenceReport
 	Completed    []StageOutcome
@@ -148,10 +149,24 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		result.Stages = append(result.Stages, outcome)
 
 		if e.Planner != nil && ctx.Err() == nil {
-			allEvidence := e.Registry.AllEvidence()
-			newEvidence := make([]evidence.Evidence, 0, len(allEvidence))
+			allEvidence, allObservations := scopedRegistryRecords(target, e.Registry)
+			newObservations := make([]evidence.Observation, 0)
+			newEvidenceIDs := make(map[string]struct{})
+			for _, observation := range allObservations {
+				if observation.CollectionRunID != run.ID {
+					continue
+				}
+				newObservations = append(newObservations, observation)
+				newEvidenceIDs[observation.EvidenceID] = struct{}{}
+			}
 			for _, item := range allEvidence {
 				if _, existed := evidenceBefore[item.ID]; !existed {
+					newEvidenceIDs[item.ID] = struct{}{}
+				}
+			}
+			newEvidence := make([]evidence.Evidence, 0, len(newEvidenceIDs))
+			for _, item := range allEvidence {
+				if _, isNew := newEvidenceIDs[item.ID]; isNew {
 					newEvidence = append(newEvidence, item)
 				}
 			}
@@ -168,7 +183,8 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 			}
 			next, planErr := e.Planner.Next(ctx, PlanningState{
 				Target: target, Evidence: allEvidence, NewEvidence: newEvidence,
-				Observations: e.Registry.AllObservations(), Findings: findings, Report: planningReport,
+				NewObservations: newObservations, Observations: allObservations,
+				Findings: findings, Report: planningReport,
 				Completed: append([]StageOutcome(nil), result.Stages...), Scheduled: scheduled,
 				Limitations: &plannerLimitations,
 			})
