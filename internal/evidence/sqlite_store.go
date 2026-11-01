@@ -8,6 +8,7 @@ import (
 	"fmt"
 	_ "modernc.org/sqlite"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -30,6 +31,9 @@ func OpenSQLiteStore(path string) (*SQLiteStore, error) {
 			return nil, fmt.Errorf("resolve database path: %w", err)
 		}
 		path = absolutePath
+		if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
+			return nil, fmt.Errorf("create SQLite database directory: %w", err)
+		}
 	}
 	dsn := path
 	if path != ":memory:" && !strings.HasPrefix(path, "file:") {

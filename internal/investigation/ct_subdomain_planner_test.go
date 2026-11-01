@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/intelligence"
 )
 
 func ctNameEvidence(id, name string) evidence.Evidence {
@@ -93,5 +94,89 @@ func TestCTSubdomainPlannerCountsScheduledAndCompletedNamesOnce(t *testing.T) {
 	}
 	if len(stages) != 1 || stages[0].Name() != "dns-subdomain:b.example.com" {
 		t.Fatalf("duplicate scheduled/completed name consumed cap twice: %+v", stages)
+	}
+}
+
+func TestCTSubdomainPlannerPrioritizesIntelligenceSupportedEvidence(t *testing.T) {
+	planner := NewCTSubdomainDNSPlanner(1)
+	state := PlanningState{
+		Target: "example.com",
+		NewEvidence: []evidence.Evidence{
+			ctNameEvidence("ct-a", "a.example.com"),
+			ctNameEvidence("ct-z", "z.example.com"),
+		},
+		Report: intelligence.IntelligenceReport{
+			Target: "example.com",
+			Hypotheses: []intelligence.Hypothesis{{
+				ID:            "hypothesis-1",
+				Title:         "Potential shared certificate deployment",
+				Confidence:    intelligence.HypothesisConfidenceHigh,
+				SupportingIDs: []string{"ct-z"},
+			}},
+		},
+	}
+	stages, err := planner.Next(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stages) != 1 || stages[0].Name() != "dns-subdomain:z.example.com" {
+		t.Fatalf("planner ignored intelligence-supported evidence: %+v", stages)
+	}
+}
+
+func TestCTSubdomainPlannerRejectsMismatchedIntelligenceScope(t *testing.T) {
+	planner := NewCTSubdomainDNSPlanner(2)
+	state := PlanningState{
+		Target: "example.com",
+		Report: intelligence.IntelligenceReport{Target: "other.example"},
+	}
+	if _, err := planner.Next(context.Background(), state); err == nil {
+		t.Fatal("expected planner to reject intelligence report for a different target")
+	}
+}
+
+func TestCTSubdomainPlannerReconsidersExistingEvidenceOnNewObservation(t *testing.T) {
+	planner := NewCTSubdomainDNSPlanner(2)
+	item := ctNameEvidence("ct-existing", "new.example.com")
+	state := PlanningState{
+		Target:   "example.com",
+		Evidence: []evidence.Evidence{item},
+		NewObservations: []evidence.Observation{{
+			ID: "observation-current-run", EvidenceID: item.ID, Source: "crt.sh",
+		}},
+	}
+	stages, err := planner.Next(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stages) != 1 || stages[0].Name() != "dns-subdomain:new.example.com" {
+		t.Fatalf("new observation did not trigger reconsideration of existing CT evidence: %+v", stages)
+	}
+}
+
+func TestCTSubdomainPlannerRejectsCTFactsCollectedForDifferentRoot(t *testing.T) {
+	planner := NewCTSubdomainDNSPlanner(4)
+
+	parentFact := ctNameEvidence("ct-parent", "api.child.example.com")
+	childFact := ctNameEvidence("ct-mismatched-target", "www.child.example.com")
+	childFact.EntityID = "child.example.com"
+
+	state := PlanningState{
+		Target: "child.example.com",
+		Evidence: []evidence.Evidence{
+			parentFact,
+			childFact,
+		},
+		NewEvidence: []evidence.Evidence{
+			parentFact,
+			childFact,
+		},
+	}
+	stages, err := planner.Next(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stages) != 0 {
+		t.Fatalf("planner used CT evidence collected for a different root: %+v", stages)
 	}
 }

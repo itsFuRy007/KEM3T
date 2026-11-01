@@ -55,6 +55,11 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 	}()
 
 	result := StageResult{}
+	collectedEvents := make([]events.Event, 0)
+	collectedEvidence := make([]evidence.Evidence, 0)
+	collectedObservations := make([]evidence.Observation, 0)
+	seenCollectedEvidence := make(map[string]struct{})
+	seenCollectedObservations := make(map[string]struct{})
 	pendingEvidence := make([]evidence.Evidence, 0)
 	pendingObservations := make([]evidence.Observation, 0)
 	seenEvidence := make(map[string]struct{})
@@ -100,6 +105,15 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 		}
 
 		evidence.ApplyObservationProvenance(stageCtx, &observation)
+		collectedEvents = append(collectedEvents, event)
+		if _, exists := seenCollectedEvidence[item.ID]; !exists {
+			collectedEvidence = append(collectedEvidence, item)
+			seenCollectedEvidence[item.ID] = struct{}{}
+		}
+		if _, exists := seenCollectedObservations[observation.ID]; !exists {
+			collectedObservations = append(collectedObservations, observation)
+			seenCollectedObservations[observation.ID] = struct{}{}
+		}
 
 		// Buffer stage output and commit it atomically only after the collector
 		// completes successfully. A failed stage must not leave partial evidence
@@ -144,6 +158,9 @@ func (s *CollectorStage) Run(ctx context.Context, target string, registry *evide
 	}
 	result.Evidence = len(pendingEvidence)
 	result.Observations = len(pendingObservations)
+	result.CollectedEvents = collectedEvents
+	result.EvidenceRecords = collectedEvidence
+	result.ObservationRecords = collectedObservations
 	return result, nil
 }
 

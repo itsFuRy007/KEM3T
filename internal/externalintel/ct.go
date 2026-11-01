@@ -297,13 +297,29 @@ func RegisterCTReport(registry *evidence.Registry, report CTReport, provenance .
 				Target: target, DNSName: name, CertificateID: record.CertificateID,
 				IssuerName: strings.TrimSpace(record.IssuerName),
 				NotBefore:  strings.TrimSpace(record.NotBefore), NotAfter: strings.TrimSpace(record.NotAfter),
-				Source: source, RetrievedAt: report.RetrievedAt.UTC(),
+				Source: source,
 			}
 			value, err := json.Marshal(details)
 			if err != nil {
 				return 0, fmt.Errorf("encode CT evidence: %w", err)
 			}
-			sum := sha256.Sum256(value)
+			// Evidence identity describes the certificate/name fact, not the
+			// time at which this source happened to be queried. Retrieval time
+			// remains on the value/provenance observation, while the ID stays
+			// stable across repeated collections.
+			identity, err := json.Marshal(struct {
+				Target        string `json:"target"`
+				DNSName       string `json:"dns_name"`
+				CertificateID int    `json:"certificate_id"`
+				IssuerName    string `json:"issuer_name,omitempty"`
+				NotBefore     string `json:"not_before,omitempty"`
+				NotAfter      string `json:"not_after,omitempty"`
+				Source        string `json:"source"`
+			}{target, name, record.CertificateID, details.IssuerName, details.NotBefore, details.NotAfter, source})
+			if err != nil {
+				return 0, fmt.Errorf("encode CT fact identity: %w", err)
+			}
+			sum := sha256.Sum256(identity)
 			factKey := hex.EncodeToString(sum[:])
 			item := evidence.Evidence{
 				ID: "ct-dns-name:" + factKey, EntityID: target,

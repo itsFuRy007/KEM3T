@@ -59,7 +59,7 @@ type CTDNSNameDetails struct {
 	NotBefore     string    `json:"not_before,omitempty"`
 	NotAfter      string    `json:"not_after,omitempty"`
 	Source        string    `json:"source"`
-	RetrievedAt   time.Time `json:"retrieved_at"`
+	RetrievedAt   time.Time `json:"retrieved_at,omitempty"`
 }
 
 // RDAPRegistrationDetails stores minimized public registration metadata.
@@ -409,9 +409,6 @@ func validateCTDNSNameEvidence(e Evidence) error {
 	}
 	if strings.TrimSpace(d.Source) == "" {
 		return errors.New("CT source is required")
-	}
-	if d.RetrievedAt.IsZero() {
-		return errors.New("CT retrieval timestamp is required")
 	}
 	return nil
 }

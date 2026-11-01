@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/itsFuRy007/kem3t/internal/evidence"
+	"github.com/itsFuRy007/kem3t/internal/intelligence"
 )
 
 // CTSubdomainDNSPlanner schedules bounded DNS resolution for names newly
@@ -38,6 +39,26 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 	if !evidence.IsValidDomain(root) {
 		return nil, nil
 	}
+	if reportTarget := normalizeEntity(state.Report.Target); reportTarget != "" && reportTarget != root {
+		return nil, fmt.Errorf("planner intelligence report target %q does not match investigation target %q", reportTarget, root)
+	}
+	priorityByEvidenceID := make(map[string]int)
+	for _, hypothesis := range state.Report.Hypotheses {
+		priority := 0
+		switch hypothesis.Confidence {
+		case intelligence.HypothesisConfidenceHigh:
+			priority = 3
+		case intelligence.HypothesisConfidenceModerate:
+			priority = 2
+		case intelligence.HypothesisConfidenceLow:
+			priority = 1
+		}
+		for _, evidenceID := range hypothesis.SupportingIDs {
+			if priority > priorityByEvidenceID[evidenceID] {
+				priorityByEvidenceID[evidenceID] = priority
+			}
+		}
+	}
 	limit := 8
 	if p != nil && p.MaxSubdomains > 0 {
 		limit = p.MaxSubdomains
@@ -57,14 +78,43 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 		}
 	}
 	used := len(known)
-	candidates := make(map[string]struct{})
+	candidateEvidence := make(map[string]evidence.Evidence)
 	for _, item := range state.NewEvidence {
+		candidateEvidence[item.ID] = item
+	}
+
+	evidenceByID := make(map[string]evidence.Evidence, len(state.Evidence))
+	for _, item := range state.Evidence {
+		evidenceByID[item.ID] = item
+	}
+	for _, observation := range state.NewObservations {
+		if item, exists := evidenceByID[observation.EvidenceID]; exists {
+			candidateEvidence[item.ID] = item
+		}
+	}
+
+	candidateIDs := make([]string, 0, len(candidateEvidence))
+	for id := range candidateEvidence {
+		candidateIDs = append(candidateIDs, id)
+	}
+	sort.Strings(candidateIDs)
+
+	candidatePriority := make(map[string]int)
+	for _, id := range candidateIDs {
+		item := candidateEvidence[id]
 		if item.Type != evidence.TypeCTDNSName {
+			continue
+		}
+		// The CT fact itself must belong to this exact investigation root.
+		if normalizeEntity(item.EntityID) != root {
 			continue
 		}
 		var details evidence.CTDNSNameDetails
 		if err := json.Unmarshal([]byte(item.Value), &details); err != nil {
 			return nil, fmt.Errorf("decode CT DNS-name evidence %q: %w", item.ID, err)
+		}
+		if normalizeEntity(details.Target) != root {
+			continue
 		}
 		name := normalizeEntity(details.DNSName)
 		if name == "" || name == root || !evidence.IsValidDomain(name) || !withinDomainScope(name, root) {
@@ -73,13 +123,21 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 		if _, exists := known[name]; exists {
 			continue
 		}
-		candidates[name] = struct{}{}
+		priority := priorityByEvidenceID[item.ID]
+		if current, exists := candidatePriority[name]; !exists || priority > current {
+			candidatePriority[name] = priority
+		}
 	}
-	names := make([]string, 0, len(candidates))
-	for name := range candidates {
+	names := make([]string, 0, len(candidatePriority))
+	for name := range candidatePriority {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	sort.Slice(names, func(i, j int) bool {
+		if candidatePriority[names[i]] != candidatePriority[names[j]] {
+			return candidatePriority[names[i]] > candidatePriority[names[j]]
+		}
+		return names[i] < names[j]
+	})
 	remaining := limit - used
 	if remaining < 0 {
 		remaining = 0
@@ -94,7 +152,7 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 	}
 	if omitted := candidateCount - len(names); omitted > 0 && state.Limitations != nil {
 		*state.Limitations = append(*state.Limitations, fmt.Sprintf(
-			"CT expansion discovered %d new in-scope candidate name(s), but the per-investigation DNS cap is %d and %d candidate name(s) were not queried. Selected names are ordered lexicographically.",
+			"CT expansion discovered %d new in-scope candidate name(s), but the per-investigation DNS cap is %d and %d candidate name(s) were not queried. Names supported by stronger intelligence hypotheses are prioritized first; remaining ties are ordered lexicographically.",
 			candidateCount,
 			limit,
 			omitted,

@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -25,7 +27,12 @@ import (
 	"github.com/itsFuRy007/kem3t/internal/pipeline"
 )
 
+var commandContext = context.Background()
+
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	commandContext = ctx
 	if err := run(); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return
@@ -192,12 +199,22 @@ func runInvestigation(target, snapshotDir string, enableActive bool, startPort, 
 		)
 	}
 	engine := investigation.Engine{Registry: registry, Stages: stages, Planner: investigation.NewCTSubdomainDNSPlanner(8), SnapshotDir: snapshotDir}
-	result, runErr := engine.Run(context.Background(), target)
+	result, runErr := engine.Run(commandContext, target)
 	if runErr != nil {
 		if strings.TrimSpace(result.RunID) == "" {
 			return fmt.Errorf("investigation: %w", runErr)
 		}
 		retErr = errors.Join(retErr, fmt.Errorf("investigation: %w", runErr))
+	}
+	if runErr == nil && result.Partial {
+		for _, outcome := range result.Stages {
+			if outcome.Error != "" {
+				retErr = errors.Join(retErr, fmt.Errorf("investigation partially failed at %s: %s", outcome.Name, outcome.Error))
+			}
+		}
+		if retErr == nil {
+			retErr = errors.New("investigation completed partially")
+		}
 	}
 
 	fmt.Println("[UNIFIED INVESTIGATION]")
@@ -251,7 +268,7 @@ func runInvestigation(target, snapshotDir string, enableActive bool, startPort, 
 }
 
 func runDemo() error {
-	ctx := context.Background()
+	ctx := commandContext
 	collector := &collectors.Demo{}
 	eventCh := make(chan events.Event)
 	collectorErr := make(chan error, 1)
@@ -286,7 +303,7 @@ func runDemo() error {
 
 func runTCP(target string, startPort, endPort int, snapshotDir string) error {
 	result, err := pipeline.RunTCP(
-		context.Background(),
+		commandContext,
 		target,
 		startPort,
 		endPort,
@@ -335,7 +352,7 @@ func countTCPStates(eventsIn []events.Event) (map[string]int, error) {
 
 func runTLS(target string, port int, snapshotDir string) error {
 	result, err := pipeline.RunTLS(
-		context.Background(),
+		commandContext,
 		target,
 		port,
 		snapshotDir,
@@ -358,12 +375,14 @@ func runTLS(target string, port int, snapshotDir string) error {
 		safePrintf("SHA-256: %s\n", result.Event.Data["sha256_fingerprint"])
 	}
 
+	printIntelligenceReport(result.Report)
+	printInvestigationPlan(result.Report.InvestigationPlan)
 	printInfrastructureGraph(result.Graph)
 	return nil
 }
 
 func runHTTP(target, scheme string, port int, snapshotDir string) error {
-	result, err := pipeline.RunHTTP(context.Background(), target, scheme, port, snapshotDir)
+	result, err := pipeline.RunHTTP(commandContext, target, scheme, port, snapshotDir)
 	if err != nil {
 		return err
 	}
@@ -384,6 +403,8 @@ func runHTTP(target, scheme string, port int, snapshotDir string) error {
 		}
 		safePrintf("Body truncated: %s\n", result.Event.Data["body_truncated"])
 	}
+	printIntelligenceReport(result.Report)
+	printInvestigationPlan(result.Report.InvestigationPlan)
 	printInfrastructureGraph(result.Graph)
 	return nil
 }
@@ -461,7 +482,7 @@ func runDNSWithPlanState(target, snapshotDir, exportJSON, planStatePath string) 
 		}
 	}
 	result, err := pipeline.RunDNSWithPlanFeedback(
-		context.Background(),
+		commandContext,
 		target,
 		snapshotDir,
 		state.PreviousPlan,
@@ -1080,7 +1101,7 @@ func runCT(target, snapshotDir string) error {
 			if err != nil {
 				return err
 			}
-			added, err := externalintel.RegisterCTReport(registry, report)
+			added, err := externalintel.RegisterCTReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 			if err != nil {
 				return err
 			}
@@ -1116,7 +1137,7 @@ func runRDAP(target, snapshotDir string) error {
 			if err != nil {
 				return err
 			}
-			added, err := externalintel.RegisterRDAPReport(registry, report)
+			added, err := externalintel.RegisterRDAPReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 			if err != nil {
 				return err
 			}
@@ -1156,7 +1177,7 @@ func runASN(target, snapshotDir string) error {
 			if err != nil {
 				return err
 			}
-			added, err := externalintel.RegisterASNReport(registry, report)
+			added, err := externalintel.RegisterASNReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 			if err != nil {
 				return err
 			}
@@ -1188,7 +1209,7 @@ func runPassiveDNS(target, snapshotDir string) error {
 			if err != nil {
 				return err
 			}
-			added, err := externalintel.RegisterPassiveDNSReport(registry, report)
+			added, err := externalintel.RegisterPassiveDNSReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 			if err != nil {
 				return err
 			}
@@ -1222,7 +1243,7 @@ func runThreatIntel(target, snapshotDir string) error {
 			if err != nil {
 				return err
 			}
-			added, err := externalintel.RegisterThreatIntelReport(registry, report)
+			added, err := externalintel.RegisterThreatIntelReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 			if err != nil {
 				return err
 			}
@@ -1258,7 +1279,7 @@ func runIPRDAP(target, snapshotDir string) error {
 			if err != nil {
 				return err
 			}
-			added, err := externalintel.RegisterIPRDAPReport(registry, report)
+			added, err := externalintel.RegisterIPRDAPReport(registry, report, evidence.ObservationProvenanceFromContext(ctx))
 			if err != nil {
 				return err
 			}
@@ -1284,7 +1305,7 @@ func runBatchDNS(targetsFile, snapshotDir string, workers int) error {
 	if err != nil {
 		return err
 	}
-	results, err := batch.RunDNS(context.Background(), targets, workers, snapshotDir)
+	results, err := batch.RunDNS(commandContext, targets, workers, snapshotDir)
 	if err != nil {
 		return err
 	}

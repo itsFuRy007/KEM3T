@@ -22,8 +22,8 @@ type Snapshot struct {
 
 func New(target string, addresses []string) (Snapshot, error) {
 	target = strings.ToLower(strings.TrimSpace(target))
-	if target == "" {
-		return Snapshot{}, fmt.Errorf("snapshot target is required")
+	if err := validateSnapshotTarget(target); err != nil {
+		return Snapshot{}, err
 	}
 
 	normalized, err := normalizeAddresses(addresses)
@@ -59,8 +59,11 @@ func normalizeAddresses(addresses []string) ([]string, error) {
 }
 
 func (s Snapshot) Validate() error {
-	if strings.TrimSpace(s.Target) == "" {
-		return fmt.Errorf("snapshot target is required")
+	if err := validateSnapshotTarget(s.Target); err != nil {
+		return err
+	}
+	if s.Target != strings.ToLower(strings.TrimSpace(s.Target)) || strings.HasSuffix(s.Target, ".") {
+		return fmt.Errorf("snapshot target must be normalized")
 	}
 	if s.Collected.IsZero() {
 		return fmt.Errorf("snapshot collection time is required")
@@ -142,8 +145,8 @@ func (s *Store) Load(target string) (Snapshot, error) {
 		return Snapshot{}, fmt.Errorf("snapshot store directory is required")
 	}
 	target = strings.ToLower(strings.TrimSpace(target))
-	if target == "" {
-		return Snapshot{}, fmt.Errorf("snapshot target is required")
+	if err := validateSnapshotTarget(target); err != nil {
+		return Snapshot{}, err
 	}
 
 	data, err := os.ReadFile(s.path(target))
@@ -166,6 +169,33 @@ func (s *Store) Load(target string) (Snapshot, error) {
 	}
 
 	return snapshot, nil
+}
+
+func validateSnapshotTarget(target string) error {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return fmt.Errorf("snapshot target is required")
+	}
+	if strings.ContainsAny(target, "/\\") || strings.Contains(target, "..") {
+		return fmt.Errorf("snapshot target contains unsafe path characters")
+	}
+	if net.ParseIP(target) != nil {
+		return nil
+	}
+	if len(target) > 253 {
+		return fmt.Errorf("snapshot target exceeds maximum hostname length")
+	}
+	for _, label := range strings.Split(target, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return fmt.Errorf("snapshot target must be a valid hostname or IP address")
+		}
+		for _, r := range label {
+			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-') {
+				return fmt.Errorf("snapshot target must be a valid hostname or IP address")
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Store) path(target string) string {

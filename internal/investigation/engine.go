@@ -8,10 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/itsFuRy007/kem3t/internal/events"
 	"github.com/itsFuRy007/kem3t/internal/evidence"
 	"github.com/itsFuRy007/kem3t/internal/graph"
 	"github.com/itsFuRy007/kem3t/internal/history"
 	"github.com/itsFuRy007/kem3t/internal/intelligence"
+	"github.com/itsFuRy007/kem3t/internal/observations"
 )
 
 type Stage interface {
@@ -20,11 +22,14 @@ type Stage interface {
 }
 
 type StageResult struct {
-	Events       int                    `json:"events"`
-	Evidence     int                    `json:"evidence"`
-	Observations int                    `json:"observations"`
-	Findings     []intelligence.Finding `json:"findings,omitempty"`
-	Limitations  []string               `json:"limitations,omitempty"`
+	Events             int                    `json:"events"`
+	Evidence           int                    `json:"evidence"`
+	Observations       int                    `json:"observations"`
+	Findings           []intelligence.Finding `json:"findings,omitempty"`
+	Limitations        []string               `json:"limitations,omitempty"`
+	CollectedEvents    []events.Event         `json:"collected_events,omitempty"`
+	EvidenceRecords    []evidence.Evidence    `json:"evidence_records,omitempty"`
+	ObservationRecords []evidence.Observation `json:"observation_records,omitempty"`
 }
 
 type StageOutcome struct {
@@ -38,19 +43,22 @@ type Result struct {
 	RunID            string                          `json:"run_id"`
 	Stages           []StageOutcome                  `json:"stages"`
 	Graph            graph.Graph                     `json:"graph"`
+	Normalized       observations.Collection         `json:"normalized"`
 	Report           intelligence.IntelligenceReport `json:"report"`
 	Partial          bool                            `json:"partial"`
 	HistoryPersisted bool                            `json:"history_persisted"`
 }
 
 type PlanningState struct {
-	Target       string
-	Evidence     []evidence.Evidence
-	NewEvidence  []evidence.Evidence
-	Observations []evidence.Observation
-	Findings     []intelligence.Finding
-	Completed    []StageOutcome
-	Scheduled    []string
+	Target          string
+	Evidence        []evidence.Evidence
+	NewEvidence     []evidence.Evidence
+	NewObservations []evidence.Observation
+	Observations    []evidence.Observation
+	Findings        []intelligence.Finding
+	Report          intelligence.IntelligenceReport
+	Completed       []StageOutcome
+	Scheduled       []string
 	// Limitations lets planners report decisions even when they cannot enqueue
 	// a stage (for example, when an expansion cap has no remaining capacity).
 	Limitations *[]string
@@ -141,21 +149,39 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		result.Stages = append(result.Stages, outcome)
 
 		if e.Planner != nil && ctx.Err() == nil {
-			allEvidence := e.Registry.AllEvidence()
-			newEvidence := make([]evidence.Evidence, 0, len(allEvidence))
+			allEvidence, allObservations := scopedRegistryRecords(target, e.Registry)
+			newObservations := make([]evidence.Observation, 0)
+			newEvidenceIDs := make(map[string]struct{})
+			for _, observation := range allObservations {
+				if observation.CollectionRunID != run.ID {
+					continue
+				}
+				newObservations = append(newObservations, observation)
+				if _, existed := evidenceBefore[observation.EvidenceID]; !existed {
+					newEvidenceIDs[observation.EvidenceID] = struct{}{}
+				}
+			}
+			newEvidence := make([]evidence.Evidence, 0, len(newEvidenceIDs))
 			for _, item := range allEvidence {
-				if _, existed := evidenceBefore[item.ID]; !existed {
+				if _, isNew := newEvidenceIDs[item.ID]; isNew {
 					newEvidence = append(newEvidence, item)
 				}
 			}
 			findings := collectFindings(result.Stages)
+			planningReport, reportErr := (&intelligence.ReportEngine{}).Build(target, findings, e.Registry)
+			if reportErr != nil {
+				retErr = fmt.Errorf("build intelligence context for adaptive planner: %w", reportErr)
+				result.Partial = true
+				break
+			}
 			scheduled := make([]string, 0, len(queue)-index-1)
 			for _, pending := range queue[index+1:] {
 				scheduled = append(scheduled, strings.TrimSpace(pending.Name()))
 			}
 			next, planErr := e.Planner.Next(ctx, PlanningState{
 				Target: target, Evidence: allEvidence, NewEvidence: newEvidence,
-				Observations: e.Registry.AllObservations(), Findings: findings,
+				NewObservations: newObservations, Observations: allObservations,
+				Findings: findings, Report: planningReport,
 				Completed: append([]StageOutcome(nil), result.Stages...), Scheduled: scheduled,
 				Limitations: &plannerLimitations,
 			})
@@ -193,10 +219,25 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		retErr = ctx.Err()
 	}
 
+	collectedEvents := make([]events.Event, 0)
+	for _, outcome := range result.Stages {
+		collectedEvents = append(collectedEvents, outcome.Result.CollectedEvents...)
+	}
+	result.Normalized = observations.NormalizeEvents(collectedEvents)
+	if len(result.Normalized.Rejected) > 0 {
+		result.Partial = true
+		retErr = errors.Join(retErr, fmt.Errorf("normalize investigation events: %s", result.Normalized.Rejected[0].Reason))
+	}
+
 	scopedEvidence, scopedObservations := scopedRegistryRecords(target, e.Registry)
+	observations.AttachEvidence(&result.Normalized, scopedObservations)
 	built, err := graph.Build(scopedEvidence, scopedObservations)
+	if err == nil && len(result.Normalized.Services) > 0 {
+		built, err = graph.AttachServices(built, result.Normalized.Services)
+	}
 	if err != nil {
-		retErr = errors.Join(retErr, fmt.Errorf("build investigation graph: %w", err))
+		retErr = errors.Join(retErr, fmt.Errorf("build unified investigation graph: %w", err))
+		result.Partial = true
 	} else {
 		result.Graph = built
 	}
@@ -241,14 +282,15 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 			}
 		}
 	}
-	for _, item := range e.Registry.AllEvidence() {
-		if _, existed := evidenceBefore[item.ID]; existed {
-			continue
-		}
-		if item.Type == evidence.TypeDNSAddress {
-			run.AddressCount++
+	addressSet := make(map[string]struct{})
+	for _, outcome := range result.Stages {
+		for _, item := range outcome.Result.EvidenceRecords {
+			if item.Type == evidence.TypeDNSAddress {
+				addressSet[item.Value] = struct{}{}
+			}
 		}
 	}
+	run.AddressCount = len(addressSet)
 	if retErr != nil && run.ErrorMessage == "" {
 		run.ErrorMessage = retErr.Error()
 	}
@@ -273,6 +315,10 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 		if retryErr := e.Registry.UpdateCollectionRun(run); retryErr != nil {
 			retErr = errors.Join(retErr, fmt.Errorf("mark investigation run failed after finalization error: %w", retryErr))
 		}
+		if result.Report.Target != "" {
+			result.Report.ReferenceRunID = run.ID
+			result.Report.ReferenceRunStatus = string(run.Status)
+		}
 		if result.Report.Target != "" && retErr != nil {
 			result.Report.Narrative.Limitations = appendUniqueLimitation(
 				result.Report.Narrative.Limitations,
@@ -280,6 +326,10 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 			)
 		}
 		return result, retErr
+	}
+	if result.Report.Target != "" {
+		result.Report.ReferenceRunID = run.ID
+		result.Report.ReferenceRunStatus = string(run.Status)
 	}
 	if run.Status == evidence.CollectionRunCompleted && strings.TrimSpace(e.SnapshotDir) != "" {
 		if err := history.PersistRunSnapshot(e.SnapshotDir, run, e.Registry); err != nil {
@@ -294,6 +344,10 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 			}
 			if updateErr := e.Registry.UpdateCollectionRun(run); updateErr != nil {
 				retErr = errors.Join(retErr, fmt.Errorf("mark investigation run failed after history persistence error: %w", updateErr))
+			}
+			if result.Report.Target != "" {
+				result.Report.ReferenceRunID = run.ID
+				result.Report.ReferenceRunStatus = string(run.Status)
 			}
 		} else {
 			result.HistoryPersisted = true
@@ -330,7 +384,7 @@ func collectFindings(stages []StageOutcome) []intelligence.Finding {
 }
 
 func scopedRegistryRecords(target string, registry *evidence.Registry) ([]evidence.Evidence, []evidence.Observation) {
-	all := registry.AllEvidence()
+	all, observations := registry.Snapshot()
 	entities := map[string]struct{}{target: {}}
 	for _, item := range all {
 		entity := normalizeEntity(item.EntityID)
@@ -347,7 +401,6 @@ func scopedRegistryRecords(target string, registry *evidence.Registry) ([]eviden
 		selected = append(selected, item)
 		selectedIDs[item.ID] = struct{}{}
 	}
-	observations := registry.AllObservations()
 	selectedObservations := make([]evidence.Observation, 0, len(observations))
 	for _, observation := range observations {
 		if _, ok := selectedIDs[observation.EvidenceID]; ok {

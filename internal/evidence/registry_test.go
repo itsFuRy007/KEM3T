@@ -3,6 +3,7 @@ package evidence
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -327,5 +328,63 @@ func TestRegistryAddBatchRejectsDuplicateIDsWithinBatch(t *testing.T) {
 	}
 	if len(registry.AllEvidence()) != 0 {
 		t.Fatal("duplicate batch changed registry")
+	}
+}
+
+func TestRegistrySnapshotKeepsBatchesConsistentDuringConcurrentWrites(t *testing.T) {
+	registry := NewRegistry()
+	const batches = 200
+
+	start := make(chan struct{})
+	writerDone := make(chan error, 1)
+
+	go func() {
+		<-start
+		for i := 0; i < batches; i++ {
+			item := validEvidence()
+			item.ID = fmt.Sprintf("snapshot-evidence-%03d", i)
+
+			observation := validObservation()
+			observation.ID = fmt.Sprintf("snapshot-observation-%03d", i)
+			observation.EvidenceID = item.ID
+
+			if err := registry.AddBatch(context.Background(), []Evidence{item}, []Observation{observation}); err != nil {
+				writerDone <- err
+				return
+			}
+		}
+		writerDone <- nil
+	}()
+
+	close(start)
+	for {
+		select {
+		case err := <-writerDone:
+			if err != nil {
+				t.Fatal(err)
+			}
+			evidenceRecords, observationRecords := registry.Snapshot()
+			if len(evidenceRecords) != batches || len(observationRecords) != batches {
+				t.Fatalf("final snapshot counts = %d evidence, %d observations; want %d each",
+					len(evidenceRecords), len(observationRecords), batches)
+			}
+			return
+		default:
+			evidenceRecords, observationRecords := registry.Snapshot()
+			evidenceIDs := make(map[string]struct{}, len(evidenceRecords))
+			for _, item := range evidenceRecords {
+				evidenceIDs[item.ID] = struct{}{}
+			}
+			for _, observation := range observationRecords {
+				if _, exists := evidenceIDs[observation.EvidenceID]; !exists {
+					t.Fatalf("snapshot contains observation %q without evidence %q",
+						observation.ID, observation.EvidenceID)
+				}
+			}
+			if len(evidenceRecords) != len(observationRecords) {
+				t.Fatalf("snapshot observed a partial batch: %d evidence, %d observations",
+					len(evidenceRecords), len(observationRecords))
+			}
+		}
 	}
 }

@@ -363,6 +363,32 @@ func (r *Registry) ObservationsForEvidence(
 	return result, nil
 }
 
+// Snapshot returns evidence and observations from one consistent registry
+// state. Both collections are copied while holding the same read lock, so an
+// atomic batch write cannot appear in only one side of the returned snapshot.
+func (r *Registry) Snapshot() ([]Evidence, []Observation) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	evidenceRecords := make([]Evidence, 0, len(r.evidence))
+	for _, item := range r.evidence {
+		evidenceRecords = append(evidenceRecords, item)
+	}
+	sort.Slice(evidenceRecords, func(i, j int) bool {
+		return evidenceRecords[i].ID < evidenceRecords[j].ID
+	})
+
+	observationRecords := make([]Observation, 0, len(r.observations))
+	for _, item := range r.observations {
+		observationRecords = append(observationRecords, cloneObservation(item))
+	}
+	sort.Slice(observationRecords, func(i, j int) bool {
+		return observationRecords[i].ID < observationRecords[j].ID
+	})
+
+	return evidenceRecords, observationRecords
+}
+
 // AllEvidence returns all evidence records ordered by ID.
 func (r *Registry) AllEvidence() []Evidence {
 	r.mu.RLock()

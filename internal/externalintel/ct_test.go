@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -231,5 +232,58 @@ func TestRegisterCTReportDoesNotPersistPartialResultsOnValidationFailure(t *test
 	}
 	if len(registry.AllEvidence()) != 0 || len(registry.AllObservations()) != 0 {
 		t.Fatalf("invalid CT report left partial registry state: evidence=%d observations=%d", len(registry.AllEvidence()), len(registry.AllObservations()))
+	}
+}
+
+func TestRegisterCTReportKeepsEvidenceIdentityStableAcrossRetrievals(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "evidence.db")
+	registry, err := evidence.OpenRegistry(dbPath)
+	if err != nil {
+		t.Fatalf("open SQLite evidence registry: %v", err)
+	}
+	firstRetrieved := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	report := CTReport{
+		Target: "example.com", Source: "crt.sh", RetrievedAt: firstRetrieved,
+		Records: []CTRecord{{
+			CertificateID: 42,
+			DNSNames:      []string{"example.com", "www.example.com"},
+			IssuerName:    "Example CA",
+			NotBefore:     "2026-01-01",
+			NotAfter:      "2027-01-01",
+		}},
+	}
+	if added, err := RegisterCTReport(registry, report); err != nil || added != 2 {
+		t.Fatalf("first registration = (%d, %v), want (2, nil)", added, err)
+	}
+	firstEvidence := registry.AllEvidence()
+	firstIDs := []string{firstEvidence[0].ID, firstEvidence[1].ID}
+
+	report.RetrievedAt = firstRetrieved.Add(time.Hour)
+	if added, err := RegisterCTReport(registry, report); err != nil || added != 2 {
+		t.Fatalf("second registration = (%d, %v), want two new observations", added, err)
+	}
+	secondEvidence := registry.AllEvidence()
+	if len(secondEvidence) != 2 {
+		t.Fatalf("evidence count = %d, want 2 stable facts", len(secondEvidence))
+	}
+	if secondEvidence[0].ID != firstIDs[0] || secondEvidence[1].ID != firstIDs[1] {
+		t.Fatalf("CT evidence identity changed across retrievals: first=%v second=%v", firstIDs, []string{secondEvidence[0].ID, secondEvidence[1].ID})
+	}
+	if got := len(registry.AllObservations()); got != 4 {
+		t.Fatalf("observation count = %d, want 4 retrieval observations", got)
+	}
+	if err := registry.Close(); err != nil {
+		t.Fatalf("close SQLite evidence registry: %v", err)
+	}
+	reopened, err := evidence.OpenRegistry(dbPath)
+	if err != nil {
+		t.Fatalf("reopen SQLite evidence registry: %v", err)
+	}
+	defer reopened.Close()
+	if got := len(reopened.AllEvidence()); got != 2 {
+		t.Fatalf("persisted evidence count = %d, want 2 stable facts", got)
+	}
+	if got := len(reopened.AllObservations()); got != 4 {
+		t.Fatalf("persisted observation count = %d, want 4 retrieval observations", got)
 	}
 }

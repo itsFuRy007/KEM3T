@@ -94,6 +94,9 @@ func TestRunTLSPersistsEvidenceAndBuildsNormalizedService(t *testing.T) {
 	if result.Event == nil {
 		t.Fatal("expected a TLS certificate event")
 	}
+	if result.Report.Target != "127.0.0.1" || result.Report.ReferenceRunID == "" {
+		t.Fatalf("TLS adapter did not return the shared intelligence report: %+v", result.Report)
+	}
 	if result.Evidence.ID == "" {
 		t.Fatal("expected TLS evidence")
 	}

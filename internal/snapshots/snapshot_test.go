@@ -151,3 +151,20 @@ func TestSnapshotValidationRejectsUnsortedAddresses(t *testing.T) {
 		t.Fatalf("Validate() error = %v, want sorted-address error", err)
 	}
 }
+
+func TestStoreRejectsUnsafeSnapshotTargets(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{"../outside", "nested/target", "nested\\\\target", ".."} {
+		t.Run(target, func(t *testing.T) {
+			if _, err := New(target, nil); err == nil {
+				t.Fatalf("New accepted unsafe target %q", target)
+			}
+			if _, err := store.Load(target); err == nil {
+				t.Fatalf("Load accepted unsafe target %q", target)
+			}
+		})
+	}
+}
