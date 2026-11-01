@@ -221,7 +221,20 @@ func TestEngineGraphExcludesUnrelatedTargetsFromSharedRegistry(t *testing.T) {
 	if err := registry.AddObservation(evidence.Observation{ID: "other-observation", EvidenceID: unrelated.ID, Source: "test", ObservedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), EventIDs: []string{"other-event"}}); err != nil {
 		t.Fatal(err)
 	}
-	result, err := (&Engine{Registry: registry, Stages: []Stage{testStage{name: "dns"}}}).Run(context.Background(), "example.com")
+	planner := plannerFunc(func(_ context.Context, state PlanningState) ([]Stage, error) {
+		for _, item := range state.Evidence {
+			if item.EntityID == "other.example" || item.Value == "198.51.100.9" {
+				t.Fatalf("unrelated evidence leaked into planner state: %+v", item)
+			}
+		}
+		for _, observation := range state.Observations {
+			if observation.EvidenceID == unrelated.ID {
+				t.Fatalf("unrelated observation leaked into planner state: %+v", observation)
+			}
+		}
+		return nil, nil
+	})
+	result, err := (&Engine{Registry: registry, Stages: []Stage{testStage{name: "dns"}}, Planner: planner}).Run(context.Background(), "example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
