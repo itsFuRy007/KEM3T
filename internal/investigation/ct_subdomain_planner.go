@@ -78,14 +78,29 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 		}
 	}
 	used := len(known)
-	candidatePriority := make(map[string]int)
+	candidateEvidenceIDs := make(map[string]struct{}, len(state.NewEvidence)+len(state.NewObservations))
 	for _, item := range state.NewEvidence {
-		if item.Type != evidence.TypeCTDNSName {
+		candidateEvidenceIDs[item.ID] = struct{}{}
+	}
+	for _, observation := range state.NewObservations {
+		candidateEvidenceIDs[observation.EvidenceID] = struct{}{}
+	}
+	candidatePriority := make(map[string]int)
+	for _, item := range state.Evidence {
+		if _, candidate := candidateEvidenceIDs[item.ID]; !candidate || item.Type != evidence.TypeCTDNSName {
+			continue
+		}
+		// A name being a descendant of the requested target is not enough:
+		// the CT fact itself must have been collected for this exact root.
+		if normalizeEntity(item.EntityID) != root {
 			continue
 		}
 		var details evidence.CTDNSNameDetails
 		if err := json.Unmarshal([]byte(item.Value), &details); err != nil {
 			return nil, fmt.Errorf("decode CT DNS-name evidence %q: %w", item.ID, err)
+		}
+		if normalizeEntity(details.Target) != root {
+			continue
 		}
 		name := normalizeEntity(details.DNSName)
 		if name == "" || name == root || !evidence.IsValidDomain(name) || !withinDomainScope(name, root) {
