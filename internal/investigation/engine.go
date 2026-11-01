@@ -50,15 +50,15 @@ type Result struct {
 }
 
 type PlanningState struct {
-	Target       string
-	Evidence     []evidence.Evidence
-	NewEvidence      []evidence.Evidence
-	NewObservations  []evidence.Observation
-	Observations     []evidence.Observation
-	Findings     []intelligence.Finding
-	Report       intelligence.IntelligenceReport
-	Completed    []StageOutcome
-	Scheduled    []string
+	Target          string
+	Evidence        []evidence.Evidence
+	NewEvidence     []evidence.Evidence
+	NewObservations []evidence.Observation
+	Observations    []evidence.Observation
+	Findings        []intelligence.Finding
+	Report          intelligence.IntelligenceReport
+	Completed       []StageOutcome
+	Scheduled       []string
 	// Limitations lets planners report decisions even when they cannot enqueue
 	// a stage (for example, when an expansion cap has no remaining capacity).
 	Limitations *[]string
@@ -157,11 +157,8 @@ func (e *Engine) Run(ctx context.Context, target string) (result Result, retErr 
 					continue
 				}
 				newObservations = append(newObservations, observation)
-				newEvidenceIDs[observation.EvidenceID] = struct{}{}
-			}
-			for _, item := range allEvidence {
-				if _, existed := evidenceBefore[item.ID]; !existed {
-					newEvidenceIDs[item.ID] = struct{}{}
+				if _, existed := evidenceBefore[observation.EvidenceID]; !existed {
+					newEvidenceIDs[observation.EvidenceID] = struct{}{}
 				}
 			}
 			newEvidence := make([]evidence.Evidence, 0, len(newEvidenceIDs))
@@ -387,7 +384,7 @@ func collectFindings(stages []StageOutcome) []intelligence.Finding {
 }
 
 func scopedRegistryRecords(target string, registry *evidence.Registry) ([]evidence.Evidence, []evidence.Observation) {
-	all := registry.AllEvidence()
+	all, observations := registry.Snapshot()
 	entities := map[string]struct{}{target: {}}
 	for _, item := range all {
 		entity := normalizeEntity(item.EntityID)
@@ -404,7 +401,6 @@ func scopedRegistryRecords(target string, registry *evidence.Registry) ([]eviden
 		selected = append(selected, item)
 		selectedIDs[item.ID] = struct{}{}
 	}
-	observations := registry.AllObservations()
 	selectedObservations := make([]evidence.Observation, 0, len(observations))
 	for _, observation := range observations {
 		if _, ok := selectedIDs[observation.EvidenceID]; ok {

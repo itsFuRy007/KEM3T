@@ -234,7 +234,11 @@ func TestEngineGraphExcludesUnrelatedTargetsFromSharedRegistry(t *testing.T) {
 		}
 		return nil, nil
 	})
-	result, err := (&Engine{Registry: registry, Stages: []Stage{testStage{name: "dns"}}, Planner: planner}).Run(context.Background(), "example.com")
+	result, err := (&Engine{
+		Registry: registry,
+		Stages:   []Stage{testStage{name: "dns"}},
+		Planner:  planner,
+	}).Run(context.Background(), "example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,4 +298,84 @@ func containsString(values []string, expected string) bool {
 		}
 	}
 	return false
+}
+
+type existingCTObservationStage struct {
+	item evidence.Evidence
+}
+
+func (s existingCTObservationStage) Name() string {
+	return "ct-refresh"
+}
+
+func (s existingCTObservationStage) Run(ctx context.Context, _ string, registry *evidence.Registry) (StageResult, error) {
+	observation := evidence.Observation{
+		ID:         "ct-refresh-observation",
+		EvidenceID: s.item.ID,
+		Source:     "crt.sh",
+		ObservedAt: time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC),
+		EventIDs:   []string{"ct-refresh-event"},
+	}
+	evidence.ApplyObservationProvenance(ctx, &observation)
+
+	_, _, err := registry.AddBatchUnique(ctx, []evidence.Evidence{s.item}, []evidence.Observation{observation})
+	if err != nil {
+		return StageResult{}, err
+	}
+	return StageResult{Evidence: 1, Observations: 1}, nil
+}
+
+func TestEnginePlannerReconsidersExistingCTEvidenceFromCurrentRunObservation(t *testing.T) {
+	registry := evidence.NewRegistry()
+	item := ctNameEvidence("ct-existing-before-run", "new.example.com")
+	if err := registry.AddEvidence(item); err != nil {
+		t.Fatal(err)
+	}
+
+	var plannerCalls int
+	var scheduledNames []string
+	planner := plannerFunc(func(ctx context.Context, state PlanningState) ([]Stage, error) {
+		plannerCalls++
+
+		if len(state.NewEvidence) != 0 {
+			t.Fatalf("pre-existing CT evidence was incorrectly classified as new: %+v", state.NewEvidence)
+		}
+		if len(state.NewObservations) != 1 {
+			t.Fatalf("expected one observation from this run, got %+v", state.NewObservations)
+		}
+		if state.NewObservations[0].CollectionRunID == "" {
+			t.Fatal("current-run observation is missing collection provenance")
+		}
+
+		stages, err := NewCTSubdomainDNSPlanner(2).Next(ctx, state)
+		if err != nil {
+			return nil, err
+		}
+		for _, stage := range stages {
+			scheduledNames = append(scheduledNames, stage.Name())
+		}
+		return nil, nil
+	})
+
+	engine := Engine{
+		Registry: registry,
+		Stages: []Stage{
+			existingCTObservationStage{item: item},
+		},
+		Planner: planner,
+	}
+
+	result, err := engine.Run(context.Background(), "example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Stages) != 1 {
+		t.Fatalf("unexpected stage outcomes: %+v", result.Stages)
+	}
+	if plannerCalls != 1 {
+		t.Fatalf("planner calls = %d; want 1", plannerCalls)
+	}
+	if len(scheduledNames) != 1 || scheduledNames[0] != "dns-subdomain:new.example.com" {
+		t.Fatalf("existing CT evidence was not reconsidered for DNS scheduling: %v", scheduledNames)
+	}
 }

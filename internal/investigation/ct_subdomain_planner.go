@@ -78,20 +78,34 @@ func (p *CTSubdomainDNSPlanner) Next(ctx context.Context, state PlanningState) (
 		}
 	}
 	used := len(known)
-	candidateEvidenceIDs := make(map[string]struct{}, len(state.NewEvidence)+len(state.NewObservations))
+	candidateEvidence := make(map[string]evidence.Evidence)
 	for _, item := range state.NewEvidence {
-		candidateEvidenceIDs[item.ID] = struct{}{}
+		candidateEvidence[item.ID] = item
+	}
+
+	evidenceByID := make(map[string]evidence.Evidence, len(state.Evidence))
+	for _, item := range state.Evidence {
+		evidenceByID[item.ID] = item
 	}
 	for _, observation := range state.NewObservations {
-		candidateEvidenceIDs[observation.EvidenceID] = struct{}{}
+		if item, exists := evidenceByID[observation.EvidenceID]; exists {
+			candidateEvidence[item.ID] = item
+		}
 	}
+
+	candidateIDs := make([]string, 0, len(candidateEvidence))
+	for id := range candidateEvidence {
+		candidateIDs = append(candidateIDs, id)
+	}
+	sort.Strings(candidateIDs)
+
 	candidatePriority := make(map[string]int)
-	for _, item := range state.Evidence {
-		if _, candidate := candidateEvidenceIDs[item.ID]; !candidate || item.Type != evidence.TypeCTDNSName {
+	for _, id := range candidateIDs {
+		item := candidateEvidence[id]
+		if item.Type != evidence.TypeCTDNSName {
 			continue
 		}
-		// A name being a descendant of the requested target is not enough:
-		// the CT fact itself must have been collected for this exact root.
+		// The CT fact itself must belong to this exact investigation root.
 		if normalizeEntity(item.EntityID) != root {
 			continue
 		}
